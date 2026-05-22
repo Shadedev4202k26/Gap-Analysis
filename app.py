@@ -12,7 +12,7 @@ st.markdown("""
     .main-header { font-size: 28px; font-weight: bold; color: #1a1a1a; margin-bottom: 20px; }
     .metric-box { background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #fdd835; }
     </style>
-""", unsafe_with_html=st.markdown)
+""", unsafe_allow_html=True)
 
 st.title("📊 Inventory Stock Gap Analysis")
 st.write("Upload your raw POS inventory CSV to generate an alphabetical merchandising report for high-impact gaps (Qty ≥ 15).")
