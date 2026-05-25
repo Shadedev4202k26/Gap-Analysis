@@ -100,7 +100,7 @@ st.markdown(f"""
         {logo_html}
         <div class="brand-text">
             <h1>SMILEZ INVENTORY HUB</h1>
-            <p>Live Engine • Interactive High-Impact Gap Analysis Dashboard</p>
+            <p>In Dutchie backend select both Curbside and Salesfloor rooms and any category • Export only Product, Room, and Quantity</p>
         </div>
     </div>
 """, unsafe_allow_html=True)
