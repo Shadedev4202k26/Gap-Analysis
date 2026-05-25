@@ -154,7 +154,7 @@ if uploaded_file is not None:
         final_df = pd.DataFrame(results).sort_values(by='Product Name', ascending=True)
         
         if not final_df.empty:
-            st.markdown("### 📊 Store Floor Performance Metrics")
+            st.markdown("###  Store Floor Performance Metrics")
             
             # Stylized Metric Row layout 
             m_col1, m_col2, m_col3 = st.columns(3)
@@ -166,7 +166,7 @@ if uploaded_file is not None:
                 st.markdown(f'<div class="metric-card"><div class="metric-label">Floor Restock Target</div><div class="metric-val">≥ 15 Units</div></div>', unsafe_allow_html=True)
             
             st.write(" ")
-            st.markdown("### 📋 Merchandising Priority Action List")
+            st.markdown("###  Merchandising Priority Action List")
             
             # Interactive structured presentation table
             st.dataframe(
