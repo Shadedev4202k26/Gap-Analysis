@@ -106,7 +106,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Dropzone layout element
-st.markdown("### 📥 Load Live Inventory Export")
+st.markdown("###  Load Live Inventory Export")
 uploaded_file = st.file_uploader("", type="csv")
 
 def clean_val(val):
