@@ -154,62 +154,48 @@ with tab1:
 with tab2:
     st.markdown("### 🔍 Real-Time AI Strain Profiler")
     
-    if "OPENROUTER_API_KEY" not in st.secrets:
-        st.error("🔒 Security Alert: OpenRouter API key missing from Streamlit cloud configuration secrets vault.")
+    if "HF_SPACE_URL" not in st.secrets:
+        st.error("🔒 Security Alert: HF_SPACE_URL link missing from Streamlit cloud configuration secrets vault.")
     else:
         query = st.text_input("AI Search Engine Input", placeholder="Type any strain name in existence...", key="ai_search_box", label_visibility="collapsed").strip()
         
         if query:
             with st.spinner(f"Analyzing genetic matrices for '{query}'..."):
-                system_prompt = (
-                    "You are an expert commercial cannabis laboratory database. "
-                    "Analyze the strain requested and return ONLY a valid JSON object. Do not include introductory text or conversational prose. "
-                    "The JSON must contain exactly these keys: 'classification', 'cannabinoids', 'terpenes', 'flavor', 'effects'."
-                )
-                user_prompt = f"Provide standard industry chemotype data for the cannabis strain: '{query}'."
                 
-                headers = {
-                    "Authorization": f"Bearer {st.secrets['OPENROUTER_API_KEY']}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://streamlit.io",
-                    "X-Title": "Smilez Hub"
-                }
+                # Automatically format your Hugging Face space URL into its direct web-API endpoint
+                # Converts: https://huggingface.co/spaces/username/spacename -> https://username-spacename.hf.space/gradio_api/call/predict
+                api_clean_url = st.secrets["HF_SPACE_URL"].replace("https://huggingface.co/spaces/", "https://").replace("/", "-") + ".hf.space/gradio_api/call/predict"
                 
-                # LIST OF MODELS TO TRY IN ORDER (Primary free model -> Secondary backup free model)
-                models_to_try = [
-                    "meta-llama/llama-3-8b-instruct:free", 
-                    "mistralai/mistral-7b-instruct:free"
-                ]
-                
-                response_content = None
-                
-                # Loop through the models to find an available server slot automatically
-                for model in models_to_try:
-                    payload = {
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        "temperature": 0.15
-                    }
-                    try:
-                        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=8)
-                        if response.status_code == 200:
-                            response_content = response.json()['choices'][0]['message']['content']
-                            break # Successfully got data, stop trying other models
-                    except Exception:
-                        continue # If this model times out or fails, silently hop to the next one
-                
-                # Render UI if a model succeeded
-                if response_content:
-                    try:
-                        if "```json" in response_content:
-                            response_content = response_content.split("```json")[1].split("```")[0].strip()
-                        elif "```" in response_content:
-                            response_content = response_content.split("```")[1].split("```")[0].strip()
+                try:
+                    # Gradio APIs utilize a rapid two-step queue protocol for efficiency
+                    headers = {"Content-Type": "application/json"}
+                    payload = {"data": [query]}
+                    
+                    # Step 1: Submit data to the queue
+                    queue_res = requests.post(api_clean_url, headers=headers, json=payload, timeout=10)
+                    
+                    if queue_res.status_code == 200:
+                        event_id = queue_res.json().get("event_id")
+                        
+                        # Step 2: Instantly fetch the processing result
+                        result_res = requests.get(f"{api_clean_url}/{event_id}", timeout=12)
+                        
+                        # Parse the server-sent text stream cleanly
+                        lines = result_res.text.split("\n")
+                        raw_content = ""
+                        for line in lines:
+                            if line.startswith("data:"):
+                                # Extract data wrapper string array
+                                raw_content = json.loads(line[-5:]) [0]
+                                break
+                        
+                        # Clean out accidental markdown wrapping syntax if present
+                        if "```json" in raw_content:
+                            raw_content = raw_content.split("```json")[1].split("```")[0].strip()
+                        elif "```" in raw_content:
+                            raw_content = raw_content.split("```")[1].split("```")[0].strip()
                             
-                        data = json.loads(response_content.strip())
+                        data = json.loads(raw_content.strip())
                         
                         st.markdown(f"""
                             <div class="strain-card">
@@ -232,7 +218,9 @@ with tab2:
                                 <div class="section-data">{data.get('effects', 'N/A')}</div>
                             </div>
                         """, unsafe_allow_html=True)
-                    except json.JSONDecodeError:
-                        st.error("Data mapping error. Please tap enter on the search bar again to pull a clean refresh.")
-                else:
-                    st.error("🔄 Both primary and backup free AI networks are heavily congested right now. Please wait a moment and try re-entering the strain.")
+                    else:
+                        st.error("System capacity variation hit. Please re-enter strain.")
+                except json.JSONDecodeError:
+                    st.error("Data interpretation shift occurred. Please hit enter on the search bar again to clear.")
+                except Exception as e:
+                    st.error(f"Private endpoint communication exception: {e}")
