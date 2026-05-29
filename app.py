@@ -6,7 +6,14 @@ st.set_page_config(page_title="Smilez Operational Hub", page_icon="⚡", layout=
 def get_strain_profile(api_key, strain_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    system_prompt = "You are an expert cannabis laboratory database. Analyze the strain and return ONLY a valid JSON object with keys: 'classification', 'lineage', 'cannabinoids', 'terpenes', 'flavor', 'effects'."
+    
+    # Force the model to avoid nested double-quotes inside the JSON values
+    system_prompt = (
+        "You are an expert cannabis laboratory database. Analyze the strain and return ONLY a valid JSON object. "
+        "CRITICAL: Do not use double quotes inside any text values (use single quotes or plain text instead). "
+        "The JSON must contain exactly these keys: 'classification', 'lineage', 'cannabinoids', 'terpenes', 'flavor', 'effects'."
+    )
+    
     payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Provide data for: {strain_name}"}], "temperature": 0.1}
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=10)
@@ -18,7 +25,7 @@ def get_strain_profile(api_key, strain_name):
     except Exception as e: return {"error": str(e)}
 
 custom_css = """<style>
-@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=600;700&family=DM+Sans:wght=400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=600;700&family=DM+Sans:wght@400;500&display=swap');
 .stApp { background-color: #0F172A; color: #F9FAFB; font-family: 'DM Sans', sans-serif; }
 .brand-banner { background-color: #111827; padding: 40px; border-radius: 12px; border-left: 6px solid #FDD835; margin-bottom: 30px; display: flex; align-items: center; }
 .brand-text h1 { font-family: 'Urbanist', sans-serif; color: #FDD835 !important; font-size: 42px; margin: 0; letter-spacing: -1px; }
