@@ -154,7 +154,6 @@ with tab1:
 with tab2:
     st.markdown("### 🔍 Real-Time AI Strain Profiler")
     
-    # Check if key is configured in the cloud settings dashboard securely
     if "OPENROUTER_API_KEY" not in st.secrets:
         st.error("🔒 Security Alert: OpenRouter API key missing from Streamlit cloud configuration secrets vault.")
     else:
@@ -169,7 +168,6 @@ with tab2:
                 )
                 user_prompt = f"Provide standard industry chemotype data for the cannabis strain: '{query}'."
                 
-                # Silently grabs hidden credential from cloud vault backend
                 headers = {
                     "Authorization": f"Bearer {st.secrets['OPENROUTER_API_KEY']}",
                     "Content-Type": "application/json",
@@ -177,27 +175,41 @@ with tab2:
                     "X-Title": "Smilez Hub"
                 }
                 
-                payload = {
-                    "model": "meta-llama/llama-3-8b-instruct:free",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    "temperature": 0.15
-                }
+                # LIST OF MODELS TO TRY IN ORDER (Primary free model -> Secondary backup free model)
+                models_to_try = [
+                    "meta-llama/llama-3-8b-instruct:free", 
+                    "mistralai/mistral-7b-instruct:free"
+                ]
                 
-                try:
-                    response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=15)
-                    
-                    if response.status_code == 200:
-                        raw_content = response.json()['choices'][0]['message']['content']
-                        
-                        if "```json" in raw_content:
-                            raw_content = raw_content.split("```json")[1].split("```")[0].strip()
-                        elif "```" in raw_content:
-                            raw_content = raw_content.split("```")[1].split("```")[0].strip()
+                response_content = None
+                
+                # Loop through the models to find an available server slot automatically
+                for model in models_to_try:
+                    payload = {
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        "temperature": 0.15
+                    }
+                    try:
+                        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=8)
+                        if response.status_code == 200:
+                            response_content = response.json()['choices'][0]['message']['content']
+                            break # Successfully got data, stop trying other models
+                    except Exception:
+                        continue # If this model times out or fails, silently hop to the next one
+                
+                # Render UI if a model succeeded
+                if response_content:
+                    try:
+                        if "```json" in response_content:
+                            response_content = response_content.split("```json")[1].split("```")[0].strip()
+                        elif "```" in response_content:
+                            response_content = response_content.split("```")[1].split("```")[0].strip()
                             
-                        data = json.loads(raw_content.strip())
+                        data = json.loads(response_content.strip())
                         
                         st.markdown(f"""
                             <div class="strain-card">
@@ -220,9 +232,7 @@ with tab2:
                                 <div class="section-data">{data.get('effects', 'N/A')}</div>
                             </div>
                         """, unsafe_allow_html=True)
-                    else:
-                        st.error("System capacity variation hit. Please re-enter strain.")
-                except json.JSONDecodeError:
-                    st.error("Data mapping error. Please hit search again to refresh.")
-                except Exception as e:
-                    st.error("Network communication timeout. Verify internet status.")
+                    except json.JSONDecodeError:
+                        st.error("Data mapping error. Please tap enter on the search bar again to pull a clean refresh.")
+                else:
+                    st.error("🔄 Both primary and backup free AI networks are heavily congested right now. Please wait a moment and try re-entering the strain.")
