@@ -155,47 +155,42 @@ with tab1:
 with tab2:
     st.markdown("### 🔍 Real-Time AI Strain Profiler")
     
-    if "HF_SPACE_URL" not in st.secrets:
-        st.error("🔒 Security Alert: HF_SPACE_URL link missing from Streamlit cloud configuration secrets vault.")
+    if "GROQ_API_KEY" not in st.secrets:
+        st.error("🔒 Security Alert: GROQ_API_KEY missing from Streamlit cloud configuration secrets vault.")
     else:
         query = st.text_input("AI Search Engine Input", placeholder="Type any strain name in existence...", key="ai_search_box", label_visibility="collapsed").strip()
         
         if query:
             with st.spinner(f"Analyzing genetic matrices for '{query}'..."):
                 
-                # Safely extracts username and space name to build the exact API endpoint directly
-                space_parts = st.secrets["HF_SPACE_URL"].strip("/").split("/")
-                username = space_parts[-2]
-                space_name = space_parts[-1]
-                api_clean_url = f"https://{username}-{space_name}.hf.space/gradio_api/call/predict"
+                system_prompt = (
+                    "You are an expert commercial cannabis laboratory database. "
+                    "Analyze the strain requested and return ONLY a valid JSON object. Do not include introductory text or conversational prose. "
+                    "The JSON must contain exactly these keys: 'classification', 'cannabinoids', 'terpenes', 'flavor', 'effects'."
+                )
                 
                 try:
-                    headers = {"Content-Type": "application/json"}
-                    payload = {"data": [query]}
+                    # Direct HTTP POST to Groq's high-speed infrastructure
+                    url = "https://api.groq.com/openai/v1/chat/completions"
+                    headers = {
+                        "Authorization": f"Bearer {st.secrets['GROQ_API_KEY']}",
+                        "Content-Type": "application/json"
+                    }
+                    payload = {
+                        "model": "llama3-8b-8192",
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"Provide data for: {query}"}
+                        ],
+                        "temperature": 0.15,
+                        "response_format": {"type": "json_object"}
+                    }
                     
-                    # Step 1: Submit data to the queue
-                    queue_res = requests.post(api_clean_url, headers=headers, json=payload, timeout=10)
+                    response = requests.post(url, headers=headers, json=payload, timeout=10)
                     
-                    if queue_res.status_code == 200:
-                        event_id = queue_res.json().get("event_id")
-                        
-                        # Step 2: Instantly fetch the processing result
-                        result_res = requests.get(f"{api_clean_url}/{event_id}", timeout=12)
-                        
-                        # Parse the server-sent text stream cleanly
-                        lines = result_res.text.split("\n")
-                        raw_content = ""
-                        for line in lines:
-                            if line.startswith("data:"):
-                                raw_content = json.loads(line[5:])[0]
-                                break
-                        
-                        if "```json" in raw_content:
-                            raw_content = raw_content.split("```json")[1].split("```")[0].strip()
-                        elif "```" in raw_content:
-                            raw_content = raw_content.split("```")[1].split("```")[0].strip()
-                            
-                        data = json.loads(raw_content.strip())
+                    if response.status_code == 200:
+                        raw_content = response.json()['choices'][0]['message']['content'].strip()
+                        data = json.loads(raw_content)
                         
                         st.markdown(f"""
                             <div class="strain-card">
@@ -219,8 +214,8 @@ with tab2:
                             </div>
                         """, unsafe_allow_html=True)
                     else:
-                        st.error("System capacity variation hit. Please re-enter strain.")
+                        st.error(f"Engine connection blip. Error code: {response.status_code}")
                 except json.JSONDecodeError:
                     st.error("Data interpretation shift occurred. Please hit enter on the search bar again to clear.")
                 except Exception as e:
-                    st.error(f"Private endpoint communication exception: {e}")
+                    st.error(f"High-speed lane communication exception: {e}")
