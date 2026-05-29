@@ -183,8 +183,7 @@ with tab2:
                             {"role": "user", "content": f"Provide data for: {query}"}
                         ],
                         "temperature": 0.15,
-                        "response_format": {"type": "json_object"}
-                    }
+                                            }
                     
                     response = requests.post(url, headers=headers, json=payload, timeout=10)
                     
