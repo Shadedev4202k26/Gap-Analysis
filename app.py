@@ -159,4 +159,8 @@ with tab1:
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
-            df.columns =
+            
+            # Clean columns using short, safe statements
+            raw_cols = df.columns
+            cleaned_cols = [str(col).strip('="').strip() for col in raw_cols]
+            df.columns = cleaned_cols
