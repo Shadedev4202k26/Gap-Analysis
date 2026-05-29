@@ -162,16 +162,13 @@ with tab2:
         if query:
             with st.spinner(f"Analyzing genetic matrices for '{query}'..."):
                 
-                # Automatically format your Hugging Face space URL into its direct web-API endpoint
-                # Converts: https://huggingface.co/spaces/username/spacename -> https://username-spacename.hf.space/gradio_api/call/predict
-               # Safely extracts username and space name to build the exact API endpoint directly
-space_parts = st.secrets["HF_SPACE_URL"].strip("/").split("/")
-username = space_parts[-2]
-space_name = space_parts[-1]
-api_clean_url = f"https://{username}-{space_name}.hf.space/gradio_api/call/predict"
+                # These lines must be indented exactly 16 spaces deep to sit inside the spinner block
+                space_parts = st.secrets["HF_SPACE_URL"].strip("/").split("/")
+                username = space_parts[-2]
+                space_name = space_parts[-1]
+                api_clean_url = f"https://{username}-{space_name}.hf.space/gradio_api/call/predict"
                 
                 try:
-                    # Gradio APIs utilize a rapid two-step queue protocol for efficiency
                     headers = {"Content-Type": "application/json"}
                     payload = {"data": [query]}
                     
@@ -189,11 +186,9 @@ api_clean_url = f"https://{username}-{space_name}.hf.space/gradio_api/call/predi
                         raw_content = ""
                         for line in lines:
                             if line.startswith("data:"):
-                                # Extract data wrapper string array
-                                raw_content = json.loads(line[-5:]) [0]
+                                raw_content = json.loads(line[5:])[0]
                                 break
                         
-                        # Clean out accidental markdown wrapping syntax if present
                         if "```json" in raw_content:
                             raw_content = raw_content.split("```json")[1].split("```")[0].strip()
                         elif "```" in raw_content:
