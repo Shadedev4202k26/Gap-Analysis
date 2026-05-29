@@ -1,10 +1,4 @@
-To hide the code elements and add a clear search icon to your input area, we can tweak how Streamlit interprets user inputs.
 
-Streamlit's default behavior shows code processing indicators if internal calculations slow down, which we can disable entirely. Furthermore, while standard web development allows you to drop icons directly inside inputs, Streamlit text boxes natively display a magnifying glass icon on the right side automatically when using st.text_input in newer versions. To make it even more evident, we can add a visual search emoji (🔍) directly into the text box label and use a clean custom layout container.
-
-Here is the updated code to update your app.py file on GitHub.
-Updated Python Code (app.py)
-Python
 
 import streamlit as st
 import pandas as pd
