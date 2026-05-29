@@ -13,7 +13,7 @@ st.set_page_config(page_title="Smilez Operational Hub", page_icon="⚡", layout=
 st.markdown("""
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2 family=Urbanist:wght@600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
     
     <style>
     /* Global Styles */
@@ -86,140 +86,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. BRAND BANNER RENDER
+# 2. BRAND LOGO HANDLER
 logo_path = 'image.png'
 logo_html = ""
-if os.path.exists(logo_path):
-    with open(logo_path, 'rb') as img_file:
-        logo_base64 = base64.b64encode(img_file.read()).decode('utf-8')
-        logo_html = f'<img src="data:image/png;base64,{logo_base64}" style="height: 80px; margin-right: 30px; border-radius: 8px;">'
-
-st.markdown(f"""
-    <div class="brand-banner">
-        {logo_html}
-        <div class="brand-text">
-            <h1>SMILEZ OPERATIONAL HUB</h1>
-            <p>Intelligence Engine for Inventory Logistics & Knowledge Management</p>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
-
-tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
-
-# --- TAB 1: INVENTORY MATCHING ENGINE ---
-with tab1:
-    st.markdown("### 📥 Live Data Ingestion")
-    uploaded_file = st.file_uploader("Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
-
-    if uploaded_file:
-        try:
-            df = pd.read_csv(uploaded_file)
-            df.columns = [str(col).strip('="').strip() for col in df.columns]
-            qty_col = [col for col in df.columns if 'Quantity' in col or 'Qty' in col][0]
-            
-            df['Product'] = df['Product'].apply(lambda x: str(x).strip('="').strip())
-            df['Room'] = df['Room'].apply(lambda x: str(x).strip('="').strip())
-            df['Qty'] = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
-            
-            pivot = df.groupby(['Product', 'Room'])['Qty'].sum().unstack(fill_value=0)
-            results = []
-            for product, row in pivot.iterrows():
-                present = row[row > 0].index.tolist()
-                absent = row[row == 0].index.tolist()
-                if absent and present:
-                    for r in present:
-                        if row[r] >= 15:
-                            results.append({"Product Name": product, "Location": r, "Available Qty": int(row[r])})
-            
-            final_df = pd.DataFrame(results).sort_values("Product Name")
-
-            if not final_df.empty:
-                m1, m2, m3 = st.columns(3)
-                with m1: st.markdown(f'<div class="metric-tile"><div class="metric-label">High-Impact Gaps</div><div class="metric-value">{len(final_df)}</div></div>', unsafe_allow_html=True)
-                with m2: st.markdown(f'<div class="metric-tile"><div class="metric-label">Units to Move</div><div class="metric-value">{final_df["Available Qty"].sum()}</div></div>', unsafe_allow_html=True)
-                with m3: st.markdown(f'<div class="metric-tile"><div class="metric-label">Min Threshold</div><div class="metric-value">15+</div></div>', unsafe_allow_html=True)
-
-                st.write("---")
-                st.dataframe(final_df, use_container_width=True, hide_index=True)
-                
-                html_pdf = f"<html><body style='font-family:sans-serif;'><h2>Smilez Gap Report</h2>{final_df.to_html()}</body></html>"
-                pdf_out = HTML(string=html_pdf).write_pdf()
-                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_out, "Smilez_Report.pdf", "application/pdf")
-            else:
-                st.info("No gaps found matching the 15+ unit threshold.")
-        except Exception as e:
-            st.error(f"Analysis Error: {e}")
-
-# --- TAB 2: AUTOMATED BACKEND AI KNOWLEDGE BASE ---
-with tab2:
-    st.markdown("### 🔍 Real-Time AI Strain Profiler")
-    
-    if "HF_SPACE_URL" not in st.secrets:
-        st.error("🔒 Security Alert: HF_SPACE_URL link missing from Streamlit cloud configuration secrets vault.")
-    else:
-        query = st.text_input("AI Search Engine Input", placeholder="Type any strain name in existence...", key="ai_search_box", label_visibility="collapsed").strip()
-        
-        if query:
-            with st.spinner(f"Analyzing genetic matrices for '{query}'..."):
-                
-                # These lines must be indented exactly 16 spaces deep to sit inside the spinner block
-                space_parts = st.secrets["HF_SPACE_URL"].strip("/").split("/")
-                username = space_parts[-2]
-                space_name = space_parts[-1]
-                api_clean_url = f"https://{username}-{space_name}.hf.space/gradio_api/call/predict"
-                
-                try:
-                    headers = {"Content-Type": "application/json"}
-                    payload = {"data": [query]}
-                    
-                    # Step 1: Submit data to the queue
-                    queue_res = requests.post(api_clean_url, headers=headers, json=payload, timeout=10)
-                    
-                    if queue_res.status_code == 200:
-                        event_id = queue_res.json().get("event_id")
-                        
-                        # Step 2: Instantly fetch the processing result
-                        result_res = requests.get(f"{api_clean_url}/{event_id}", timeout=12)
-                        
-                        # Parse the server-sent text stream cleanly
-                        lines = result_res.text.split("\n")
-                        raw_content = ""
-                        for line in lines:
-                            if line.startswith("data:"):
-                                raw_content = json.loads(line[5:])[0]
-                                break
-                        
-                        if "```json" in raw_content:
-                            raw_content = raw_content.split("```json")[1].split("```")[0].strip()
-                        elif "```" in raw_content:
-                            raw_content = raw_content.split("```")[1].split("```")[0].strip()
-                            
-                        data = json.loads(raw_content.strip())
-                        
-                        st.markdown(f"""
-                            <div class="strain-card">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <div class="strain-title">✨ {query.upper()}</div>
-                                    <span class="badge-class">{data.get('classification', 'HYBRID')}</span>
-                                </div>
-                                <hr style="border: 0; border-top: 1px solid rgba(148, 163, 184, 0.2); margin-bottom: 15px;">
-                                
-                                <div class="section-head">🧬 Cannabinoid Profile</div>
-                                <div class="section-data">{data.get('cannabinoids', 'N/A')}</div>
-                                
-                                <div class="section-head">🧪 Dominant Terpenes</div>
-                                <div class="section-data">{data.get('terpenes', 'N/A')}</div>
-                                
-                                <div class="section-head">🍋 Flavor Profile</div>
-                                <div class="section-data">{data.get('flavor', 'N/A')}</div>
-                                
-                                <div class="section-head">🧠 Reported Consumer Effects</div>
-                                <div class="section-data">{data.get('effects', 'N/A')}</div>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        st.error("System capacity variation hit. Please re-enter strain.")
-                except json.JSONDecodeError:
-                    st.error("Data interpretation shift occurred. Please hit enter on the search bar again to clear.")
-                except Exception as e:
-                    st.error(f"Private endpoint communication exception: {e}")
+if os.path.exists(logo_
