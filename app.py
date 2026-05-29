@@ -9,7 +9,45 @@ from weasyprint import HTML
 # Set up Page Config
 st.set_page_config(page_title="Smilez Operational Hub", page_icon="⚡", layout="wide")
 
+# ==========================================
+# BACKEND AI ENGINE (Isolated Helper Function)
+# ==========================================
+def get_strain_profile(api_key, strain_name):
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    system_prompt = (
+        "You are an expert commercial cannabis laboratory database. "
+        "Analyze the strain requested and return ONLY a valid JSON object. "
+        "Do not include introductory text or conversational prose. "
+        "The JSON must contain exactly these keys: "
+        "'classification', 'cannabinoids', 'terpenes', 'flavor', 'effects'."
+    )
+    payload = {
+        "model": "llama-3.1-8b-instant",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Provide data for: {strain_name}"}
+        ],
+        "temperature": 0.1
+    }
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=10)
+        if res.status_code == 200:
+            content = res.json()['choices'][0]['message']['content'].strip()
+            if "{" in content and "}" in content:
+                content = content[content.find("{"):content.rfind("}") + 1]
+            return json.loads(content)
+        else:
+            return {"error": f"Status code {res.status_code}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+# ==========================================
 # 1. PREMIUM INJECTED DESIGN UI
+# ==========================================
 custom_css = """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -88,7 +126,9 @@ body, p, span, div { font-family: 'DM Sans', sans-serif; }
 
 st.markdown(custom_css, unsafe_allow_html=True)
 
+# ==========================================
 # 2. BRAND LOGO HANDLER
+# ==========================================
 logo_path = 'image.png'
 logo_html = ""
 if os.path.exists(logo_path):
@@ -106,7 +146,9 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
+# ==========================================
 # 3. INTERFACE TABS
+# ==========================================
 tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
 
 # --- TAB 1: LOGISTICS MATCHING ENGINE ---
@@ -164,26 +206,6 @@ with tab2:
         
         if query:
             with st.spinner(f"Analyzing genetic matrices for '{query}'..."):
+                data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
                 
-                system_prompt = (
-                    "You are an expert commercial cannabis laboratory database. "
-                    "Analyze the strain requested and return ONLY a valid JSON object. "
-                    "Do not include introductory text or conversational prose. "
-                    "The JSON must contain exactly these keys: "
-                    "'classification', 'cannabinoids', 'terpenes', 'flavor', 'effects'."
-                )
-                
-                try:
-                    # Direct HTTP POST to Groq's high-speed infrastructure
-                    url = "https://api.groq.com/openai/v1/chat/completions"
-                    headers = {
-                        "Authorization": f"Bearer {st.secrets['GROQ_API_KEY']}",
-                        "Content-Type": "application/json"
-                    }
-                    payload = {
-                        "model": "llama-3.1-8b-instant",
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": f"Provide data for: {query}"}
-                        ],
-                        "temperature": 0.1
+                if data and "error"
