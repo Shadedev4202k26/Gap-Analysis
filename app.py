@@ -164,7 +164,11 @@ with tab2:
                 
                 # Automatically format your Hugging Face space URL into its direct web-API endpoint
                 # Converts: https://huggingface.co/spaces/username/spacename -> https://username-spacename.hf.space/gradio_api/call/predict
-                api_clean_url = st.secrets["HF_SPACE_URL"].replace("https://huggingface.co/spaces/", "https://").replace("/", "-") + ".hf.space/gradio_api/call/predict"
+               # Safely extracts username and space name to build the exact API endpoint directly
+space_parts = st.secrets["HF_SPACE_URL"].strip("/").split("/")
+username = space_parts[-2]
+space_name = space_parts[-1]
+api_clean_url = f"https://{username}-{space_name}.hf.space/gradio_api/call/predict"
                 
                 try:
                     # Gradio APIs utilize a rapid two-step queue protocol for efficiency
