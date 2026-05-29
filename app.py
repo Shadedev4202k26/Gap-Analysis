@@ -11,7 +11,7 @@ def get_strain_profile(api_key, strain_name):
     system_prompt = (
         "You are an expert cannabis laboratory database. Analyze the strain and return ONLY a valid JSON object. "
         "CRITICAL: Do not use double quotes inside any text values (use single quotes or plain text instead). "
-        "The JSON must contain exactly these keys: 'classification', 'lineage', 'cannabinoids', 'terpenes', 'flavor', 'effects'."
+        "The JSON must contain exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
     )
     
     payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Provide data for: {strain_name}"}], "temperature": 0.1}
@@ -106,7 +106,6 @@ with tab2:
 </div>
 <hr style="border: 0; border-top: 1px solid rgba(148, 163, 184, 0.2); margin-bottom: 15px;">
 <div class="section-head">🌿 Genetic Lineage</div><div class="section-data">{data.get('lineage', 'N/A')}</div>
-<div class="section-head">🧬 Cannabinoid Profile</div><div class="section-data">{data.get('cannabinoids', 'N/A')}</div>
 <div class="section-head">🧪 Dominant Terpenes</div><div class="section-data">{data.get('terpenes', 'N/A')}</div>
 <div class="section-head">🍋 Flavor Profile</div><div class="section-data">{data.get('flavor', 'N/A')}</div>
 <div class="section-head">🧠 Reported Consumer Effects</div><div class="section-data">{data.get('effects', 'N/A')}</div>
