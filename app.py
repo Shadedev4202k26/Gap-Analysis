@@ -23,7 +23,7 @@ def get_strain_profile(api_key, strain_name):
         "Analyze the strain requested and return ONLY a valid JSON object. "
         "Do not include introductory text or conversational prose. "
         "The JSON must contain exactly these keys: "
-        "'classification', 'cannabinoids', 'terpenes', 'flavor', 'effects'."
+        "'classification', 'lineage', 'cannabinoids', 'terpenes', 'flavor', 'effects'."
     )
     payload = {
         "model": "llama-3.1-8b-instant",
@@ -51,7 +51,7 @@ def get_strain_profile(api_key, strain_name):
 custom_css = """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Urbanist:wght=600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
 
 <style>
 /* Global Styles */
@@ -159,77 +159,4 @@ with tab1:
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
-            df.columns = [str(col).strip('="').strip() for col in df.columns]
-            qty_col = [col for col in df.columns if 'Quantity' in col or 'Qty' in col][0]
-            
-            df['Product'] = df['Product'].apply(lambda x: str(x).strip('="').strip())
-            df['Room'] = df['Room'].apply(lambda x: str(x).strip('="').strip())
-            df['Qty'] = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
-            
-            pivot = df.groupby(['Product', 'Room'])['Qty'].sum().unstack(fill_value=0)
-            results = []
-            for product, row in pivot.iterrows():
-                present = row[row > 0].index.tolist()
-                absent = row[row == 0].index.tolist()
-                if absent and present:
-                    for r in present:
-                        if row[r] >= 15:
-                            results.append({"Product Name": product, "Location": r, "Available Qty": int(row[r])})
-            
-            final_df = pd.DataFrame(results).sort_values("Product Name")
-
-            if not final_df.empty:
-                m1, m2, m3 = st.columns(3)
-                with m1: st.markdown(f'<div class="metric-tile"><div class="metric-label">High-Impact Gaps</div><div class="metric-value">{len(final_df)}</div></div>', unsafe_allow_html=True)
-                with m2: st.markdown(f'<div class="metric-tile"><div class="metric-label">Units to Move</div><div class="metric-value">{final_df["Available Qty"].sum()}</div></div>', unsafe_allow_html=True)
-                with m3: st.markdown(f'<div class="metric-tile"><div class="metric-label">Min Threshold</div><div class="metric-value">15+</div></div>', unsafe_allow_html=True)
-
-                st.write("---")
-                st.dataframe(final_df, use_container_width=True, hide_index=True)
-                
-                html_pdf = f"<html><body style='font-family:sans-serif;'><h2>Smilez Gap Report</h2>{final_df.to_html()}</body></html>"
-                pdf_out = HTML(string=html_pdf).write_pdf()
-                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_out, "Smilez_Report.pdf", "application/pdf")
-            else:
-                st.info("No gaps found matching the 15+ unit threshold.")
-        except Exception as e:
-            st.error(f"Analysis Error: {e}")
-
-# --- TAB 2: AUTOMATED BACKEND AI KNOWLEDGE BASE ---
-with tab2:
-    st.markdown("### 🔍 Real-Time AI Strain Profiler")
-    
-    if "GROQ_API_KEY" not in st.secrets:
-        st.error("🔒 Security Alert: GROQ_API_KEY missing from Streamlit cloud configuration secrets vault.")
-    else:
-        query = st.text_input("AI Search Engine Input", placeholder="Type any strain name in existence...", key="ai_search_box", label_visibility="collapsed").strip()
-        
-        if query:
-            with st.spinner(f"Analyzing genetic matrices for '{query}'..."):
-                data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
-                
-                if "error" not in data:
-                    card_html = f"""
-                    <div class="strain-card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <div class="strain-title">✨ {query.upper()}</div>
-                            <span class="badge-class">{data.get('classification', 'HYBRID')}</span>
-                        </div>
-                        <hr style="border: 0; border-top: 1px solid rgba(148, 163, 184, 0.2); margin-bottom: 15px;">
-                        
-                        <div class="section-head">🧬 Cannabinoid Profile</div>
-                        <div class="section-data">{data.get('cannabinoids', 'N/A')}</div>
-                        
-                        <div class="section-head">🧪 Dominant Terpenes</div>
-                        <div class="section-data">{data.get('terpenes', 'N/A')}</div>
-                        
-                        <div class="section-head">🍋 Flavor Profile</div>
-                        <div class="section-data">{data.get('flavor', 'N/A')}</div>
-                        
-                        <div class="section-head">🧠 Reported Consumer Effects</div>
-                        <div class="section-data">{data.get('effects', 'N/A')}</div>
-                    </div>
-                    """
-                    st.markdown(card_html, unsafe_allow_html=True)
-                else:
-                    st.error(f"Engine connection blip. Details: {data['error']}")
+            df.columns =
