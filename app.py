@@ -1,217 +1,207 @@
-
-
 import streamlit as st
 import pandas as pd
 import base64
 import os
 from weasyprint import HTML
 
-# Set up premium look with wide configuration and hide default development code flags
-st.set_page_config(page_title="Smilez Knowledge Base", page_icon="⚡", layout="wide")
+# Set up Page Config
+st.set_page_config(page_title="Smilez Operational Hub", page_icon="⚡", layout="wide")
 
-# Custom CSS for a clean, unified retail look with zero code blocks showing
+# 1. PREMIUM CSS INJECTION (MATCHING THE HUB DESIGN SLIDE)
 st.markdown("""
-    <style>
-    /* Completely hide any accidentally exposed code block syntax or dataframe indexes */
-    code { display: none !important; }
-    .stCodeBlock { display: none !important; }
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
     
-    .stApp { background-color: #fafbfc; }
+    <style>
+    /* Global Styles */
+    .stApp { background-color: #0F172A; color: #F9FAFB; }
+    font-family: 'DM Sans', sans-serif;
+
+    /* Header Banner */
     .brand-banner {
-        background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
-        color: #ffffff;
-        padding: 30px;
+        background-color: #111827;
+        padding: 40px;
         border-radius: 12px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        border-left: 6px solid #FDD835;
+        margin-bottom: 30px;
         display: flex;
         align-items: center;
-        margin-bottom: 25px;
     }
-    .brand-text h1 { color: #fdd835 !important; margin: 0; font-size: 30px; font-weight: 800; }
-    .brand-text p { margin: 5px 0 0 0; opacity: 0.8; font-size: 14px; }
-    
-    /* Interactive Strain Profile Cards */
-    .strain-card {
-        background: white;
+    .brand-text h1 {
+        font-family: 'Urbanist', sans-serif;
+        color: #FDD835 !important;
+        font-size: 42px;
+        margin: 0;
+        letter-spacing: -1px;
+    }
+    .brand-text p {
+        color: #94A3B8;
+        margin: 5px 0 0 0;
+        font-size: 16px;
+    }
+
+    /* Tab Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background-color: transparent;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 60px;
+        background-color: #1F2937 !important;
+        border-radius: 8px 8px 0px 0px !important;
+        gap: 0px;
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
+        color: #94A3B8 !important;
+        font-family: 'Urbanist', sans-serif;
+        font-weight: 600;
+        border: none !important;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #FDD835 !important;
+        color: #0F172A !important;
+    }
+
+    /* Metric Tiles */
+    .metric-tile {
+        background-color: #1F2937;
         padding: 30px;
         border-radius: 12px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.03);
-        border: 1px solid #e5e7eb;
-        margin-top: 20px;
+        border: 1px solid rgba(253, 216, 53, 0.1);
+        text-align: center;
+        transition: transform 0.3s ease;
     }
-    .badge-indica { background-color: #f3e8ff; color: #6b21a8; padding: 6px 16px; border-radius: 20px; font-weight: 700; font-size: 13px; display: inline-block; }
-    .badge-sativa { background-color: #d1fae5; color: #065f46; padding: 6px 16px; border-radius: 20px; font-weight: 700; font-size: 13px; display: inline-block; }
-    .badge-hybrid { background-color: #fef3c7; color: #92400e; padding: 6px 16px; border-radius: 20px; font-weight: 700; font-size: 13px; display: inline-block; }
-    
-    .section-title { font-size: 14px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
-    .section-body { font-size: 16px; color: #111827; margin-bottom: 15px; font-weight: 500; }
-    
-    .metric-card {
-        background: white; padding: 24px; border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.02); border-top: 5px solid #fdd835; text-align: center;
+    .metric-tile:hover { transform: translateY(-5px); border-color: #FDD835; }
+    .metric-label { color: #FDD835; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+    .metric-value { font-family: 'Urbanist', sans-serif; font-size: 48px; font-weight: 700; color: #F9FAFB; margin-top: 10px; }
+
+    /* Strain Reference Card */
+    .strain-card {
+        background-color: #1F2937;
+        padding: 35px;
+        border-radius: 15px;
+        border-top: 4px solid #FDD835;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     }
-    .metric-val { font-size: 36px; font-weight: 800; color: #1a1a1a; }
-    .metric-label { font-size: 12px; text-transform: uppercase; color: #718096; font-weight: 700; }
+    .strain-title { font-family: 'Urbanist', sans-serif; font-size: 32px; color: #FDD835; margin-bottom: 10px; }
+    .section-head { color: #94A3B8; font-weight: 700; text-transform: uppercase; font-size: 13px; margin-top: 20px; }
+    .section-data { font-size: 18px; color: #F9FAFB; margin-top: 5px; }
+
+    /* Buttons */
+    .stDownloadButton button {
+        background-color: #FDD835 !important;
+        color: #0F172A !important;
+        font-weight: 700 !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 15px 30px !important;
+        width: 100%;
+    }
+
+    /* Dataframe Overrides */
+    [data-testid="stDataFrame"] {
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 12px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# Load Logo
+# 2. LOGO & HEADER LOGIC
 logo_path = 'image.png'
 logo_html = ""
 if os.path.exists(logo_path):
     with open(logo_path, 'rb') as img_file:
         logo_base64 = base64.b64encode(img_file.read()).decode('utf-8')
-        logo_html = f'<img src="data:image/png;base64,{logo_base64}" style="height: 70px; margin-right: 25px; border-radius: 6px;">'
+        logo_html = f'<img src="data:image/png;base64,{logo_base64}" style="height: 80px; margin-right: 30px; border-radius: 8px;">'
 
-# Top Banner Layout
-st.markdown(f'<div class="brand-banner">{logo_html}<div class="brand-text"><h1>SMILEZ RETAIL HUB</h1><p>Store Performance Data & Budtender Knowledge Engine</p></div></div>', unsafe_allow_html=True)
+st.markdown(f"""
+    <div class="brand-banner">
+        {logo_html}
+        <div class="brand-text">
+            <h1>SMILEZ OPERATIONAL HUB</h1>
+            <p>Intelligence Engine for Inventory Logistics & Knowledge Management</p>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
-# Navigation Tabs
-tab1, tab2 = st.tabs(["📊 Inventory Gap Analysis", "🔍 Budtender Strain Checker"])
+# 3. THE TWO-TAB NAVIGATION
+tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 KNOWLEDGE BASE"])
 
 # --- TAB 1: INVENTORY GAP ANALYSIS ---
 with tab1:
-    st.markdown("### 📥 Load Live Inventory Export")
-    uploaded_file = st.file_uploader("Drop your Dutchie CSV below:", type="csv", key="inv_uploader")
+    st.markdown("### 📥 Live Data Ingestion")
+    uploaded_file = st.file_uploader("Drop Dutchie CSV Export Here", type="csv", label_visibility="collapsed")
 
-    def clean_val(val):
-        if isinstance(val, str):
-            return val.strip('="').strip()
-        return val
-
-    if uploaded_file is not None:
+    if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
             df.columns = [str(col).strip('="').strip() for col in df.columns]
-            qty_col = [col for col in df.columns if 'Quantity' in col or 'Qty' in col]
+            qty_col = [col for col in df.columns if 'Quantity' in col or 'Qty' in col][0]
             
-            if 'Product' not in df.columns or 'Room' not in df.columns or not qty_col:
-                st.error("Columns structural mismatch. Expected 'Product', 'Room', and a Quantity column.")
-                st.stop()
-                
-            qty_column_name = qty_col[0]
-            df['Product'] = df['Product'].apply(clean_val)
-            df['Room'] = df['Room'].apply(clean_val)
-            df['Quantity_Cleaned'] = df[qty_column_name].apply(clean_val)
-            df['Quantity_Cleaned'] = pd.to_numeric(df['Quantity_Cleaned'], errors='coerce').fillna(0)
+            # Data Cleaning
+            df['Product'] = df['Product'].apply(lambda x: str(x).strip('="').strip())
+            df['Room'] = df['Room'].apply(lambda x: str(x).strip('="').strip())
+            df['Qty'] = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
             
-            consolidated = df.groupby(['Product', 'Room'])['Quantity_Cleaned'].sum().reset_index()
-            pivot_df = consolidated.pivot(index='Product', columns='Room', values='Quantity_Cleaned').fillna(0)
-            
+            # Processing
+            pivot = df.groupby(['Product', 'Room'])['Qty'].sum().unstack(fill_value=0)
             results = []
-            for product, row in pivot_df.iterrows():
-                present_rooms = row[row > 0].index.tolist()
-                missing_rooms = row[row == 0].index.tolist()
-                if len(missing_rooms) > 0 and len(present_rooms) > 0:
-                    for p_room in present_rooms:
-                        qty = row[p_room]
-                        if qty >= 15:
-                            results.append({'Product Name': product, 'Available In': p_room, 'Current Qty': int(qty)})
-                            
-            final_df = pd.DataFrame(results).sort_values(by='Product Name', ascending=True)
+            for product, row in pivot.iterrows():
+                present = row[row > 0].index.tolist()
+                absent = row[row == 0].index.tolist()
+                if absent and present:
+                    for r in present:
+                        if row[r] >= 15:
+                            results.append({"Product Name": product, "Location": r, "Available Qty": int(row[r])})
             
-            if not final_df.empty:
-                m_col1, m_col2, m_col3 = st.columns(3)
-                with m_col1:
-                    st.markdown(f'<div class="metric-card"><div class="metric-label">High-Impact Gaps</div><div class="metric-val">{len(final_df)}</div></div>', unsafe_allow_html=True)
-                with m_col2:
-                    st.markdown(f'<div class="metric-card"><div class="metric-label">Total Units Missing</div><div class="metric-val">{final_df["Current Qty"].sum():,}</div></div>', unsafe_allow_html=True)
-                with m_col3:
-                    st.markdown(f'<div class="metric-card"><div class="metric-label">Target Threshold</div><div class="metric-val">≥ 15 Units</div></div>', unsafe_allow_html=True)
-                
-                st.write(" ")
-                st.dataframe(final_df, use_container_width=True, hide_index=True)
-                
-                # Setup PDF Generation Data
-                html_content = f"""
-                <html>
-                <head>
-                    <style>
-                        @page {{ size: A4; margin: 18mm 15mm; }}
-                        body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #2c3e50; }}
-                        .header-bar {{ background-color: #fdd835; color: #1a1a1a; padding: 25px; border-radius: 6px; }}
-                        h1 {{ margin: 0; font-size: 22pt; font-weight: bold; }}
-                        table {{ width: 100%; border-collapse: collapse; margin-top: 25px; }}
-                        th {{ background-color: #f8fafc; text-align: left; padding: 12px 10px; font-size: 9.5pt; border-bottom: 3px solid #e2e8f0; }}
-                        td {{ padding: 12px 10px; font-size: 10pt; border-bottom: 1px solid #edf2f7; }}
-                    </style>
-                </head>
-                <body>
-                    <div class="header-bar"><h1>SMILEZ INVENTORY STOCK GAP REPORT</h1></div>
-                    <table>
-                        <thead><tr><th>Product Name</th><th>Location</th><th style="text-align:right;">Qty</th></tr></thead>
-                        <tbody>
-                """
-                for _, row in final_df.iterrows():
-                    html_content += f"<tr><td>{row['Product Name']}</td><td>{row['Available In']}</td><td style='text-align:right;'>{row['Current Qty']}</td></tr>"
-                html_content += "</tbody></table></body></html>"
-                
-                pdf_bytes = HTML(string=html_content).write_pdf()
-                st.download_button(label="📥 Export Floor Report (PDF)", data=pdf_bytes, file_name="Smilez_Gap_Report.pdf", mime="application/pdf")
-            else:
-                st.info("No major stock room gaps identified matching the 15+ unit threshold.")
-        except Exception as e:
-            st.error(f"Error parsing file: {e}")
+            final_df = pd.DataFrame(results).sort_values("Product Name")
 
-# --- TAB 2: STANDALONE STRAIN CHECKER ---
+            # Metrics Row
+            m1, m2, m3 = st.columns(3)
+            with m1: st.markdown(f'<div class="metric-tile"><div class="metric-label">High-Impact Gaps</div><div class="metric-value">{len(final_df)}</div></div>', unsafe_allow_html=True)
+            with m2: st.markdown(f'<div class="metric-tile"><div class="metric-label">Units to Move</div><div class="metric-value">{final_df["Available Qty"].sum()}</div></div>', unsafe_allow_html=True)
+            with m3: st.markdown(f'<div class="metric-tile"><div class="metric-label">Min Threshold</div><div class="metric-value">15+</div></div>', unsafe_allow_html=True)
+
+            st.write("---")
+            st.dataframe(final_df, use_container_width=True, hide_index=True)
+            
+            # PDF Export (Minimalistic WeasyPrint)
+            html_pdf = f"<html><body style='font-family:sans-serif;'><h2>Smilez Gap Report</h2>{final_df.to_html()}</body></html>"
+            pdf_out = HTML(string=html_pdf).write_pdf()
+            st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_out, "Smilez_Report.pdf", "application/pdf")
+            
+        except Exception as e:
+            st.error(f"Analysis Error: {e}")
+
+# --- TAB 2: STRAIN CHECKER ---
 with tab2:
-    st.markdown("### 🔍 Live Strain Profile Lookup")
-    st.write("Type a cultivar name below to instantly view category breakdowns, primary terpenes, and target characteristics.")
+    st.markdown("### 🔍 Strain Reference Search")
+    query = st.text_input("Type Cultivar Name (e.g. Block Berry, Runtz)", placeholder="Search Knowledge Base...", label_visibility="collapsed").lower().strip()
     
-    # Embedded High-Volume Reference Encyclopedia
-    strain_database = [
-        {"name": "Amnesia Haze", "type": "Sativa", "terpenes": "Terpinolene, Myrcene, Caryophyllene", "flavors": "Sharp Citrus, Sweet Lemon, Fresh Earth", "effects": "Energetic, Uplifting, Creative, Mental Clarity"},
-        {"name": "Block Berry", "type": "Hybrid", "terpenes": "Limonene, Myrcene, Caryophyllene", "flavors": "Sweet Berry, Crushed Orange, Tart Zest", "effects": "Laser Focused, Intense Euphoria, Relaxed Body"},
-        {"name": "Runtz", "type": "Hybrid", "terpenes": "Caryophyllene, Limonene, Linalool", "flavors": "Sugary Sweet, Sugared Candy, Tropical Fruit", "effects": "Talkative, Long-Lasting Happiness, Smooth Body Buzz"},
-        {"name": "Wedding Cake", "type": "Indica", "terpenes": "Limonene, Caryophyllene, Myrcene", "flavors": "Rich Vanilla, Sweet Cake Batter, Earthy Pepper", "effects": "Deeply Sedative, Relaxed Muscles, Calming, Appetite Stimulant"},
-        {"name": "Gelato", "type": "Hybrid", "terpenes": "Caryophyllene, Limonene, Humulene", "flavors": "Creamy Dessert, Sweet Citrus, Soft Woody Notes", "effects": "Physically Relaxing, Mentally Stimulating, Creative Boost"},
-        {"name": "GG4", "type": "Hybrid", "terpenes": "Caryophyllene, Myrcene, Limonene", "flavors": "Heavy Pungent, Piney Wood, Sour Chem", "effects": "Heavy Couchlock, Relaxed Mind, Deep Physical Comfort"},
-        {"name": "Blue Dream", "type": "Hybrid", "terpenes": "Myrcene, Pinene, Caryophyllene", "flavors": "Sweet Blueberry, Fresh Berry, Herbal Earth", "effects": "Gentle Uplift, Full-Body Relaxation, Creative Day-Use"},
-        {"name": "Sour Diesel", "type": "Sativa", "terpenes": "Caryophyllene, Limonene, Myrcene", "flavors": "Skunky Diesel, Fuel, Sour Citrus", "effects": "Fast Acting, Energizing Dreaminess, Social Uplift"},
-        {"name": "Granddaddy Purple", "type": "Indica", "terpenes": "Myrcene, Caryophyllene, Pinene", "flavors": "Sweet Grape, Deep Berry, Floral Musky", "effects": "Deep Body Stone, Sleep Inducing, Stress Melt"}
+    # Offline Master Dictionary
+    db = [
+        {"name": "Amnesia Haze", "type": "Sativa", "terps": "Terpinolene, Myrcene", "flav": "Lemon, Citrus, Earthy", "eff": "Energetic, Cerebral"},
+        {"name": "Block Berry", "type": "Hybrid", "terps": "Limonene, Myrcene", "flav": "Sweet Berry, Orange", "eff": "Focused, Euphoric"},
+        {"name": "Runtz", "type": "Hybrid", "terps": "Caryophyllene, Limonene", "flav": "Candy, Fruit, Sweet", "eff": "Happy, Talkative"},
+        {"name": "Wedding Cake", "type": "Indica", "terps": "Limonene, Caryophyllene", "flav": "Vanilla, Cake, Pepper", "eff": "Relaxed, Calm"}
     ]
     
-    df_strains = pd.DataFrame(strain_database)
-    df_strains['search_name'] = df_strains['name'].str.lower()
-    
-    # Text Input with a structural emoji label to make typing intent highly visible
-    search_query = st.text_input("🔍 Search Database...", placeholder="Type strain name here (e.g. Block Berry, Runtz, Wedding Cake)...", key="strain_search_box").lower().strip()
-    
-    if search_query:
-        matches = df_strains[df_strains['search_name'].str.contains(search_query, na=False)]
-        
-        if not matches.empty:
-            if len(matches) > 1:
-                selected_name = st.selectbox("💡 Multiple profiles match. Select target variant:", matches['name'].values)
-                target_data = matches[matches['name'] == selected_name].iloc[0]
-            else:
-                target_data = matches.iloc[0]
-                
-            s_name = target_data['name']
-            s_type = target_data['type']
-            s_terps = target_data['terpenes']
-            s_flavors = target_data['flavors']
-            s_effects = target_data['effects']
-            
-            badge_class = "badge-indica" if "indica" in s_type.lower() else ("badge-sativa" if "sativa" in s_type.lower() else "badge-hybrid")
-            
-            st.markdown(f"""
-                <div class="strain-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <h2 style="margin: 0; font-size: 26px; font-weight: 800; color: #111827;">✨ {s_name}</h2>
-                        <span class="{badge_class}">{s_type} Class</span>
-                    </div>
-                    <hr style="border: 0; border-top: 1px solid #e5e7eb; margin-bottom: 20px;">
-                    
-                    <div class="section-title">🧪 Dominant Terpene Architecture</div>
-                    <div class="section-body">{s_terps}</div>
-                    
-                    <div class="section-title">🍋 Aroma & Flavor Indicators</div>
-                    <div class="section-body">{s_flavors}</div>
-                    
-                    <div class="section-title">🧠 Common Reported Effects</div>
-                    <div class="section-body">{s_effects}</div>
-                </div>
-            """, unsafe_allow_html=True)
+    if query:
+        matches = [s for s in db if query in s['name'].lower()]
+        if matches:
+            for s in matches:
+                st.markdown(f"""
+                    <div class="strain-card">
+                        <div class="strain-title">✨ {s['name']}</div>
+                        <span style="background:#FDD835; color:#0F172A; padding:4px 12px; border-radius:20px; font-weight:700;">{s['type']}</span>
+                        <div class="section-head">🧪 Dominant Terpenes</div>
+                        <div class="section-data">{s['terps']}</div>
+                        <div class="section-head">🍋 Flavor Profile</div>
+                        <div class="section-data">{s['flav']}</div>
+                        <div class="section-head">🧠 Reported Effects</div>
+                        <div class="section-data">{s['eff']}</div>
+                    </div><br>
+                """, unsafe_allow_html=True)
         else:
-            st.info("Strain profile matching details not found in local quick-cache.")
+            st.info("No exact profile match found in knowledge base.")
