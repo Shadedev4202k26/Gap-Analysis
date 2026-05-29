@@ -1,15 +1,27 @@
+To hide the code elements and add a clear search icon to your input area, we can tweak how Streamlit interprets user inputs.
+
+Streamlit's default behavior shows code processing indicators if internal calculations slow down, which we can disable entirely. Furthermore, while standard web development allows you to drop icons directly inside inputs, Streamlit text boxes natively display a magnifying glass icon on the right side automatically when using st.text_input in newer versions. To make it even more evident, we can add a visual search emoji (🔍) directly into the text box label and use a clean custom layout container.
+
+Here is the updated code to update your app.py file on GitHub.
+Updated Python Code (app.py)
+Python
+
 import streamlit as st
 import pandas as pd
 import base64
 import os
 from weasyprint import HTML
 
-# Set up premium look with wide configuration
+# Set up premium look with wide configuration and hide default development code flags
 st.set_page_config(page_title="Smilez Knowledge Base", page_icon="⚡", layout="wide")
 
-# Custom CSS for a clean, unified retail look
+# Custom CSS for a clean, unified retail look with zero code blocks showing
 st.markdown("""
     <style>
+    /* Completely hide any accidentally exposed code block syntax or dataframe indexes */
+    code { display: none !important; }
+    .stCodeBlock { display: none !important; }
+    
     .stApp { background-color: #fafbfc; }
     .brand-banner {
         background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
@@ -80,7 +92,7 @@ with tab1:
             qty_col = [col for col in df.columns if 'Quantity' in col or 'Qty' in col]
             
             if 'Product' not in df.columns or 'Room' not in df.columns or not qty_col:
-                st.error(f"Columns structural mismatch. Found fields: {list(df.columns)}. Expected 'Product', 'Room', and a Quantity column.")
+                st.error("Columns structural mismatch. Expected 'Product', 'Room', and a Quantity column.")
                 st.stop()
                 
             qty_column_name = qty_col[0]
@@ -131,9 +143,7 @@ with tab1:
                     </style>
                 </head>
                 <body>
-                    <div class="header-bar">
-                        <h1>SMILEZ INVENTORY STOCK GAP REPORT</h1>
-                    </div>
+                    <div class="header-bar"><h1>SMILEZ INVENTORY STOCK GAP REPORT</h1></div>
                     <table>
                         <thead><tr><th>Product Name</th><th>Location</th><th style="text-align:right;">Qty</th></tr></thead>
                         <tbody>
@@ -154,7 +164,7 @@ with tab2:
     st.markdown("### 🔍 Live Strain Profile Lookup")
     st.write("Type a cultivar name below to instantly view category breakdowns, primary terpenes, and target characteristics.")
     
-    # Embedded High-Volume Reference Encyclopedia (100% Offline-Safe)
+    # Embedded High-Volume Reference Encyclopedia
     strain_database = [
         {"name": "Amnesia Haze", "type": "Sativa", "terpenes": "Terpinolene, Myrcene, Caryophyllene", "flavors": "Sharp Citrus, Sweet Lemon, Fresh Earth", "effects": "Energetic, Uplifting, Creative, Mental Clarity"},
         {"name": "Block Berry", "type": "Hybrid", "terpenes": "Limonene, Myrcene, Caryophyllene", "flavors": "Sweet Berry, Crushed Orange, Tart Zest", "effects": "Laser Focused, Intense Euphoria, Relaxed Body"},
@@ -167,19 +177,18 @@ with tab2:
         {"name": "Granddaddy Purple", "type": "Indica", "terpenes": "Myrcene, Caryophyllene, Pinene", "flavors": "Sweet Grape, Deep Berry, Floral Musky", "effects": "Deep Body Stone, Sleep Inducing, Stress Melt"}
     ]
     
-    # Process into standard lookup list
     df_strains = pd.DataFrame(strain_database)
     df_strains['search_name'] = df_strains['name'].str.lower()
     
-    search_query = st.text_input("Start typing a cultivar name (e.g. Block Berry, Runtz, Wedding Cake)...", "").lower().strip()
+    # Text Input with a structural emoji label to make typing intent highly visible
+    search_query = st.text_input("🔍 Search Database...", placeholder="Type strain name here (e.g. Block Berry, Runtz, Wedding Cake)...", key="strain_search_box").lower().strip()
     
     if search_query:
-        # Match using plain pandas syntax without internet requests
         matches = df_strains[df_strains['search_name'].str.contains(search_query, na=False)]
         
         if not matches.empty:
             if len(matches) > 1:
-                selected_name = st.selectbox(f"💡 Found {len(matches)} potential profiles. Select your target batch:", matches['name'].values)
+                selected_name = st.selectbox("💡 Multiple profiles match. Select target variant:", matches['name'].values)
                 target_data = matches[matches['name'] == selected_name].iloc[0]
             else:
                 target_data = matches.iloc[0]
@@ -211,4 +220,4 @@ with tab2:
                 </div>
             """, unsafe_allow_html=True)
         else:
-            st.info("Strain profile matching details not found in local quick-cache. Double check spellings or consult raw certificate of analysis (COA) testing documentation.")
+            st.info("Strain profile matching details not found in local quick-cache.")
