@@ -18,7 +18,7 @@ def get_strain_profile(api_key, strain_name):
     except Exception as e: return {"error": str(e)}
 
 custom_css = """<style>
-@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@600;700&family=DM+Sans:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=600;700&family=DM+Sans:wght=400;500&display=swap');
 .stApp { background-color: #0F172A; color: #F9FAFB; font-family: 'DM Sans', sans-serif; }
 .brand-banner { background-color: #111827; padding: 40px; border-radius: 12px; border-left: 6px solid #FDD835; margin-bottom: 30px; display: flex; align-items: center; }
 .brand-text h1 { font-family: 'Urbanist', sans-serif; color: #FDD835 !important; font-size: 42px; margin: 0; letter-spacing: -1px; }
