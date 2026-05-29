@@ -165,7 +165,6 @@ with tab2:
         if query:
             with st.spinner(f"Analyzing genetic matrices for '{query}'..."):
                 
-                # Using implicit string concatenation to block line-break syntax bugs entirely
                 system_prompt = (
                     "You are an expert commercial cannabis laboratory database. "
                     "Analyze the strain requested and return ONLY a valid JSON object. "
@@ -187,40 +186,4 @@ with tab2:
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": f"Provide data for: {query}"}
                         ],
-                        "temperature": 0.15,
-                        "response_format": {"type": "json_object"}
-                    }
-                    
-                    response = requests.post(url, headers=headers, json=payload, timeout=10)
-                    
-                    if response.status_code == 200:
-                        raw_content = response.json()['choices'][0]['message']['content'].strip()
-                        data = json.loads(raw_content)
-                        
-                        st.markdown(f"""
-                            <div class="strain-card">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <div class="strain-title">✨ {query.upper()}</div>
-                                    <span class="badge-class">{data.get('classification', 'HYBRID')}</span>
-                                </div>
-                                <hr style="border: 0; border-top: 1px solid rgba(148, 163, 184, 0.2); margin-bottom: 15px;">
-                                
-                                <div class="section-head">🧬 Cannabinoid Profile</div>
-                                <div class="section-data">{data.get('cannabinoids', 'N/A')}</div>
-                                
-                                <div class="section-head">🧪 Dominant Terpenes</div>
-                                <div class="section-data">{data.get('terpenes', 'N/A')}</div>
-                                
-                                <div class="section-head">🍋 Flavor Profile</div>
-                                <div class="section-data">{data.get('flavor', 'N/A')}</div>
-                                
-                                <div class="section-head">🧠 Reported Consumer Effects</div>
-                                <div class="section-data">{data.get('effects', 'N/A')}</div>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        st.error(f"Engine connection blip. Error code: {response.status_code}")
-                except json.JSONDecodeError:
-                    st.error("Data interpretation shift occurred. Please hit enter on the search bar again to clear.")
-                except Exception as e:
-                    st.error(f"High-speed lane communication exception: {e}")
+                        "temperature": 0.1
