@@ -208,4 +208,28 @@ with tab2:
             with st.spinner(f"Analyzing genetic matrices for '{query}'..."):
                 data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
                 
-                if data and "error"
+                if "error" not in data:
+                    card_html = f"""
+                    <div class="strain-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <div class="strain-title">✨ {query.upper()}</div>
+                            <span class="badge-class">{data.get('classification', 'HYBRID')}</span>
+                        </div>
+                        <hr style="border: 0; border-top: 1px solid rgba(148, 163, 184, 0.2); margin-bottom: 15px;">
+                        
+                        <div class="section-head">🧬 Cannabinoid Profile</div>
+                        <div class="section-data">{data.get('cannabinoids', 'N/A')}</div>
+                        
+                        <div class="section-head">🧪 Dominant Terpenes</div>
+                        <div class="section-data">{data.get('terpenes', 'N/A')}</div>
+                        
+                        <div class="section-head">🍋 Flavor Profile</div>
+                        <div class="section-data">{data.get('flavor', 'N/A')}</div>
+                        
+                        <div class="section-head">🧠 Reported Consumer Effects</div>
+                        <div class="section-data">{data.get('effects', 'N/A')}</div>
+                    </div>
+                    """
+                    st.markdown(card_html, unsafe_allow_html=True)
+                else:
+                    st.error(f"Engine connection blip. Details: {data['error']}")
