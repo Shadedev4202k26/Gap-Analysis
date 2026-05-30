@@ -1,7 +1,7 @@
 import streamlit as st, pandas as pd, base64, os, json, requests
 from weasyprint import HTML
 
-st.set_page_config(page_title="Smilez Hub", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
 def get_strain_profile(api_key, strain_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -26,12 +26,12 @@ if os.path.exists(logo_path):
     with open(logo_path, 'rb') as img_file:
         logo_html = f'<img src="data:image/png;base64,{base64.b64encode(img_file.read()).decode("utf-8")}" style="height: 196px; margin-right: 30px; border-radius: 8px;">'
 
-st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<div class="brand-text"><h1>Smilez Operational Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<div class="brand-text"><h1>Ziggy's Operational Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
 tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
 
 with tab1:
     st.markdown("### 📥 Live Data Ingestion")
-    uploaded_file = st.file_uploader("Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
+    uploaded_file = st.file_uploader("In Dutchie Backend select Salesfloor & Curbside rooms + any category🔥Export Product, Room, & Quantity ONLY🔥Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
