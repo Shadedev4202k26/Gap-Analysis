@@ -59,7 +59,7 @@ with tab1:
                 st.write("---")
                 st.dataframe(final_df, use_container_width=True, hide_index=True)
                 
-                # Premium HTML & CSS configuration with Summary Metrics restored
+                # Refined PDF template with optimized table-cell distribution for summary blocks
                 pdf_html = f"""
                 <html>
                 <head>
@@ -70,14 +70,13 @@ with tab1:
                     h1 {{ font-size: 26px; color: #FDD835; text-transform: uppercase; margin: 0; font-weight: bold; letter-spacing: -0.5px; }}
                     .subhead {{ color: #94A3B8; font-size: 12px; margin: 5px 0 0 0; }}
                     
-                    /* Summary Row Layout */
-                    .summary-container {{ display: block; margin-top: 20px; margin-bottom: 25px; clear: both; }}
-                    .metric-box {{ float: left; width: 28%; background-color: #111827; border: 1px solid rgba(253, 216, 53, 0.15); border-radius: 6px; padding: 15px; text-align: center; margin-right: 3%; }}
-                    .metric-box.last {{ margin-right: 0; }}
-                    .label {{ color: #FDD835; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }}
-                    .value {{ font-size: 28px; font-weight: bold; color: #F9FAFB; margin-top: 5px; }}
+                    /* Balanced Summary Row Layout using precise print distribution layout */
+                    .summary-container {{ display: table; width: 100%; margin-top: 25px; margin-bottom: 30px; border-collapse: separate; border-spacing: 12px 0; }}
+                    .metric-box {{ display: table-cell; width: 33.33%; background-color: #111827; border: 1px solid rgba(253, 216, 53, 0.15); border-radius: 6px; padding: 12px; text-align: center; vertical-align: middle; }}
+                    .label {{ color: #FDD835; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }}
+                    .value {{ font-size: 22px; font-weight: bold; color: #F9FAFB; margin: 0; }}
                     
-                    table {{ width: 100%; border-collapse: collapse; clear: both; background-color: #111827; border-radius: 8px; overflow: hidden; }}
+                    table {{ width: 100%; border-collapse: collapse; background-color: #111827; border-radius: 8px; overflow: hidden; margin-top: 10px; }}
                     th {{ background-color: #1F2937; color: #FDD835; text-transform: uppercase; font-size: 11px; font-weight: bold; letter-spacing: 1px; padding: 12px; text-align: left; border-bottom: 2px solid rgba(253, 216, 53, 0.15); }}
                     td {{ padding: 12px; color: #E2E8F0; font-size: 13px; border-bottom: 1px solid rgba(148, 163, 184, 0.1); }}
                     tr:nth-child(even) {{ background-color: #161F30; }}
@@ -98,7 +97,7 @@ with tab1:
                             <div class="label">Units to Move</div>
                             <div class="value">{final_df["Available Qty"].sum()}</div>
                         </div>
-                        <div class="metric-box last">
+                        <div class="metric-box">
                             <div class="label">Min Threshold</div>
                             <div class="value">15+</div>
                         </div>
