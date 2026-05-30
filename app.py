@@ -84,7 +84,7 @@ with tab1:
                 </head>
                 <body>
                     <div class="header">
-                        <h1>Smilez Merchandise Gap Report</h1>
+                        <h1>Ziggyz Merchandise Gap Report</h1>
                         <div class="subhead">High-Impact Floor Restock & Discrepancy Manifest</div>
                     </div>
                     
@@ -109,7 +109,7 @@ with tab1:
                 """
                 
                 pdf_out = HTML(string=pdf_html).write_pdf()
-                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_out, "Smilez_Report.pdf", "application/pdf")
+                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_out, "Ziggy_Report.pdf", "application/pdf")
             else:
                 st.info("No gaps found matching the 15+ unit threshold.")
         except Exception as e: st.error(f"Analysis Error: {e}")
