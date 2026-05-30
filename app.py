@@ -1,7 +1,7 @@
 import streamlit as st, pandas as pd, base64, os, json, requests
 from weasyprint import HTML
 
-st.set_page_config(page_title="Ziggybot", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
 def get_strain_profile(api_key, strain_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -31,7 +31,7 @@ tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
 
 with tab1:
     st.markdown("### 📥 Live Data Ingestion")
-    uploaded_file = st.file_uploader("Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
+    uploaded_file = st.file_uploader("Select Salesfloor & Curbside + any Category🔥Export Product, Room, & Quantity ONLY🔥Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
@@ -58,8 +58,8 @@ with tab1:
                 with m3: st.markdown(f'<div class="metric-tile"><div class="metric-label">Min Threshold</div><div class="metric-value">15+</div></div>', unsafe_allow_html=True)
                 st.write("---")
                 st.dataframe(final_df, use_container_width=True, hide_index=True)
-                pdf_out = HTML(string=f"<html><body style='font-family:sans-serif;'><h2>Smilez Gap Report</h2>{final_df.to_html()}</body></html>").write_pdf()
-                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_out, "Smilez_Report.pdf", "application/pdf")
+                pdf_out = HTML(string=f"<html><body style='font-family:sans-serif;'><h2>Ziggyz Gap Report</h2>{final_df.to_html()}</body></html>").write_pdf()
+                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_out, "Ziggy_Report.pdf", "application/pdf")
             else:
                 st.info("No gaps found matching the 15+ unit threshold.")
         except Exception as e: st.error(f"Analysis Error: {e}")
