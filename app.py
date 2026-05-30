@@ -50,7 +50,8 @@ st.markdown(custom_css, unsafe_allow_html=True)
 logo_path, logo_html = 'image.png', ""
 if os.path.exists(logo_path):
     with open(logo_path, 'rb') as img_file:
-        logo_html = f'<img src="data:image/png;base64,{base64.b64encode(img_file.read()).decode("utf-8")}" style="height: 75px; margin-right: 25px; border-radius: 6px;">'
+        # Height scaled up from 75px to 98px (30% increase)
+        logo_html = f'<img src="data:image/png;base64,{base64.b64encode(img_file.read()).decode("utf-8")}" style="height: 98px; margin-right: 25px; border-radius: 6px;">'
 
 st.markdown(f'<div class="brand-banner">{logo_html}<div class="brand-text"><h1>Ziggybot Operational Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
 tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
