@@ -58,8 +58,35 @@ with tab1:
                 with m3: st.markdown(f'<div class="metric-tile"><div class="metric-label">Min Threshold</div><div class="metric-value">15+</div></div>', unsafe_allow_html=True)
                 st.write("---")
                 st.dataframe(final_df, use_container_width=True, hide_index=True)
-                pdf_out = HTML(string=f"<html><body style='font-family:sans-serif;'><h2>Ziggyz Gap Report</h2>{final_df.to_html()}</body></html>").write_pdf()
-                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_out, "Ziggy_Report.pdf", "application/pdf")
+                
+                # Premium HTML & CSS configuration for the PDF Print Engine
+                pdf_html = f"""
+                <html>
+                <head>
+                <style>
+                    @page {{ size: A4; margin: 20mm; background-color: #0B0F19; }}
+                    body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #F9FAFB; background-color: #0B0F19; margin: 0; padding: 0; }}
+                    .header {{ border-left: 6px solid #FDD835; padding-left: 15px; margin-bottom: 30px; }}
+                    h1 {{ font-size: 28px; color: #FDD835; text-transform: uppercase; margin: 0; font-weight: bold; letter-spacing: -0.5px; }}
+                    p {{ color: #94A3B8; font-size: 12px; margin: 5px 0 0 0; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-top: 20px; background-color: #111827; border-radius: 8px; overflow: hidden; }}
+                    th {{ background-color: #1F2937; color: #FDD835; text-transform: uppercase; font-size: 11px; font-weight: bold; letter-spacing: 1px; padding: 12px; text-align: left; border-bottom: 2px solid rgba(253, 216, 53, 0.15); }}
+                    td {{ padding: 12px; color: #E2E8F0; font-size: 13px; border-bottom: 1px solid rgba(148, 163, 184, 0.1); }}
+                    tr:nth-child(even) {{ background-color: #161F30; }}
+                </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>Smilez Merchandise Gap Report</h1>
+                        <p>High-Impact Floor Restock & Discrepancy Manifest</p>
+                    </div>
+                    {final_df.to_html(index=False)}
+                </body>
+                </html>
+                """
+                
+                pdf_out = HTML(string=pdf_html).write_pdf()
+                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_out, "Smilez_Report.pdf", "application/pdf")
             else:
                 st.info("No gaps found matching the 15+ unit threshold.")
         except Exception as e: st.error(f"Analysis Error: {e}")
