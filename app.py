@@ -3,10 +3,17 @@ from weasyprint import HTML
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
-def get_strain_profile(api_key, strain_name):
+def get_strain_profile(api_key, strain_name, target_cannabinoid="General"):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    system_prompt = "You are an expert cannabis database. Analyze the strain and return ONLY a valid JSON object. CRITICAL: Do not use double quotes inside text values. The JSON must contain exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
+    focus_instruction = ""
+    if target_cannabinoid != "General":
+        focus_instruction = f" Heavily emphasize its relationship, typical expression, and concentrations regarding {target_cannabinoid}."
+    system_prompt = (
+        "You are an expert cannabis database. Analyze the strain and return ONLY a valid JSON object. "
+        f"CRITICAL: Do not use double quotes inside text values (use single quotes or plain text).{focus_instruction} "
+        "The JSON must contain exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
+    )
     payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Provide data for: {strain_name}"}], "temperature": 0.1}
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=10)
@@ -17,8 +24,27 @@ def get_strain_profile(api_key, strain_name):
         return {"error": f"Status code {res.status_code}"}
     except Exception as e: return {"error": str(e)}
 
-# Condensed into a single-line string literal to eliminate text truncation syntax errors
-custom_css = "<style>@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap'); .stApp { background-color: #0B0F19; color: #F9FAFB; font-family: 'DM Sans', sans-serif; } .brand-banner { background-color: #111827; border-radius: 12px; border-left: 6px solid #FDD835; margin-bottom: 25px; display: flex; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.4); } .brand-text h1 { font-family: 'Urbanist', sans-serif; font-weight: 900; color: #FDD835 !important; font-size: 40px; margin: 0; letter-spacing: -1px; text-transform: uppercase; } .brand-text p { color: #94A3B8; margin: 3px 0 0 0; font-size: 15px; letter-spacing: 0.5px; } .stTabs [data-baseweb='tab-list'] { gap: 8px; } .stTabs [data-baseweb='tab'] { height: 55px; background-color: #1F2937 !important; border-radius: 8px 8px 0 0 !important; padding: 10px 20px !important; color: #94A3B8 !important; font-family: 'Urbanist', sans-serif; font-weight: 700; border: none !important; } .stTabs [aria-selected='true'] { background-color: #FDD835 !important; color: #0B0F19 !important; } .metric-tile { background-color: #111827; padding: 25px; border-radius: 12px; border: 1px solid rgba(253, 216, 53, 0.15); text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); } .metric-label { color: #FDD835; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; } .metric-value { font-family: 'Urbanist', sans-serif; font-size: 44px; font-weight: 900; color: #F9FAFB; margin-top: 5px; } .strain-card { background-color: #111827; padding: 35px; border-radius: 12px; border-top: 4px solid #FDD835; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-top: 15px; } .card-header-flow { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; } .strain-title { font-family: 'Urbanist', sans-serif; font-weight: 900; font-size: 32px; color: #FDD835; text-transform: uppercase; letter-spacing: -0.5px; } .badge-sativa { background: #10B981; color: #FFF; padding: 5px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; } .badge-hybrid { background: #FDD835; color: #0B0F19; padding: 5px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; } .badge-indica { background: #6366F1; color: #FFF; padding: 5px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; } .section-head { color: #64748B; font-weight: 700; text-transform: uppercase; font-size: 12px; margin-top: 20px; letter-spacing: 1px; } .section-data { font-size: 17px; color: #E2E8F0; margin-top: 4px; line-height: 1.5; } .stDownloadButton button { background-color: #FDD835 !important; color: #0B0F19 !important; font-family: 'Urbanist', sans-serif; font-weight: 900; border: none !important; border-radius: 8px !important; padding: 14px !important; width: 100%; letter-spacing: 1px; } [data-testid='stDataFrame'] { border: 1px solid rgba(253, 216, 53, 0.1); border-radius: 8px; }</style>"
+def get_compound_profile(api_key, compound_name):
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    system_prompt = (
+        "You are an advanced cannabinoid science database. Analyze the requested cannabis compound or THC variant "
+        "and return ONLY a valid JSON object. Do not use double quotes inside any text values. "
+        "The JSON must contain exactly these keys: 'status', 'primary_effects', 'medical_benefits', 'customer_pitch'."
+    )
+    user_prompt = f"Provide a consumer-facing operational profile for the specific compound: {compound_name}"
+    payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "user_prompt": user_prompt}], "temperature": 0.1}
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=10)
+        if res.status_code == 200:
+            content = res.json()['choices'][0]['message']['content'].strip()
+            if "{" in content and "}" in content: content = content[content.find("{"):content.rfind("}") + 1]
+            return json.loads(content)
+        return {"error": f"Status code {res.status_code}"}
+    except Exception as e: return {"error": str(e)}
+
+# Condensed single-line CSS to eliminate text truncation syntax errors
+custom_css = "<style>@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap'); .stApp { background-color: #0B0F19; color: #F9FAFB; font-family: 'DM Sans', sans-serif; } .brand-banner { background-color: #111827; border-radius: 12px; border-left: 6px solid #FDD835; margin-bottom: 25px; display: flex; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.4); } .brand-text h1 { font-family: 'Urbanist', sans-serif; font-weight: 900; color: #FDD835 !important; font-size: 40px; margin: 0; letter-spacing: -1px; text-transform: uppercase; } .brand-text p { color: #94A3B8; margin: 3px 0 0 0; font-size: 15px; letter-spacing: 0.5px; } .stTabs [data-baseweb='tab-list'] { gap: 8px; } .stTabs [data-baseweb='tab'] { height: 55px; background-color: #1F2937 !important; border-radius: 8px 8px 0 0 !important; padding: 10px 20px !important; color: #94A3B8 !important; font-family: 'Urbanist', sans-serif; font-weight: 700; border: none !important; } .stTabs [aria-selected='true'] { background-color: #FDD835 !important; color: #0B0F19 !important; } .metric-tile { background-color: #111827; padding: 25px; border-radius: 12px; border: 1px solid rgba(253, 216, 53, 0.15); text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); } .metric-label { color: #FDD835; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; } .metric-value { font-family: 'Urbanist', sans-serif; font-size: 44px; font-weight: 900; color: #F9FAFB; margin-top: 5px; } .strain-card { background-color: #111827; padding: 35px; border-radius: 12px; border-top: 4px solid #FDD835; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-top: 15px; margin-bottom: 25px; } .card-header-flow { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; } .strain-title { font-family: 'Urbanist', sans-serif; font-weight: 900; font-size: 32px; color: #FDD835; text-transform: uppercase; letter-spacing: -0.5px; } .badge-sativa { background: #10B981; color: #FFF; padding: 5px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; } .badge-hybrid { background: #FDD835; color: #0B0F19; padding: 5px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; } .badge-indica { background: #6366F1; color: #FFF; padding: 5px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; } .section-head { color: #64748B; font-weight: 700; text-transform: uppercase; font-size: 12px; margin-top: 20px; letter-spacing: 1px; } .section-data { font-size: 17px; color: #E2E8F0; margin-top: 4px; line-height: 1.5; } .stDownloadButton button { background-color: #FDD835 !important; color: #0B0F19 !important; font-family: 'Urbanist', sans-serif; font-weight: 900; border: none !important; border-radius: 8px !important; padding: 14px !important; width: 100%; letter-spacing: 1px; } [data-testid='stDataFrame'] { border: 1px solid rgba(253, 216, 53, 0.1); border-radius: 8px; }</style>"
 st.markdown(custom_css, unsafe_allow_html=True)
 
 logo_path, logo_html = 'image.png', ""
@@ -59,7 +85,6 @@ with tab1:
                 st.write("---")
                 st.dataframe(final_df, use_container_width=True, hide_index=True)
                 
-                # Refined PDF template with optimized table-cell distribution for summary blocks
                 pdf_html = f"""
                 <html>
                 <head>
@@ -69,13 +94,10 @@ with tab1:
                     .header {{ border-left: 6px solid #FDD835; padding-left: 15px; margin-bottom: 25px; }}
                     h1 {{ font-size: 26px; color: #FDD835; text-transform: uppercase; margin: 0; font-weight: bold; letter-spacing: -0.5px; }}
                     .subhead {{ color: #94A3B8; font-size: 12px; margin: 5px 0 0 0; }}
-                    
-                    /* Balanced Summary Row Layout using precise print distribution layout */
                     .summary-container {{ display: table; width: 100%; margin-top: 25px; margin-bottom: 30px; border-collapse: separate; border-spacing: 12px 0; }}
                     .metric-box {{ display: table-cell; width: 33.33%; background-color: #111827; border: 1px solid rgba(253, 216, 53, 0.15); border-radius: 6px; padding: 12px; text-align: center; vertical-align: middle; }}
                     .label {{ color: #FDD835; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }}
                     .value {{ font-size: 22px; font-weight: bold; color: #F9FAFB; margin: 0; }}
-                    
                     table {{ width: 100%; border-collapse: collapse; background-color: #111827; border-radius: 8px; overflow: hidden; margin-top: 10px; }}
                     th {{ background-color: #1F2937; color: #FDD835; text-transform: uppercase; font-size: 11px; font-weight: bold; letter-spacing: 1px; padding: 12px; text-align: left; border-bottom: 2px solid rgba(253, 216, 53, 0.15); }}
                     td {{ padding: 12px; color: #E2E8F0; font-size: 13px; border-bottom: 1px solid rgba(148, 163, 184, 0.1); }}
@@ -87,7 +109,6 @@ with tab1:
                         <h1>Ziggyz Merchandise Gap Report</h1>
                         <div class="subhead">High-Impact Floor Restock & Discrepancy Manifest</div>
                     </div>
-                    
                     <div class="summary-container">
                         <div class="metric-box">
                             <div class="label">High-Impact Gaps</div>
@@ -102,12 +123,10 @@ with tab1:
                             <div class="value">15+</div>
                         </div>
                     </div>
-                    
                     {final_df.to_html(index=False)}
                 </body>
                 </html>
                 """
-                
                 pdf_out = HTML(string=pdf_html).write_pdf()
                 st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_out, "Ziggy_Report.pdf", "application/pdf")
             else:
@@ -119,10 +138,15 @@ with tab2:
     if "GROQ_API_KEY" not in st.secrets:
         st.error("🔒 Security Alert: GROQ_API_KEY missing from Streamlit secrets vault.")
     else:
-        query = st.text_input("AI Search Engine Input", placeholder="Type any strain name...", key="ai_search_box", label_visibility="collapsed").strip()
+        c1, c2 = st.columns([1, 3])
+        with c1:
+            compound = st.selectbox("Target Molecule", ["General", "THCA-Heavy", "THCV-Heavy", "CBD-Heavy", "CBG-Heavy", "Delta-8 THC"], index=0, key="molecule_filter")
+        with c2:
+            query = st.text_input("AI Search Engine Input", placeholder="Type any strain name...", key="ai_search_box", label_visibility="collapsed").strip()
+        
         if query:
             with st.spinner(f"Analyzing genetic matrices for '{query}'..."):
-                data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
+                data = get_strain_profile(st.secrets["GROQ_API_KEY"], query, compound)
                 if "error" not in data:
                     clf = str(data.get('classification', 'HYBRID')).upper()
                     badge_class = "badge-hybrid"
@@ -142,3 +166,39 @@ with tab2:
 </div>"""
                     st.markdown(card_html, unsafe_allow_html=True)
                 else: st.error(f"Engine connection blip. Details: {data['error']}")
+        
+        # New Feature: Dedicated Cannabinoid & THC Variant Science Lookup Module
+        st.write("---")
+        st.markdown("### 🧪 Cannabinoid & THC Compound Encyclopedia")
+        st.caption("Instant verification engine for compound behaviors, intoxication status, and consumer sales talking points.")
+        
+        col_select, col_custom = st.columns([2, 2])
+        with col_select:
+            selected_chem = st.selectbox(
+                "Quick Select Target Compound",
+                ["-- Choose a Compound --", "THC (Delta-9 Tetrahydrocannabinol)", "THCV (Tetrahydrocannabivarin)", "THCP (Tetrahydrocannabiphorol)", "CBD (Cannabidiol)", "CBG (Cannabigerol)", "CBN (Cannabinol)", "Delta-8 THC"],
+                index=0
+            )
+        with col_custom:
+            custom_chem = st.text_input("Or Type a Specific Compound Variant", placeholder="e.g., THCO, CBDA, CBC...").strip()
+            
+        target_chem = custom_chem if custom_chem else (None if selected_chem == "-- Choose a Compound --" else selected_chem)
+        
+        if target_chem:
+            with st.spinner(f"Querying molecular database for '{target_chem}'..."):
+                chem_data = get_compound_profile(st.secrets["GROQ_API_KEY"], target_chem)
+                if "error" not in chem_data:
+                    status_val = str(chem_data.get('status', 'N/A')).upper()
+                    
+                    chem_card_html = f"""<div class="strain-card" style="border-top: 4px solid #10B981;">
+<div class="card-header-flow">
+<div class="strain-title">🔬 {target_chem.upper()}</div>
+<span class="badge-sativa" style="background-color: #6366F1;">{status_val}</span>
+</div>
+<hr style="border: 0; border-top: 1px solid rgba(148, 163, 184, 0.15); margin-bottom: 15px;">
+<div class="section-head">🧠 Primary Psychoactive & Physical Effects</div><div class="section-data">{chem_data.get('primary_effects', 'N/A')}</div>
+<div class="section-head">🩺 Reported Medicinal & Therapeutic Benefits</div><div class="section-data">{chem_data.get('medical_benefits', 'N/A')}</div>
+<div class="section-head">🎯 The Budtender Pitch (How to sell it to customers)</div><div class="section-data" style="color: #FDD835; font-style: italic;">"{chem_data.get('customer_pitch', 'N/A')}"</div>
+</div>"""
+                    st.markdown(chem_card_html, unsafe_allow_html=True)
+                else: st.error(f"Engine connection blip. Details: {chem_data['error']}")
