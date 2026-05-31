@@ -40,22 +40,35 @@ def get_strain_profile(api_key, strain_name):
     except Exception:
         pass
 
-    # Attempt 2: Heavy Fallback Engine (Engaged if Scraping is blocked or 404s)
-    # Alter search logic to pull from index snippets directly mapped to the AllBud profile structure
-    if not scraped_html_context or len(scraped_html_context) < 30:
-        try:
-            from duckduckgo_search import DDGS
-            with DDGS() as ddgs:
-                # Target the directory structure specifically to get high-quality content fragments
-                fallback_query = f'site:allbud.com/marijuana-strains/ "{strain_name}"'
-                search_results = [r for r in ddgs.text(fallback_query, max_results=3)]
+    # Layered Fallback Engine
+    # Pulls from AllBud index snippets first to protect lineage data, then wide-web for missing terpene structures
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            context_fragments = [scraped_html_context] if scraped_html_context else []
+            
+            # If AllBud failed or was blocked, pull AllBud index snippets
+            if not scraped_html_context or len(scraped_html_context) < 30:
+                allbud_query = f'site:allbud.com/marijuana-strains/ "{strain_name}"'
+                try:
+                    allbud_results = [r for r in ddgs.text(allbud_query, max_results=2)]
+                    for result in allbud_results:
+                        context_fragments.append(f"AllBud Snippet: {result['body']}")
+                except Exception:
+                    pass
+            
+            # CRITICAL EXPANSION: Query the wider cannabis web explicitly looking for Terpene chemistry data
+            terpene_query = f'"{strain_name}" strain "dominant terpenes" OR "terpene profile" caryophyllene limonene myrcene'
+            try:
+                terpene_results = [r for r in ddgs.text(terpene_query, max_results=3)]
+                for result in terpene_results:
+                    context_fragments.append(f"Chemical Profile Snippet: {result['body']}")
+            except Exception:
+                pass
                 
-                if search_results:
-                    context_fragments = []
-                    for result in search_results:
-                        context_fragments.append(f"Source Snippet: {result['body']}")
-                    scraped_html_context = "\n".join(context_fragments)
-        except Exception as e:
+            scraped_html_context = "\n".join(context_fragments)
+    except Exception as e:
+        if not scraped_html_context:
             scraped_html_context = f"All retrieval vectors exhausted. Error: {str(e)}"
 
     # Process via Llama-3.3-70b to interpret the combined context data
@@ -68,8 +81,9 @@ def get_strain_profile(api_key, strain_name):
         "CRITICAL INSTRUCTIONS:\n"
         "1. Identify the direct parent strains (e.g., 'Wedding Cake X Gelato #33') if mentioned anywhere in the narrative or snippets.\n"
         "2. Look for keywords like 'cross between', 'hybrid of', 'parents', or 'lineage'.\n"
-        "3. If the text does not explicitly reveal the parent genetics after deep inspection, return 'Proprietary / Unverified Genetics' for the lineage value.\n"
-        "4. Filter out any noise, such as lists of unrelated similar strains or dispensary ads.\n\n"
+        "3. Look for chemical context fragments to extract the dominant terpenes (e.g., 'Limonene, Myrcene, Caryophyllene'). Do not use generic fallback boilerplate for terpenes if chemical names show up in text.\n"
+        "4. If the text does not explicitly reveal the parent genetics after deep inspection, return 'Proprietary / Unverified Genetics' for the lineage value.\n"
+        "5. Filter out any noise, such as lists of unrelated similar strains or dispensary ads.\n\n"
         "Return ONLY a clean, valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
     )
     
@@ -235,7 +249,7 @@ with tab2:
         query = st.text_input("AI Search Engine Input", placeholder="Type any strain name...", key="ai_search_box", label_visibility="collapsed").strip()
         
         if query:
-            with st.spinner(f"Connecting to live AllBud database parameters for '{query}'..."):
+            with st.spinner(f"Connecting to live data parameters for '{query}'..."):
                 data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
                 if "error" not in data:
                     clf = str(data.get('classification', 'HYBRID')).upper()
