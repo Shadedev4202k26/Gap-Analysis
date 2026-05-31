@@ -1,25 +1,61 @@
 import streamlit as st, pandas as pd, base64, os, json, requests
 from weasyprint import HTML
+from duckduckgo_search import DDGS  # Added for real-time web grounding
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
 def get_strain_profile(api_key, strain_name):
+    # 1. Fetch live web context to ground the model and protect salesperson credibility
+    web_context = ""
+    try:
+        with DDGS() as ddgs:
+            # Target reliable cannabis database keywords along with the strain name
+            search_query = f"{strain_name} strain genetics lineage lineage leafly seedfinder"
+            results = [r for r in ddgs.text(search_query, max_results=3)]
+            if results:
+                web_context = "\n".join([f"Source Snippet: {r['body']}" for r in results])
+    except Exception as search_error:
+        # Fallback gracefully to ungrounded if the search scraper hits a rate limit
+        web_context = "No live web search context available due to connection timeout."
+
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    
     system_prompt = (
-        "You are an expert cannabis database. Analyze the strain and return ONLY a valid JSON object. "
-        "CRITICAL: Do not use double quotes inside text values (use single quotes or plain text). "
+        "You are an expert cannabis database assistant backed by live web research. "
+        "Analyze the provided search snippets and extract the exact, real-world data for the requested strain. "
+        "CRITICAL FOR CREDIBILITY: Rely strictly on the search snippets provided. If the search context reveals the lineage, "
+        "use it. If the lineage cannot be verified from the snippets or if it is a highly obscure proprietary cross with no data, "
+        "set the lineage to 'Proprietary / Unverified Genetics' instead of inventing parents.\n\n"
+        "Return ONLY a valid JSON object. Do not use double quotes inside text values (use single quotes or plain text).\n"
         "The JSON must contain exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
     )
-    payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Provide data for: {strain_name}"}], "temperature": 0.1}
+    
+    user_prompt = (
+        f"Live Web Search Context:\n{web_context}\n\n"
+        f"Provide verified operational data for the strain: {strain_name}"
+    )
+    
+    # Switched to the more powerful 70b model for superior context parsing and reasoning
+    payload = {
+        "model": "llama-3.3-70b-specdec", 
+        "messages": [
+            {"role": "system", "content": system_prompt}, 
+            {"role": "user", "content": user_prompt}
+        ], 
+        "temperature": 0.0
+    }
+    
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=10)
+        res = requests.post(url, headers=headers, json=payload, timeout=12)
         if res.status_code == 200:
             content = res.json()['choices'][0]['message']['content'].strip()
-            if "{" in content and "}" in content: content = content[content.find("{"):content.rfind("}") + 1]
+            if "{" in content and "}" in content: 
+                content = content[content.find("{"):content.rfind("}") + 1]
             return json.loads(content)
         return {"error": f"Status code {res.status_code}"}
-    except Exception as e: return {"error": str(e)}
+    except Exception as e: 
+        return {"error": str(e)}
 
 def get_compound_profile(api_key, compound_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -40,7 +76,7 @@ def get_compound_profile(api_key, compound_name):
         return {"error": f"Status code {res.status_code}"}
     except Exception as e: return {"error": str(e)}
 
-# Re-structured into a clean multi-line string to eliminate truncation errors
+# Clean multi-line CSS layout string
 custom_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap');
@@ -73,7 +109,6 @@ if os.path.exists(logo_path):
     with open(logo_path, 'rb') as img_file:
         logo_html = f'<img src="data:image/png;base64,{base64.b64encode(img_file.read()).decode("utf-8")}" style="height: 196px; margin-right: 30px; border-radius: 8px;">'
 
-# Updated Banner Title Text Element
 st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<div class="brand-text"><h1>Ziggyz Strain Sniffer & Operational Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
 tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
 
@@ -163,7 +198,7 @@ with tab2:
         query = st.text_input("AI Search Engine Input", placeholder="Type any strain name...", key="ai_search_box", label_visibility="collapsed").strip()
         
         if query:
-            with st.spinner(f"Analyzing genetic matrices for '{query}'..."):
+            with st.spinner(f"Scanning search indexes and parsing genetics for '{query}'..."):
                 data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
                 if "error" not in data:
                     clf = str(data.get('classification', 'HYBRID')).upper()
