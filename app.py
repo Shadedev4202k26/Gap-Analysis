@@ -9,9 +9,10 @@ def get_strain_profile(api_key, strain_name):
     formatted_slug = strain_name.strip().lower().replace(" ", "-")
     target_url = f"https://www.allbud.com/marijuana-strains/{formatted_slug}"
     
-    scraped_html_context = ""
+    allbud_success = False
+    context_fragments = []
     
-    # Attempt 1: Standard request with advanced browser headers
+    # LEVEL 1: Absolute Priority — Direct AllBud Live Extraction
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -22,68 +23,67 @@ def get_strain_profile(api_key, strain_name):
         }
         response = requests.get(target_url, headers=headers, timeout=8)
         
-        # If Cloudflare blocks it (403), we handle it in the fallback block
         if response.status_code == 200 and "cloudflare" not in response.text.lower():
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # AllBud DOM Targets: Check both class variations and standard tags
+            # Target explicit AllBud DOM parameters
             lineage_element = soup.find(class_="lineage") or soup.find(class_="genetics")
             description_element = soup.find(id="strain-description") or soup.find(class_="description")
             
             extracted_text = []
             if lineage_element:
-                extracted_text.append(f"Direct Lineage Section: {lineage_element.get_text(strip=True)}")
+                extracted_text.append(f"ALLBUD_TRUE_LINEAGE: {lineage_element.get_text(strip=True)}")
             if description_element:
-                extracted_text.append(f"Main Description Narrative: {description_element.get_text(strip=True)}")
+                extracted_text.append(f"ALLBUD_MAIN_DESCRIPTION: {description_element.get_text(strip=True)}")
                 
-            scraped_html_context = "\n".join(extracted_text)
+            if extracted_text:
+                context_fragments.append("\n".join(extracted_text))
+                allbud_success = True  # Explicitly freeze extraction to protect lineage
     except Exception:
         pass
 
-    # Layered Fallback Engine
-    # Pulls from AllBud index snippets first to protect lineage data, then wide-web for missing terpene structures
+    # LEVEL 2: Fallback Vectors — Engaged ONLY if primary paths are obscured
     try:
         from duckduckgo_search import DDGS
         with DDGS() as ddgs:
-            context_fragments = [scraped_html_context] if scraped_html_context else []
-            
-            # If AllBud failed or was blocked, pull AllBud index snippets
-            if not scraped_html_context or len(scraped_html_context) < 30:
+            # If the direct scraper failed, search specifically for AllBud indexed cache text
+            if not allbud_success:
                 allbud_query = f'site:allbud.com/marijuana-strains/ "{strain_name}"'
                 try:
                     allbud_results = [r for r in ddgs.text(allbud_query, max_results=2)]
                     for result in allbud_results:
-                        context_fragments.append(f"AllBud Snippet: {result['body']}")
+                        context_fragments.append(f"ALLBUD_BACKUP_SNIPPET: {result['body']}")
                 except Exception:
                     pass
             
-            # CRITICAL EXPANSION: Query the wider cannabis web explicitly looking for Terpene chemistry data
+            # Isolated Chemistry Capture: Separate query specifically targeted at harvesting terpenes
             terpene_query = f'"{strain_name}" strain "dominant terpenes" OR "terpene profile" caryophyllene limonene myrcene'
             try:
-                terpene_results = [r for r in ddgs.text(terpene_query, max_results=3)]
+                terpene_results = [r for r in ddgs.text(terpene_query, max_results=2)]
                 for result in terpene_results:
-                    context_fragments.append(f"Chemical Profile Snippet: {result['body']}")
+                    context_fragments.append(f"WIDE_WEB_TERPENE_DATA: {result['body']}")
             except Exception:
                 pass
-                
-            scraped_html_context = "\n".join(context_fragments)
-    except Exception as e:
-        if not scraped_html_context:
-            scraped_html_context = f"All retrieval vectors exhausted. Error: {str(e)}"
+    except Exception:
+        pass
 
-    # Process via Llama-3.3-70b to interpret the combined context data
+    # Combine data vectors into a single string for parsing
+    scraped_html_context = "\n\n".join(context_fragments) if context_fragments else "No context found."
+
+    # Process via Llama-3.3-70b with rigid formatting rules
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
     system_prompt = (
         "You are a factual cannabis data extraction parser. Your sole objective is formatting the provided text data into structured JSON.\n"
         "Analyze the provided text fragments, snippets, or descriptions carefully to isolate the true genetic lineage and strain characteristics.\n\n"
-        "CRITICAL INSTRUCTIONS:\n"
-        "1. Identify the direct parent strains (e.g., 'Wedding Cake X Gelato #33') if mentioned anywhere in the narrative or snippets.\n"
-        "2. Look for keywords like 'cross between', 'hybrid of', 'parents', or 'lineage'.\n"
-        "3. Look for chemical context fragments to extract the dominant terpenes (e.g., 'Limonene, Myrcene, Caryophyllene'). Do not use generic fallback boilerplate for terpenes if chemical names show up in text.\n"
-        "4. If the text does not explicitly reveal the parent genetics after deep inspection, return 'Proprietary / Unverified Genetics' for the lineage value.\n"
-        "5. Filter out any noise, such as lists of unrelated similar strains or dispensary ads.\n\n"
+        "CRITICAL INSTRUCTIONS FOR DATA VERIFICATION:\n"
+        "1. Prioritize text labeled with 'ALLBUD_TRUE_LINEAGE' or 'ALLBUD_MAIN_DESCRIPTION' above all else. This contains the exact target lineage data.\n"
+        "2. Identify the direct parent strains (e.g., 'Wedding Cake X Gelato #33') if mentioned anywhere in the AllBud blocks.\n"
+        "3. Look for keywords like 'cross between', 'hybrid of', 'parents', or 'lineage'.\n"
+        "4. Extract dominant terpenes from the 'WIDE_WEB_TERPENE_DATA' blocks. Do not allow fallback terpene lists to corrupt or overwrite your lineage choices.\n"
+        "5. If the text does not explicitly reveal the parent genetics after deep inspection, return 'Proprietary / Unverified Genetics' for the lineage value.\n"
+        "6. Filter out any noise, such as lists of unrelated similar strains or dispensary ads.\n\n"
         "Return ONLY a clean, valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
     )
     
