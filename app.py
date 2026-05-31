@@ -1,75 +1,89 @@
 import streamlit as st, pandas as pd, base64, os, json, requests
 from weasyprint import HTML
-from duckduckgo_search import DDGS  # Real-time web grounding
+from bs4 import BeautifulSoup  # Direct DOM parser for live data scraping
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
 def get_strain_profile(api_key, strain_name):
-    web_context = ""
+    # Formulate exact AllBud URL pattern slug conventions (lowercase, hyphens instead of spaces)
+    formatted_slug = strain_name.strip().lower().replace(" ", "-")
+    target_url = f"https://www.allbud.com/marijuana-strains/{formatted_slug}"
+    
+    scraped_html_context = ""
     try:
-        with DDGS() as ddgs:
-            # Broaden the search scope to pull AllBud data text structures alongside general backups
-            search_query = f'"{strain_name}" strain lineage allbud'
-            results = [r for r in ddgs.text(search_query, max_results=4)]
+        # Spoof a standard desktop browser user-agent header to ensure successful page ingestion
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        response = requests.get(target_url, headers=headers, timeout=8)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Fallback query if first search yields poor text snippets
-            if not results:
-                fallback_query = f'"{strain_name}" strain genetic parents lineage description'
-                results = [r for r in ddgs.text(fallback_query, max_results=3)]
+            # Target the precise parent genetics container class used by AllBud's DOM structure
+            lineage_element = soup.find(class_="lineage")
+            description_element = soup.find(id="strain-description")
+            
+            extracted_text = []
+            if lineage_element:
+                extracted_text.append(f"Direct Lineage Section: {lineage_element.get_text(strip=True)}")
+            if description_element:
+                extracted_text.append(f"Main Description Narrative: {description_element.get_text(strip=True)}")
                 
-            if results:
-                web_context = "\n".join([f"Web Snippet: {r['body']}" for r in results])
-    except Exception:
-        web_context = "No live web context accessible."
+            scraped_html_context = "\n".join(extracted_text)
+        else:
+            scraped_html_context = f"Target page not found on primary index. HTTP Status: {response.status_code}"
+    except Exception as e:
+        scraped_html_context = f"Network connection timeout during target scrape: {str(e)}"
 
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    
-    # Reinforced prompt enforcing the absolute data extraction format utilized by database platforms like AllBud
-    system_prompt = (
-        "You are an expert cannabis database extraction system. Your job is to extract exact strain specifications from the text provided.\n"
-        "Your absolute priority is preventing false data. Read the search snippets to isolate the direct genetic parents.\n\n"
-        "CRITICAL RULES FOR LINEAGE ACCURACY:\n"
-        "1. Extract ONLY the direct genetic parent strains (e.g., 'Strain A X Strain B'). Do not look at 'Similar Strains' or 'Related Strains' listings.\n"
-        "2. If the text snippets do not explicitly name the direct parent crosses, or if the data is missing, vague, or cut off, "
-        "you MUST set the lineage key to exactly: 'Proprietary / Unverified Genetics'. Do not make things up.\n"
-        "3. Never guess parents based on what the strain name sounds like.\n\n"
-        "Return ONLY a valid, clean JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'. "
-        "Use single quotes inside text values if needed. Do not output any markdown code blocks (e.g. no ```json)."
-    )
-    
-    user_prompt = (
-        f"Raw Text Context:\n{web_context}\n\n"
-        f"Extract factual operational parameters for the strain: {strain_name}"
-    )
-    
-    models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-    
-    for model_name in models_to_try:
-        payload = {
-            "model": model_name, 
-            "messages": [
-                {"role": "system", "content": system_prompt}, 
-                {"role": "user", "content": user_prompt}
-            ], 
-            "temperature": 0.0  # Zero out creativity completely to avoid hallucinations
-        }
+    # If direct scraping encounters a 404 or fails, seamlessly engage a backup text search
+    if not scraped_html_context or "Target page not found" in scraped_html_context:
         try:
-            res = requests.post(url, headers=headers, json=payload, timeout=12)
-            if res.status_code == 200:
-                content = res.json()['choices'][0]['message']['content'].strip()
-                if "{" in content and "}" in content: 
-                    content = content[content.find("{"):content.rfind("}") + 1]
-                return json.loads(content)
-            elif res.status_code == 400:
-                continue
+            from duckduckgo_search import DDGS
+            with DDGS() as ddgs:
+                fallback_query = f'"{strain_name}" strain description lineage site:allbud.com'
+                search_results = [r for r in ddgs.text(fallback_query, max_results=2)]
+                if search_results:
+                    scraped_html_context = "\n".join([f"Fallback Context: {r['body']}" for r in search_results])
         except Exception:
-            continue
-            
-    return {"error": "All endpoint extraction calls failed. Check connection."}
+            pass
+
+    # Process via the LLM to cleanly structure the scraped data into the application's UI cards
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    api_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    
+    system_prompt = (
+        "You are a factual cannabis data extraction parser. Your sole objective is formatting the provided text into JSON.\n"
+        "Read the raw scraped data or snippets to find the true parent cross of the strain.\n\n"
+        "CRITICAL INSTRUCTIONS:\n"
+        "1. Extract ONLY the direct parent strains listed in the lineage or main description section (e.g., 'Strain A X Strain B').\n"
+        "2. If the text does not contain explicit parent genetics, or if the page fetch failed, you MUST return exactly "
+        "'Proprietary / Unverified Genetics' for the lineage key. Never invent parent names.\n"
+        "3. Ignore any lists of 'Similar Strains' or unrelated sidebars.\n\n"
+        "Return ONLY a valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
+    )
+    
+    payload = {
+        "model": "llama-3.3-70b-versatile", 
+        "messages": [
+            {"role": "system", "content": system_prompt}, 
+            {"role": "user", "content": f"Raw Scraped Text:\n{scraped_html_context}\n\nTarget Strain: {strain_name}"}
+        ], 
+        "temperature": 0.0
+    }
+    
+    try:
+        res = requests.post(url, headers=api_headers, json=payload, timeout=12)
+        if res.status_code == 200:
+            content = res.json()['choices'][0]['message']['content'].strip()
+            if "{" in content and "}" in content: 
+                content = content[content.find("{"):content.rfind("}") + 1]
+            return json.loads(content)
+    except Exception:
+        pass
+        
+    return {"classification": "HYBRID", "lineage": "Proprietary / Unverified Genetics", "terpenes": "N/A", "flavor": "N/A", "effects": "N/A"}
 
 def get_compound_profile(api_key, compound_name):
-    url = "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)"
+    url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     system_prompt = (
         "You are an advanced cannabinoid science database. Analyze the requested cannabis compound or THC variant "
@@ -87,10 +101,10 @@ def get_compound_profile(api_key, compound_name):
         return {"error": f"Status code {res.status_code}"}
     except Exception as e: return {"error": str(e)}
 
-# Clean CSS block avoiding layout line-end truncation glitches
+# Clean CSS layout configuration block
 custom_css = """
 <style>
-@import url('[https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap](https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap)');
+@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap');
 .stApp { background-color: #0B0F19; color: #F9FAFB; font-family: 'DM Sans', sans-serif; }
 .brand-banner { background-color: #111827; border-radius: 12px; border-left: 6px solid #FDD835; margin-bottom: 25px; display: flex; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
 .brand-text h1 { font-family: 'Urbanist', sans-serif; font-weight: 900; color: #FDD835 !important; font-size: 40px; margin: 0; letter-spacing: -1px; text-transform: uppercase; }
@@ -209,7 +223,7 @@ with tab2:
         query = st.text_input("AI Search Engine Input", placeholder="Type any strain name...", key="ai_search_box", label_visibility="collapsed").strip()
         
         if query:
-            with st.spinner(f"Querying search indexes for '{query}'..."):
+            with st.spinner(f"Connecting to live AllBud database parameters for '{query}'..."):
                 data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
                 if "error" not in data:
                     clf = str(data.get('classification', 'HYBRID')).upper()
