@@ -73,7 +73,7 @@ def get_compound_profile(api_key, compound_name):
         return {"error": f"Status code {res.status_code}"}
     except Exception as e: return {"error": str(e)}
 
-# Clean CSS layout configuration block
+# Clean CSS layout configuration block for the live dashboard UI
 custom_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap');
@@ -139,23 +139,24 @@ with tab1:
                 st.write("---")
                 st.dataframe(final_df, use_container_width=True, hide_index=True)
                 
+                # CRITICAL RESTORATION: Reset layout properties to print-ready high contrast light mode
                 pdf_html = f"""
                 <html>
                 <head>
                 <style>
-                    @page {{ size: A4; margin: 20mm; background-color: #0B0F19; }}
-                    body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #F9FAFB; background-color: #0B0F19; margin: 0; padding: 0; }}
-                    .header {{ border-left: 6px solid #FDD835; padding-left: 15px; margin-bottom: 25px; }}
-                    h1 {{ font-size: 26px; color: #FDD835; text-transform: uppercase; margin: 0; font-weight: bold; letter-spacing: -0.5px; }}
-                    .subhead {{ color: #94A3B8; font-size: 12px; margin: 5px 0 0 0; }}
+                    @page {{ size: A4; margin: 20mm; background-color: #FFFFFF; }}
+                    body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1F2937; background-color: #FFFFFF; margin: 0; padding: 0; }}
+                    .header {{ border-left: 6px solid #EAB308; padding-left: 15px; margin-bottom: 25px; }}
+                    h1 {{ font-size: 26px; color: #111827; text-transform: uppercase; margin: 0; font-weight: bold; letter-spacing: -0.5px; }}
+                    .subhead {{ color: #4B5563; font-size: 12px; margin: 5px 0 0 0; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }}
                     .summary-container {{ display: table; width: 100%; margin-top: 25px; margin-bottom: 30px; border-collapse: separate; border-spacing: 12px 0; }}
-                    .metric-box {{ display: table-cell; width: 33.33%; background-color: #111827; border: 1px solid rgba(253, 216, 53, 0.15); border-radius: 6px; padding: 12px; text-align: center; vertical-align: middle; }}
-                    .label {{ color: #FDD835; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }}
-                    .value {{ font-size: 22px; font-weight: bold; color: #F9FAFB; margin: 0; }}
-                    table {{ width: 100%; border-collapse: collapse; background-color: #111827; border-radius: 8px; overflow: hidden; margin-top: 10px; }}
-                    th {{ background-color: #1F2937; color: #FDD835; text-transform: uppercase; font-size: 11px; font-weight: bold; letter-spacing: 1px; padding: 12px; text-align: left; border-bottom: 2px solid rgba(253, 216, 53, 0.15); }}
-                    td {{ padding: 12px; color: #E2E8F0; font-size: 13px; border-bottom: 1px solid rgba(148, 163, 184, 0.1); }}
-                    tr:nth-child(even) {{ background-color: #161F30; }}
+                    .metric-box {{ display: table-cell; width: 33.33%; background-color: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 12px; text-align: center; vertical-align: middle; }}
+                    .label {{ color: #4B5563; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }}
+                    .value {{ font-size: 22px; font-weight: bold; color: #111827; margin: 0; }}
+                    table {{ width: 100%; border-collapse: collapse; background-color: #FFFFFF; border-radius: 8px; overflow: hidden; margin-top: 10px; border: 1px solid #E5E7EB; }}
+                    th {{ background-color: #F3F4F6; color: #111827; text-transform: uppercase; font-size: 11px; font-weight: bold; letter-spacing: 1px; padding: 12px; text-align: left; border-bottom: 2px solid #D1D5DB; }}
+                    td {{ padding: 12px; color: #374151; font-size: 13px; border-bottom: 1px solid #E5E7EB; }}
+                    tr:nth-child(even) {{ background-color: #F9FAFB; }}
                 </style>
                 </head>
                 <body>
