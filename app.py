@@ -1,6 +1,6 @@
 import streamlit as st, pandas as pd, base64, os, json, requests
 from weasyprint import HTML
-from duckduckgo_search import DDGS  # Added for real-time web grounding
+from duckduckgo_search import DDGS  # Real-time web grounding
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
@@ -9,13 +9,11 @@ def get_strain_profile(api_key, strain_name):
     web_context = ""
     try:
         with DDGS() as ddgs:
-            # Target reliable cannabis database keywords along with the strain name
-            search_query = f"{strain_name} strain genetics lineage lineage leafly seedfinder"
+            search_query = f"{strain_name} strain genetics lineage leafly seedfinder"
             results = [r for r in ddgs.text(search_query, max_results=3)]
             if results:
                 web_context = "\n".join([f"Source Snippet: {r['body']}" for r in results])
     except Exception as search_error:
-        # Fallback gracefully to ungrounded if the search scraper hits a rate limit
         web_context = "No live web search context available due to connection timeout."
 
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -36,26 +34,32 @@ def get_strain_profile(api_key, strain_name):
         f"Provide verified operational data for the strain: {strain_name}"
     )
     
-    # Switched to the more powerful 70b model for superior context parsing and reasoning
-    payload = {
-        "model": "llama-3.3-70b-specdec", 
-        "messages": [
-            {"role": "system", "content": system_prompt}, 
-            {"role": "user", "content": user_prompt}
-        ], 
-        "temperature": 0.0
-    }
+    # Tiered fallback array to prevent 400 errors from model endpoint changes
+    models_to_try = ["llama-3.3-70b-specdec", "llama-3.1-8b-instant"]
     
-    try:
-        res = requests.post(url, headers=headers, json=payload, timeout=12)
-        if res.status_code == 200:
-            content = res.json()['choices'][0]['message']['content'].strip()
-            if "{" in content and "}" in content: 
-                content = content[content.find("{"):content.rfind("}") + 1]
-            return json.loads(content)
-        return {"error": f"Status code {res.status_code}"}
-    except Exception as e: 
-        return {"error": str(e)}
+    for model_name in models_to_try:
+        payload = {
+            "model": model_name, 
+            "messages": [
+                {"role": "system", "content": system_prompt}, 
+                {"role": "user", "content": user_prompt}
+            ], 
+            "temperature": 0.0
+        }
+        try:
+            res = requests.post(url, headers=headers, json=payload, timeout=12)
+            if res.status_code == 200:
+                content = res.json()['choices'][0]['message']['content'].strip()
+                if "{" in content and "}" in content: 
+                    content = content[content.find("{"):content.rfind("}") + 1]
+                return json.loads(content)
+            elif res.status_code == 400:
+                continue # Try the fallback model in the list
+        except Exception as e:
+            last_err = str(e)
+            continue
+            
+    return {"error": "Failed API processing across all targeted models. Check payload parameters."}
 
 def get_compound_profile(api_key, compound_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
