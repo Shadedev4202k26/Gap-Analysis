@@ -1,110 +1,56 @@
 import streamlit as st, pandas as pd, base64, os, json, requests
 from weasyprint import HTML
-from bs4 import BeautifulSoup  # Direct DOM parser for live data scraping
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
 def get_strain_profile(api_key, strain_name):
-    # Formulate exact AllBud URL pattern slug conventions
-    formatted_slug = strain_name.strip().lower().replace(" ", "-")
-    target_url = f"https://www.allbud.com/marijuana-strains/{formatted_slug}"
-    
-    allbud_success = False
-    context_fragments = []
-    
-    # LEVEL 1: Absolute Priority — Direct AllBud Live Extraction
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive'
-        }
-        response = requests.get(target_url, headers=headers, timeout=8)
-        
-        if response.status_code == 200 and "cloudflare" not in response.text.lower():
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Target explicit AllBud DOM parameters
-            lineage_element = soup.find(class_="lineage") or soup.find(class_="genetics")
-            description_element = soup.find(id="strain-description") or soup.find(class_="description")
-            
-            extracted_text = []
-            if lineage_element:
-                extracted_text.append(f"ALLBUD_TRUE_LINEAGE: {lineage_element.get_text(strip=True)}")
-            if description_element:
-                extracted_text.append(f"ALLBUD_MAIN_DESCRIPTION: {description_element.get_text(strip=True)}")
-                
-            if extracted_text:
-                context_fragments.append("\n".join(extracted_text))
-                allbud_success = True  # Explicitly freeze extraction to protect lineage
-    except Exception:
-        pass
-
-    # LEVEL 2: Fallback Vectors — Engaged ONLY if primary paths are obscured
+    # Establish a reliable backup data context via a focused web search API string
+    search_context = ""
     try:
         from duckduckgo_search import DDGS
         with DDGS() as ddgs:
-            # If the direct scraper failed, search specifically for AllBud indexed cache text
-            if not allbud_success:
-                allbud_query = f'site:allbud.com/marijuana-strains/ "{strain_name}"'
-                try:
-                    allbud_results = [r for r in ddgs.text(allbud_query, max_results=2)]
-                    for result in allbud_results:
-                        context_fragments.append(f"ALLBUD_BACKUP_SNIPPET: {result['body']}")
-                except Exception:
-                    pass
-            
-            # Isolated Chemistry Capture: Separate query specifically targeted at harvesting terpenes
-            terpene_query = f'"{strain_name}" strain "dominant terpenes" OR "terpene profile" caryophyllene limonene myrcene'
-            try:
-                terpene_results = [r for r in ddgs.text(terpene_query, max_results=2)]
-                for result in terpene_results:
-                    context_fragments.append(f"WIDE_WEB_TERPENE_DATA: {result['body']}")
-            except Exception:
-                pass
+            # Explicitly target descriptive text across reliable cannabis databases
+            query_string = f'"{strain_name}" strain lineage genetics terpenes effects parents'
+            results = [r for r in ddgs.text(query_string, max_results=3)]
+            if results:
+                search_context = "\n\n".join([f"Data Source Snippet:\n{r['body']}" for r in results])
     except Exception:
         pass
 
-    # Combine data vectors into a single string for parsing
-    scraped_html_context = "\n\n".join(context_fragments) if context_fragments else "No context found."
-
-    # Process via Llama-3.3-70b with rigid formatting rules
+    # Process via Llama-3.3-70b-versatile acting as the master cross-reference database
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
     system_prompt = (
-        "You are a factual cannabis data extraction parser. Your sole objective is formatting the provided text data into structured JSON.\n"
-        "Analyze the provided text fragments, snippets, or descriptions carefully to isolate the true genetic lineage and strain characteristics.\n\n"
-        "CRITICAL INSTRUCTIONS FOR DATA VERIFICATION:\n"
-        "1. Prioritize text labeled with 'ALLBUD_TRUE_LINEAGE' or 'ALLBUD_MAIN_DESCRIPTION' above all else. This contains the exact target lineage data.\n"
-        "2. Identify the direct parent strains (e.g., 'Wedding Cake X Gelato #33') if mentioned anywhere in the AllBud blocks.\n"
-        "3. Look for keywords like 'cross between', 'hybrid of', 'parents', or 'lineage'.\n"
-        "4. Extract dominant terpenes from the 'WIDE_WEB_TERPENE_DATA' blocks. Do not allow fallback terpene lists to corrupt or overwrite your lineage choices.\n"
-        "5. If the text does not explicitly reveal the parent genetics after deep inspection, return 'Proprietary / Unverified Genetics' for the lineage value.\n"
-        "6. Filter out any noise, such as lists of unrelated similar strains or dispensary ads.\n\n"
-        "Return ONLY a clean, valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
+        "You are an expert, deterministic cannabis strain database parser. Your sole objective is outputting clean, structured JSON.\n"
+        "You will synthesize your extensive pre-trained knowledge of cannabis genetics along with the provided live search context fragments to compile a 100% accurate profile for the requested strain.\n\n"
+        "CRITICAL EXTRACTION INSTRUCTIONS:\n"
+        "1. LINEAGE: Identify the exact direct parental cross (e.g., 'GSC X Pink Panties' for Sunset Sherbert). Prioritize universally accepted lineage facts. If the lineage is completely unknown or a closely guarded breeder secret, output 'Proprietary / Unverified Genetics'.\n"
+        "2. TERPENES: Isolate the dominant chemical terpene profile (e.g., 'Limone, Myrcene, Caryophyllene'). Never leave this blank or return N/A if the chemical properties are known in cannabis science.\n"
+        "3. CLASSIFICATION: Must strictly be one of these three options: 'INDICA', 'SATIVA', or 'HYBRID'.\n"
+        "4. FLAVOR & EFFECTS: Provide a concise list of consumer flavors and reported physical/cerebral effects.\n\n"
+        "Return ONLY a clean, valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'. Do not wrap the JSON in backticks or include any conversational intro/outro text."
     )
     
     payload = {
         "model": "llama-3.3-70b-versatile", 
         "messages": [
             {"role": "system", "content": system_prompt}, 
-            {"role": "user", "content": f"Raw Retrieved Data:\n{scraped_html_context}\n\nTarget Strain to Extract: {strain_name}"}
+            {"role": "user", "content": f"Target Strain: {strain_name}\n\nLive Supplemental Context:\n{search_context if search_context else 'No extra context available.'}"}
         ], 
-        "temperature": 0.0
+        "temperature": 0.0  # Forces factual consistency and eliminates creative variations
     }
     
     try:
         res = requests.post(url, headers=api_headers, json=payload, timeout=12)
         if res.status_code == 200:
             content = res.json()['choices'][0]['message']['content'].strip()
+            # Safety check to clean up any stray formatting strings
             if "{" in content and "}" in content: 
                 content = content[content.find("{"):content.rfind("}") + 1]
             return json.loads(content)
-    except Exception:
-        pass
+    except Exception as e:
+        return {"error": str(e)}
         
     return {"classification": "HYBRID", "lineage": "Proprietary / Unverified Genetics", "terpenes": "N/A", "flavor": "N/A", "effects": "N/A"}
 
@@ -249,7 +195,7 @@ with tab2:
         query = st.text_input("AI Search Engine Input", placeholder="Type any strain name...", key="ai_search_box", label_visibility="collapsed").strip()
         
         if query:
-            with st.spinner(f"Connecting to live data parameters for '{query}'..."):
+            with st.spinner(f"Querying molecular intelligence metrics for '{query}'..."):
                 data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
                 if "error" not in data:
                     clf = str(data.get('classification', 'HYBRID')).upper()
