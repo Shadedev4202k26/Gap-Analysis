@@ -5,37 +5,47 @@ from duckduckgo_search import DDGS  # Real-time web grounding
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
 def get_strain_profile(api_key, strain_name):
-    # 1. Fetch live web context to ground the model and protect salesperson credibility
+    # 1. Broaden the search parameters to hit verified source domains explicitly
     web_context = ""
     try:
         with DDGS() as ddgs:
-            search_query = f"{strain_name} strain genetics lineage leafly seedfinder"
-            results = [r for r in ddgs.text(search_query, max_results=3)]
+            # Look up specific genetic tracking sites for the most precise match
+            search_query = f'"{strain_name}" strain lineage site:seedfinder.eu OR site:leafly.com OR site:allbud.com'
+            results = [r for r in ddgs.text(search_query, max_results=4)]
+            
+            # Fallback search if domain filter was too restrictive
+            if not results:
+                fallback_query = f"{strain_name} strain parents genetic lineage"
+                results = [r for r in ddgs.text(fallback_query, max_results=3)]
+                
             if results:
-                web_context = "\n".join([f"Source Snippet: {r['body']}" for r in results])
-    except Exception as search_error:
-        web_context = "No live web search context available due to connection timeout."
+                web_context = "\n".join([f"Source: {r['body']}" for r in results])
+    except Exception:
+        web_context = "No real-time web context accessible."
 
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
+    # 2. Hardened system instructions prioritizing data absence over speculation
     system_prompt = (
-        "You are an expert cannabis database assistant backed by live web research. "
-        "Analyze the provided search snippets and extract the exact, real-world data for the requested strain. "
-        "CRITICAL FOR CREDIBILITY: Rely strictly on the search snippets provided. If the search context reveals the lineage, "
-        "use it. If the lineage cannot be verified from the snippets or if it is a highly obscure proprietary cross with no data, "
-        "set the lineage to 'Proprietary / Unverified Genetics' instead of inventing parents.\n\n"
-        "Return ONLY a valid JSON object. Do not use double quotes inside text values (use single quotes or plain text).\n"
-        "The JSON must contain exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
+        "You are a strict cannabis genetics verification engine. Your absolute priority is preventing false information.\n"
+        "Analyze the provided search snippets to discover the exact parent strains for the requested cultivar.\n\n"
+        "CRITICAL RULES:\n"
+        "1. Look only for explicit, unambiguous statements matching the exact parents (e.g., 'Strain A x Strain B').\n"
+        "2. If the snippets don't explicitly name the true parent genetics, or if the data is conflicting/unclear, "
+        "you MUST output exactly 'Proprietary / Unverified Genetics' for the lineage key. Do not speculate.\n"
+        "3. Do not formulate plausible lineages based on name similarity (e.g., assuming 'Grape Pie' is a parent of 'Grape Cake' unless explicitly proven by text).\n\n"
+        "Return ONLY a clean JSON object containing these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'. "
+        "Use single quotes inside string values if needed. Do not include markdown code block syntax."
     )
     
     user_prompt = (
         f"Live Web Search Context:\n{web_context}\n\n"
-        f"Provide verified operational data for the strain: {strain_name}"
+        f"Analyze this raw text data and extract details for the strain: {strain_name}"
     )
     
-    # Tiered fallback array to prevent 400 errors from model endpoint changes
-    models_to_try = ["llama-3.3-70b-specdec", "llama-3.1-8b-instant"]
+    # Active 2026 production model identifiers for Groq
+    models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
     
     for model_name in models_to_try:
         payload = {
@@ -44,7 +54,7 @@ def get_strain_profile(api_key, strain_name):
                 {"role": "system", "content": system_prompt}, 
                 {"role": "user", "content": user_prompt}
             ], 
-            "temperature": 0.0
+            "temperature": 0.0  # Absolute zero for deterministic processing
         }
         try:
             res = requests.post(url, headers=headers, json=payload, timeout=12)
@@ -54,12 +64,11 @@ def get_strain_profile(api_key, strain_name):
                     content = content[content.find("{"):content.rfind("}") + 1]
                 return json.loads(content)
             elif res.status_code == 400:
-                continue # Try the fallback model in the list
-        except Exception as e:
-            last_err = str(e)
+                continue
+        except Exception:
             continue
             
-    return {"error": "Failed API processing across all targeted models. Check payload parameters."}
+    return {"error": "All endpoint extraction calls failed. Check connection."}
 
 def get_compound_profile(api_key, compound_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -80,7 +89,7 @@ def get_compound_profile(api_key, compound_name):
         return {"error": f"Status code {res.status_code}"}
     except Exception as e: return {"error": str(e)}
 
-# Clean multi-line CSS layout string
+# Clean multi-line CSS layout string to prevent compiler string literal truncation errors
 custom_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap');
@@ -202,7 +211,7 @@ with tab2:
         query = st.text_input("AI Search Engine Input", placeholder="Type any strain name...", key="ai_search_box", label_visibility="collapsed").strip()
         
         if query:
-            with st.spinner(f"Scanning search indexes and parsing genetics for '{query}'..."):
+            with st.spinner(f"Verifying authority channels and parsing lineage for '{query}'..."):
                 data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
                 if "error" not in data:
                     clf = str(data.get('classification', 'HYBRID')).upper()
