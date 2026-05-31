@@ -8,39 +8,39 @@ def get_strain_profile(api_key, strain_name):
     web_context = ""
     try:
         with DDGS() as ddgs:
-            # Targeted Query 1: Hard-lock searches straight to AllBud indexes for accuracy
-            search_query = f'"{strain_name}" site:allbud.com/marijuana-strains'
-            results = [r for r in ddgs.text(search_query, max_results=3)]
+            # Broaden the search scope to pull AllBud data text structures alongside general backups
+            search_query = f'"{strain_name}" strain lineage allbud'
+            results = [r for r in ddgs.text(search_query, max_results=4)]
             
-            # Fallback Query 2: Broader AllBud query if URL hierarchy varies
+            # Fallback query if first search yields poor text snippets
             if not results:
-                search_query_alt = f'"{strain_name}" strain lineage site:allbud.com'
-                results = [r for r in ddgs.text(search_query_alt, max_results=3)]
+                fallback_query = f'"{strain_name}" strain genetic parents lineage description'
+                results = [r for r in ddgs.text(fallback_query, max_results=3)]
                 
             if results:
-                web_context = "\n".join([f"AllBud Source Data: {r['body']}" for r in results])
+                web_context = "\n".join([f"Web Snippet: {r['body']}" for r in results])
     except Exception:
         web_context = "No live web context accessible."
 
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
-    # Ironclad system prompt punishing any guesswork outside of AllBud's explicit text
+    # Reinforced prompt enforcing the absolute data extraction format utilized by database platforms like AllBud
     system_prompt = (
-        "You are an elite cannabis genetics verification engine mapped to the AllBud database text standard.\n"
-        "Your priority is absolute factual truth. Read the provided AllBud search snippets to isolate parents.\n\n"
-        "CRITICAL COMPLIANCE RULES:\n"
-        "1. Identify the exact parent strains explicitly mentioned in the text (e.g., 'cross of Strain A X Strain B').\n"
-        "2. If the text does not explicitly map out the precise genetic parents, or if the strain is missing from the data, "
-        "you MUST output exactly 'Proprietary / Unverified Genetics' under the lineage key. Do not make educated guesses.\n"
-        "3. Never build parent lineages by parsing the name of the strain (e.g., do not say 'Purple Urkle x Skunk' just because a strain is named 'Purple Skunk').\n\n"
-        "Return ONLY a clean JSON object containing these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'. "
-        "Use single quotes inside string values. Do not use markdown code blocks."
+        "You are an expert cannabis database extraction system. Your job is to extract exact strain specifications from the text provided.\n"
+        "Your absolute priority is preventing false data. Read the search snippets to isolate the direct genetic parents.\n\n"
+        "CRITICAL RULES FOR LINEAGE ACCURACY:\n"
+        "1. Extract ONLY the direct genetic parent strains (e.g., 'Strain A X Strain B'). Do not look at 'Similar Strains' or 'Related Strains' listings.\n"
+        "2. If the text snippets do not explicitly name the direct parent crosses, or if the data is missing, vague, or cut off, "
+        "you MUST set the lineage key to exactly: 'Proprietary / Unverified Genetics'. Do not make things up.\n"
+        "3. Never guess parents based on what the strain name sounds like.\n\n"
+        "Return ONLY a valid, clean JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'. "
+        "Use single quotes inside text values if needed. Do not output any markdown code blocks (e.g. no ```json)."
     )
     
     user_prompt = (
-        f"AllBud Search Context Snippets:\n{web_context}\n\n"
-        f"Extract genetic and behavioral matrices for the following cultivar: {strain_name}"
+        f"Raw Text Context:\n{web_context}\n\n"
+        f"Extract factual operational parameters for the strain: {strain_name}"
     )
     
     models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
@@ -52,7 +52,7 @@ def get_strain_profile(api_key, strain_name):
                 {"role": "system", "content": system_prompt}, 
                 {"role": "user", "content": user_prompt}
             ], 
-            "temperature": 0.0  # Zero out creativity completely
+            "temperature": 0.0  # Zero out creativity completely to avoid hallucinations
         }
         try:
             res = requests.post(url, headers=headers, json=payload, timeout=12)
@@ -69,7 +69,7 @@ def get_strain_profile(api_key, strain_name):
     return {"error": "All endpoint extraction calls failed. Check connection."}
 
 def get_compound_profile(api_key, compound_name):
-    url = "https://api.groq.com/openai/v1/chat/completions"
+    url = "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     system_prompt = (
         "You are an advanced cannabinoid science database. Analyze the requested cannabis compound or THC variant "
@@ -90,7 +90,7 @@ def get_compound_profile(api_key, compound_name):
 # Clean CSS block avoiding layout line-end truncation glitches
 custom_css = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap');
+@import url('[https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap](https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap)');
 .stApp { background-color: #0B0F19; color: #F9FAFB; font-family: 'DM Sans', sans-serif; }
 .brand-banner { background-color: #111827; border-radius: 12px; border-left: 6px solid #FDD835; margin-bottom: 25px; display: flex; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
 .brand-text h1 { font-family: 'Urbanist', sans-serif; font-weight: 900; color: #FDD835 !important; font-size: 40px; margin: 0; letter-spacing: -1px; text-transform: uppercase; }
@@ -209,7 +209,7 @@ with tab2:
         query = st.text_input("AI Search Engine Input", placeholder="Type any strain name...", key="ai_search_box", label_visibility="collapsed").strip()
         
         if query:
-            with st.spinner(f"Querying verified AllBud data indexes for '{query}'..."):
+            with st.spinner(f"Querying search indexes for '{query}'..."):
                 data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
                 if "error" not in data:
                     clf = str(data.get('classification', 'HYBRID')).upper()
