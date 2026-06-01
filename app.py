@@ -268,13 +268,13 @@ with tab2:
 
 with tab3:
     st.markdown("### 🎮 Ziggy's Breakroom Arcade")
-    game_mode = st.radio("Select Shift Duty", ["💼 Vault Escape (Stock Hunt)", "⚡ Budtender Frenzy (Patient Hustle)"], horizontal=True)
+    game_mode = st.radio("Select Shift Duty", ["💼 Vault Escape (2D Strategy)", "🕶️ Vault Defender 3D (Retro Shooter)"], horizontal=True)
     st.write("---")
 
     # ------------------ GAME 1: VAULT ESCAPE ------------------
-    if game_mode == "💼 Vault Escape (Stock Hunt)":
+    if game_mode == "💼 Vault Escape (2D Strategy)":
         st.markdown("#### 📦 Vault Escape: The Inventory Crawler")
-        st.caption("Navigate the layouts, grab the missing inventory cases, and dodge the compliance auditor!")
+        st.caption("Navigate layouts, grab missing inventory cases, and dodge the compliance auditor!")
         
         MAZE = [
             ["#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"],
@@ -341,79 +341,210 @@ with tab3:
             r_mid[1].button("▶️", key="v_rt", on_click=move_vault, args=(1, 0))
             st.button("🔽", key="v_dn", on_click=move_vault, args=(0, 1))
 
-    # ------------------ GAME 2: BUDTENDER FRENZY ------------------
+    # ------------------ GAME 2: 3D RETRO SHOOTER ------------------
     else:
-        st.markdown("#### ⚡ Budtender Frenzy: The Patient Hustle")
-        st.caption("Patients are arriving at the showcases! Hustle your budtender to their location before their patience timer runs dry.")
-
-        F_MAZE = [
-            ["#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"],
-            ["#", ".", ".", ".", "#", ".", ".", ".", ".", ".", "#", ".", ".", ".", "#"],
-            ["#", ".", "#", ".", ".", ".", "#", "#", "#", ".", ".", ".", "#", ".", "#"],
-            ["#", ".", "#", ".", "#", ".", ".", ".", ".", ".", "#", ".", "#", ".", "#"],
-            ["#", ".", ".", ".", "#", ".", ".", ".", ".", ".", "#", ".", ".", ".", "#"],
-            ["#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"]
-        ]
+        st.markdown("#### 🕶️ Vault Defender 3D")
+        st.caption("Click into the window below to lock controls. Clear out incoming compliance bugs in real-time.")
         
-        # Valid spawn points for targets (service desks)
-        COUNTERS = [(1, 2), (1, 8), (4, 2), (4, 7), (4, 12), (2, 4), (2, 10)]
-
-        if "f_x" not in st.session_state:
-            st.session_state.f_x, st.session_state.f_y = 1, 1
-            st.session_state.f_score = 0
-            st.session_state.f_patience = 25
-            st.session_state.f_game_over = False
-            st.session_state.f_target = random.choice(COUNTERS)
-            st.session_state.f_served = 0
-
-        def move_frenzy(dx, dy):
-            if st.session_state.f_game_over: return
-            nx, ny = st.session_state.f_x + dx, st.session_state.f_y + dy
-            if 0 <= ny < len(F_MAZE) and 0 <= nx < len(F_MAZE[0]) and F_MAZE[ny][nx] != "#":
-                st.session_state.f_x, st.session_state.f_y = nx, ny
-                st.session_state.f_patience -= 1  # Clock ticks on movement
+        import streamlit.components.v1 as components
+        
+        three_d_game_html = """
+        <div style="text-align:center; background:#0B0F19; padding:15px; border-radius:8px;">
+            <canvas id="raycasterCanvas" width="640" height="400" style="border:3px solid #FDD835; background:#000; cursor:crosshair;"></canvas>
+            <div style="color:#94A3B8; font-family:sans-serif; font-size:13px; margin-top:10px;">
+                <strong>W / S</strong> — Forward/Backward | <strong>A / D</strong> — Strafe | <strong>Left / Right Arrow</strong> — Look | <strong>Spacebar</strong> — Shoot Bug Target
+            </div>
+            <div id="scoreBoard" style="color:#FDD835; font-family:sans-serif; font-weight:bold; font-size:18px; margin-top:8px;">Bugs Terminated: 0</div>
+        </div>
+        
+        <script>
+        const canvas = document.getElementById('raycasterCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Map Grid setup (1 = Wall, 0 = Empty floor space)
+        const map = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,0,0,1,0,1,1,1,1,0,1,0,1],
+            [1,0,1,0,0,0,0,0,0,0,0,1,0,1,0,1],
+            [1,0,1,0,1,1,1,1,1,0,0,1,0,1,0,1],
+            [1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,1],
+            [1,0,1,0,1,0,0,0,1,0,1,1,1,1,0,1],
+            [1,0,1,0,1,1,0,1,1,0,1,0,0,1,0,1],
+            [1,0,1,0,0,0,0,0,0,0,1,0,0,1,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ];
+        const mapWidth = 16, mapHeight = 10;
+        
+        // Player Position details
+        let player = { x: 2.5, y: 2.5, angle: 0, fov: Math.PI / 3 };
+        let keys = {};
+        let score = 0;
+        
+        // Game variables for the target bug entity
+        let bug = { x: 7.5, y: 5.5, baseSize: 40, health: 1, timer: 0 };
+        let flashFrame = 0;
+        
+        window.addEventListener('keydown', (e) => { keys[e.key] = true; if(e.key === ' ') shootWeapon(); });
+        window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+        
+        function shootWeapon() {
+            flashFrame = 4; // Fire trigger muzzle flash duration
+            // Basic hit confirmation if bug is center screen alignment
+            if (bug.health > 0) {
+                let dx = bug.x - player.x;
+                let dy = bug.y - player.y;
+                let angleToBug = Math.atan2(dy, dx) - player.angle;
+                while (angleToBug < -Math.PI) angleToBug += Math.PI * 2;
+                while (angleToBug > Math.PI) angleToBug -= Math.PI * 2;
                 
-                # Check patient target collision
-                if (ny, nx) == st.session_state.f_target:
-                    st.session_state.f_score += st.session_state.f_patience * 10
-                    st.session_state.f_served += 1
-                    st.session_state.f_patience = max(12, 25 - st.session_state.f_served)  # Speed increases
+                if (Math.abs(angleToBug) < 0.2) {
+                    score++;
+                    document.getElementById('scoreBoard').innerText = "Bugs Terminated: " + score;
+                    respawnBug();
+                }
+            }
+        }
+        
+        function respawnBug() {
+            let valid = false;
+            while(!valid) {
+                let rx = Math.floor(Math.random() * mapWidth);
+                let ry = Math.floor(Math.random() * mapHeight);
+                if (map[ry][rx] === 0) {
+                    bug.x = rx + 0.5;
+                    bug.y = ry + 0.5;
+                    valid = true;
+                }
+            }
+        }
+        
+        function updatePlayerPosition() {
+            let moveSpeed = 0.04;
+            let rotSpeed = 0.03;
+            
+            if (keys['ArrowLeft'] || keys['Left']) player.angle -= rotSpeed;
+            if (keys['ArrowRight'] || keys['Right']) player.angle += rotSpeed;
+            
+            let dx = Math.cos(player.angle) * moveSpeed;
+            let dy = Math.sin(player.angle) * moveSpeed;
+            
+            if (keys['w'] || keys['W']) {
+                if (map[Math.floor(player.y)][Math.floor(player.x + dx)] === 0) player.x += dx;
+                if (map[Math.floor(player.y + dy)][Math.floor(player.x)] === 0) player.y += dy;
+            }
+            if (keys['s'] || keys['S']) {
+                if (map[Math.floor(player.y)][Math.floor(player.x - dx)] === 0) player.x -= dx;
+                if (map[Math.floor(player.y - dy)][Math.floor(player.x)] === 0) player.y -= dy;
+            }
+            // Strafe mechanics
+            let sx = Math.cos(player.angle + Math.PI/2) * moveSpeed;
+            let sy = Math.sin(player.angle + Math.PI/2) * moveSpeed;
+            if (keys['a'] || keys['A']) {
+                if (map[Math.floor(player.y)][Math.floor(player.x - sx)] === 0) player.x -= sx;
+                if (map[Math.floor(player.y - sy)][Math.floor(player.x)] === 0) player.y -= sy;
+            }
+            if (keys['d'] || keys['D']) {
+                if (map[Math.floor(player.y)][Math.floor(player.x + sx)] === 0) player.x += sx;
+                if (map[Math.floor(player.y + sy)][Math.floor(player.x)] === 0) player.y += sy;
+            }
+        }
+        
+        function render3DView() {
+            // Draw Ceiling and Floor fields
+            ctx.fillStyle = '#111622'; ctx.fillRect(0, 0, 640, 200);
+            ctx.fillStyle = '#181E29'; ctx.fillRect(0, 200, 640, 200);
+            
+            let numRays = 320;
+            let rayWidth = 2;
+            let depthBuffer = new Array(numRays);
+            
+            // Core Raycasting math loop
+            for (let i = 0; i < numRays; i++) {
+                let rayAngle = (player.angle - player.fov / 2) + (i / numRays) * player.fov;
+                let distance = 0;
+                let hitWall = false;
+                
+                let cx = Math.cos(rayAngle);
+                let cy = Math.sin(rayAngle);
+                
+                while (!hitWall && distance < 16) {
+                    distance += 0.05;
+                    let checkX = Math.floor(player.x + cx * distance);
+                    let checkY = Math.floor(player.y + cy * distance);
                     
-                    # Spawn next patient location dynamically
-                    choices = [c for c in COUNTERS if c != (ny, nx)]
-                    st.session_state.f_target = random.choice(choices)
+                    if (checkX < 0 || checkX >= mapWidth || checkY < 0 || checkY >= mapHeight) {
+                        hitWall = true; distance = 16;
+                    } else if (map[checkY][checkX] > 0) {
+                        hitWall = true;
+                    }
+                }
                 
-                if st.session_state.f_patience <= 0:
-                    st.session_state.f_game_over = True
-
-        f_rows = []
-        for y, row in enumerate(F_MAZE):
-            chars = []
-            for x, c in enumerate(row):
-                if y == st.session_state.f_y and x == st.session_state.f_x: chars.append("🧑‍🌾") # Budtender
-                elif (y, x) == st.session_state.f_target: chars.append("⏳") # Waiting Patient
-                elif c == "#": chars.append("🧱")
-                else: chars.append(" 🟩 ")
-            f_rows.append("".join(chars))
-
-        cf, cfp, cfc = st.columns([6, 3, 3])
-        with cf:
-            st.markdown(f'<div class="game-container">{"<br>".join(f_rows)}</div>', unsafe_allow_html=True)
-            if st.session_state.f_game_over:
-                st.error(f"⏱️ Lobby Walkout! A medical patient ran out of patience. You served {st.session_state.f_served} patrons.")
-            if st.button("🔄 Reset Shift Clock"):
-                st.session_state.f_x, st.session_state.f_y = 1, 1
-                st.session_state.f_score, st.session_state.f_patience, st.session_state.f_served = 0, 25, 0
-                st.session_state.f_game_over = False
-                st.session_state.f_target = random.choice(COUNTERS)
-                st.rerun()
-        with cfp:
-            st.metric("Total Sales Volume", f"{st.session_state.f_score} pts")
-            st.metric("Patience Counter", f"{st.session_state.f_patience} turns", delta=-1)
-            st.metric("Patients Checked Out", f"{st.session_state.f_served} served")
-        with cfc:
-            st.button("🔼", key="f_up", on_click=move_frenzy, args=(0, -1))
-            r_mid_f = st.columns(2)
-            r_mid_f[0].button("◀️", key="f_lf", on_click=move_frenzy, args=(-1, 0))
-            r_mid_f[1].button("▶️", key="f_rt", on_click=move_frenzy, args=(1, 0))
-            st.button("🔽", key="f_dn", on_click=move_frenzy, args=(0, 1))
+                // Correct fisheye distortion lens
+                let correctedDistance = distance * Math.cos(rayAngle - player.angle);
+                depthBuffer[i] = correctedDistance;
+                let wallHeight = Math.min(400, Math.floor(300 / correctedDistance));
+                
+                // Set color density based on distance wall gradients
+                let cValue = Math.floor(Math.max(20, 220 - (correctedDistance * 16)));
+                ctx.fillStyle = `rgb(${Math.floor(cValue * 0.9)}, ${Math.floor(cValue * 0.8)}, ${Math.floor(cValue * 0.3)})`;
+                ctx.fillRect(i * rayWidth, (400 - wallHeight) / 2, rayWidth, wallHeight);
+            }
+            
+            // Render Sprite mechanics (Compliance Bug Target)
+            let bdx = bug.x - player.x;
+            let bdy = bug.y - player.y;
+            let spriteDist = Math.sqrt(bdx*bdx + bdy*bdy);
+            let spriteAngle = Math.atan2(bdy, bdx) - player.angle;
+            
+            while (spriteAngle < -Math.PI) spriteAngle += Math.PI * 2;
+            while (spriteAngle > Math.PI) spriteAngle -= Math.PI * 2;
+            
+            if (Math.abs(spriteAngle) < player.fov / 1.5 && spriteDist > 0.2) {
+                let spriteHeight = Math.min(400, Math.floor(300 / spriteDist));
+                let spriteX = Math.floor((320) + (Math.tan(spriteAngle) * 320) - spriteHeight / 2);
+                let spriteY = Math.floor((400 - spriteHeight) / 2);
+                
+                // Basic render check against wall depth buffers
+                let rayIdx = Math.floor((spriteX + spriteHeight / 2) / 2);
+                if (rayIdx >= 0 && rayIdx < numRays && depthBuffer[rayIdx] > spriteDist) {
+                    bug.timer += 0.07;
+                    let hover = Math.sin(bug.timer) * 10;
+                    ctx.fillStyle = '#EF4444';
+                    // Render stylized diamond layout bug target shape
+                    ctx.beginPath();
+                    ctx.moveTo(spriteX + spriteHeight/2, spriteY + hover);
+                    ctx.lineTo(spriteX + spriteHeight, spriteY + spriteHeight/2 + hover);
+                    ctx.lineTo(spriteX + spriteHeight/2, spriteY + spriteHeight + hover);
+                    ctx.lineTo(spriteX, spriteY + spriteHeight/2 + hover);
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // Core critical core graphic target overlay
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(spriteX + spriteHeight/2 - 4, spriteY + spriteHeight/2 - 4 + hover, 8, 8);
+                }
+            }
+            
+            // Render UI Crosshair hud elements
+            ctx.strokeStyle = 'rgba(253, 216, 53, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(320, 180); ctx.lineTo(320, 220); ctx.moveTo(300, 200); ctx.lineTo(340, 200); ctx.stroke();
+            
+            // Weapon Muzzle Blast Flash display layer
+            if (flashFrame > 0) {
+                ctx.fillStyle = `rgba(253, 216, 53, ${flashFrame * 0.2})`;
+                ctx.fillRect(0, 0, 640, 400);
+                flashFrame--;
+            }
+        }
+        
+        function frameIteration() {
+            updatePlayerPosition();
+            render3DView();
+            requestAnimationFrame(frameIteration);
+        }
+        frameIteration();
+        </script>
+        """
+        components.html(three_d_game_html, height=520, scrolling=False)
