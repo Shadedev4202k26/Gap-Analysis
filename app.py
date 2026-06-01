@@ -4,12 +4,10 @@ from weasyprint import HTML
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
 def get_strain_profile(api_key, strain_name):
-    # Establish a reliable backup data context via a focused web search API string
     search_context = ""
     try:
         from duckduckgo_search import DDGS
         with DDGS() as ddgs:
-            # Explicitly target descriptive text across reliable cannabis databases
             query_string = f'"{strain_name}" strain lineage genetics terpenes effects parents'
             results = [r for r in ddgs.text(query_string, max_results=3)]
             if results:
@@ -17,7 +15,6 @@ def get_strain_profile(api_key, strain_name):
     except Exception:
         pass
 
-    # Process via Llama-3.3-70b-versatile acting as the master cross-reference database
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
@@ -29,7 +26,7 @@ def get_strain_profile(api_key, strain_name):
         "2. TERPENES: Isolate the dominant chemical terpene profile (e.g., 'Limone, Myrcene, Caryophyllene'). Never leave this blank or return N/A if the chemical properties are known in cannabis science.\n"
         "3. CLASSIFICATION: Must strictly be one of these three options: 'INDICA', 'SATIVA', or 'HYBRID'.\n"
         "4. FLAVOR & EFFECTS: Provide a concise list of consumer flavors and reported physical/cerebral effects.\n\n"
-        "Return ONLY a clean, valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'. Do not wrap the JSON in backticks or include any conversational intro/outro text."
+        "Return ONLY a clean, valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
     )
     
     payload = {
@@ -38,14 +35,13 @@ def get_strain_profile(api_key, strain_name):
             {"role": "system", "content": system_prompt}, 
             {"role": "user", "content": f"Target Strain: {strain_name}\n\nLive Supplemental Context:\n{search_context if search_context else 'No extra context available.'}"}
         ], 
-        "temperature": 0.0  # Forces factual consistency and eliminates creative variations
+        "temperature": 0.0
     }
     
     try:
         res = requests.post(url, headers=api_headers, json=payload, timeout=12)
         if res.status_code == 200:
             content = res.json()['choices'][0]['message']['content'].strip()
-            # Safety check to clean up any stray formatting strings
             if "{" in content and "}" in content: 
                 content = content[content.find("{"):content.rfind("}") + 1]
             return json.loads(content)
@@ -73,7 +69,7 @@ def get_compound_profile(api_key, compound_name):
         return {"error": f"Status code {res.status_code}"}
     except Exception as e: return {"error": str(e)}
 
-# Clean CSS layout configuration block for the live dashboard UI
+# UI Styling Configuration
 custom_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap');
@@ -110,7 +106,8 @@ st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<
 tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
 
 with tab1:
-    st.markdown("### 📥 Live Data Ingestion")
+    # --- MERCHANDISING GAP TOOL MODULE ---
+    st.markdown("### 📥 Live Restock Gap Analyzer")
     uploaded_file = st.file_uploader("Select Salesfloor & Curbside + any Category🔥Export Product, Room, & Quantity ONLY🔥Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
     if uploaded_file:
         try:
@@ -139,7 +136,6 @@ with tab1:
                 st.write("---")
                 st.dataframe(final_df, use_container_width=True, hide_index=True)
                 
-                # CRITICAL RESTORATION: Reset layout properties to print-ready high contrast light mode
                 pdf_html = f"""
                 <html>
                 <head>
@@ -193,8 +189,26 @@ with tab2:
     if "GROQ_API_KEY" not in st.secrets:
         st.error("🔒 Security Alert: GROQ_API_KEY missing from Streamlit secrets vault.")
     else:
-        query = st.text_input("AI Search Engine Input", placeholder="Type any strain name...", key="ai_search_box", label_visibility="collapsed").strip()
+        # Step 1: Initialize session state parameters to hold the active lookup target
+        if "active_query" not in st.session_state:
+            st.session_state.active_query = ""
+
+        # Step 2: Callback function that triggers immediately upon pressing enter
+        def clear_input_box():
+            st.session_state.active_query = st.session_state.strain_input_widget
+            st.session_state.strain_input_widget = ""  # Wipes the text field to empty string instantly
+
+        # Step 3: Draw the text widget using the callback engine config
+        st.text_input(
+            "AI Search Engine Input", 
+            placeholder="Type any strain name and press enter...", 
+            key="strain_input_widget", 
+            on_change=clear_input_box,
+            label_visibility="collapsed"
+        )
         
+        # Step 4: If an active item is captured by the engine, execute the backend query logic
+        query = st.session_state.active_query.strip()
         if query:
             with st.spinner(f"Querying molecular intelligence metrics for '{query}'..."):
                 data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
@@ -218,7 +232,6 @@ with tab2:
                     st.markdown(card_html, unsafe_allow_html=True)
                 else: st.error(f"Engine connection blip. Details: {data['error']}")
         
-        # Dedicated Cannabinoid & THC Variant Science Lookup Module
         st.write("---")
         st.markdown("### 🧪 Cannabinoid & THC Compound Encyclopedia")
         st.caption("Instant verification engine for compound behaviors, intoxication status, and consumer sales talking points.")
