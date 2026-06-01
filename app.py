@@ -1,4 +1,4 @@
-import streamlit as st, pandas as pd, base64, os, json, requests
+import streamlit as st, pandas as pd, base64, os, json, requests, random
 from weasyprint import HTML
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
@@ -93,6 +93,9 @@ custom_css = """
 .section-data { font-size: 17px; color: #E2E8F0; margin-top: 4px; line-height: 1.5; }
 .stDownloadButton button { background-color: #FDD835 !important; color: #0B0F19 !important; font-family: 'Urbanist', sans-serif; font-weight: 900; border: none !important; border-radius: 8px !important; padding: 14px !important; width: 100%; letter-spacing: 1px; }
 [data-testid='stDataFrame'] { border: 1px solid rgba(253, 216, 53, 0.1); border-radius: 8px; }
+
+/* Retro Game Rendering Styles */
+.game-container { background-color: #05070B; border: 3px solid #FDD835; padding: 20px; border-radius: 8px; font-family: monospace; font-size: 24px; line-height: 1.2; letter-spacing: 4px; text-align: center; margin-bottom: 15px; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -103,7 +106,7 @@ if os.path.exists(logo_path):
         logo_html = f'<img src="data:image/png;base64,{base64.b64encode(img_file.read()).decode("utf-8")}" style="height: 196px; margin-right: 30px; border-radius: 8px;">'
 
 st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<div class="brand-text"><h1>Ziggyz Strain Sniffer & Operational Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
-tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
+tab1, tab2, tab3 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE", "🎮 BREAKROOM MINI-ARCADE"])
 
 with tab1:
     # --- MERCHANDISING GAP TOOL MODULE ---
@@ -189,16 +192,13 @@ with tab2:
     if "GROQ_API_KEY" not in st.secrets:
         st.error("🔒 Security Alert: GROQ_API_KEY missing from Streamlit secrets vault.")
     else:
-        # Step 1: Initialize session state parameters to hold the active lookup target
         if "active_query" not in st.session_state:
             st.session_state.active_query = ""
 
-        # Step 2: Callback function that triggers immediately upon pressing enter
         def clear_input_box():
             st.session_state.active_query = st.session_state.strain_input_widget
-            st.session_state.strain_input_widget = ""  # Wipes the text field to empty string instantly
+            st.session_state.strain_input_widget = ""
 
-        # Step 3: Draw the text widget using the callback engine config
         st.text_input(
             "AI Search Engine Input", 
             placeholder="Type any strain name and press enter...", 
@@ -207,7 +207,6 @@ with tab2:
             label_visibility="collapsed"
         )
         
-        # Step 4: If an active item is captured by the engine, execute the backend query logic
         query = st.session_state.active_query.strip()
         if query:
             with st.spinner(f"Querying molecular intelligence metrics for '{query}'..."):
@@ -266,3 +265,155 @@ with tab2:
 </div>"""
                     st.markdown(chem_card_html, unsafe_allow_html=True)
                 else: st.error(f"Engine connection blip. Details: {chem_data['error']}")
+
+with tab3:
+    st.markdown("### 🎮 Ziggy's Breakroom Arcade")
+    game_mode = st.radio("Select Shift Duty", ["💼 Vault Escape (Stock Hunt)", "⚡ Budtender Frenzy (Patient Hustle)"], horizontal=True)
+    st.write("---")
+
+    # ------------------ GAME 1: VAULT ESCAPE ------------------
+    if game_mode == "💼 Vault Escape (Stock Hunt)":
+        st.markdown("#### 📦 Vault Escape: The Inventory Crawler")
+        st.caption("Navigate the layouts, grab the missing inventory cases, and dodge the compliance auditor!")
+        
+        MAZE = [
+            ["#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"],
+            ["#", "P", ".", ".", "#", ".", ".", ".", ".", ".", ".", "📦", ".", ".", "#"],
+            ["#", ".", "#", ".", "#", ".", "#", "#", "#", "#", "#", ".", "#", ".", "#"],
+            ["#", ".", "#", ".", ".", ".", ".", ".", ".", ".", "#", ".", "#", ".", "#"],
+            ["#", ".", "#", "#", "#", "#", ".", "#", "#", ".", "#", ".", "#", ".", "#"],
+            ["#", "📦", ".", ".", ".", "#", ".", "E", "#", ".", ".", ".", ".", "📦", "#"],
+            ["#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"]
+        ]
+        
+        if "v_x" not in st.session_state:
+            st.session_state.v_x, st.session_state.v_y = 1, 1
+            st.session_state.v_score, st.session_state.v_game_over = 0, False
+            st.session_state.v_left = 3
+            
+        def move_vault(dx, dy):
+            if st.session_state.v_game_over: return
+            nx, ny = st.session_state.v_x + dx, st.session_state.v_y + dy
+            if 0 <= ny < len(MAZE) and 0 <= nx < len(MAZE[0]) and MAZE[ny][nx] != "#":
+                st.session_state.v_x, st.session_state.v_y = nx, ny
+                if ny == 1 and nx == 11 and "vb1" not in st.session_state:
+                    st.session_state.vb1 = True; st.session_state.v_score += 100; st.session_state.v_left -= 1
+                elif ny == 5 and nx == 1 and "vb2" not in st.session_state:
+                    st.session_state.vb2 = True; st.session_state.v_score += 100; st.session_state.v_left -= 1
+                elif ny == 5 and nx == 13 and "vb3" not in st.session_state:
+                    st.session_state.vb3 = True; st.session_state.v_score += 100; st.session_state.v_left -= 1
+                if ny == 5 and nx == 7: st.session_state.v_game_over = True
+
+        v_rows = []
+        for y, row in enumerate(MAZE):
+            chars = []
+            for x, c in enumerate(row):
+                if y == st.session_state.v_y and x == st.session_state.v_x: chars.append("🤠")
+                elif y == 1 and x == 11 and "vb1" in st.session_state: chars.append(" floor ")
+                elif y == 5 and x == 1 and "vb2" in st.session_state: chars.append(" floor ")
+                elif y == 5 and x == 13 and "vb3" in st.session_state: chars.append(" floor ")
+                elif c == "#": chars.append("🧱")
+                elif c == "📦": chars.append("📦")
+                elif c == "E": chars.append("🕵️")
+                else: chars.append(" 🟩 ")
+            v_rows.append("".join(chars))
+            
+        cv, cp, cc = st.columns([6, 3, 3])
+        with cv:
+            st.markdown(f'<div class="game-container">{"<br>".join(v_rows)}</div>', unsafe_allow_html=True)
+            if st.session_state.v_left == 0:
+                st.success("🏆 Manifest Cleared! Stock safely logged back into the Dutchie vault.")
+                st.session_state.v_game_over = True
+            elif st.session_state.v_game_over:
+                st.error("🚨 Audit Violation! The compliance agent caught you running packages without an active Metrc tag.")
+            if st.button("🔄 Reset Vault"):
+                st.session_state.v_x, st.session_state.v_y = 1, 1
+                st.session_state.v_score, st.session_state.v_game_over, st.session_state.v_left = 0, False, 3
+                for k in ["vb1", "vb2", "vb3"]: st.session_state.pop(k, None)
+                st.rerun()
+        with cp:
+            st.metric("Score", f"{st.session_state.v_score} pts")
+            st.metric("Boxes Left", f"{st.session_state.v_left} / 3")
+        with cc:
+            st.button("🔼", key="v_up", on_click=move_vault, args=(0, -1))
+            r_mid = st.columns(2)
+            r_mid[0].button("◀️", key="v_lf", on_click=move_vault, args=(-1, 0))
+            r_mid[1].button("▶️", key="v_rt", on_click=move_vault, args=(1, 0))
+            st.button("🔽", key="v_dn", on_click=move_vault, args=(0, 1))
+
+    # ------------------ GAME 2: BUDTENDER FRENZY ------------------
+    else:
+        st.markdown("#### ⚡ Budtender Frenzy: The Patient Hustle")
+        st.caption("Patients are arriving at the showcases! Hustle your budtender to their location before their patience timer runs dry.")
+
+        F_MAZE = [
+            ["#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"],
+            ["#", ".", ".", ".", "#", ".", ".", ".", ".", ".", "#", ".", ".", ".", "#"],
+            ["#", ".", "#", ".", ".", ".", "#", "#", "#", ".", ".", ".", "#", ".", "#"],
+            ["#", ".", "#", ".", "#", ".", ".", ".", ".", ".", "#", ".", "#", ".", "#"],
+            ["#", ".", ".", ".", "#", ".", ".", ".", ".", ".", "#", ".", ".", ".", "#"],
+            ["#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"]
+        ]
+        
+        # Valid spawn points for targets (service desks)
+        COUNTERS = [(1, 2), (1, 8), (4, 2), (4, 7), (4, 12), (2, 4), (2, 10)]
+
+        if "f_x" not in st.session_state:
+            st.session_state.f_x, st.session_state.f_y = 1, 1
+            st.session_state.f_score = 0
+            st.session_state.f_patience = 25
+            st.session_state.f_game_over = False
+            st.session_state.f_target = random.choice(COUNTERS)
+            st.session_state.f_served = 0
+
+        def move_frenzy(dx, dy):
+            if st.session_state.f_game_over: return
+            nx, ny = st.session_state.f_x + dx, st.session_state.f_y + dy
+            if 0 <= ny < len(F_MAZE) and 0 <= nx < len(F_MAZE[0]) and F_MAZE[ny][nx] != "#":
+                st.session_state.f_x, st.session_state.f_y = nx, ny
+                st.session_state.f_patience -= 1  # Clock ticks on movement
+                
+                # Check patient target collision
+                if (ny, nx) == st.session_state.f_target:
+                    st.session_state.f_score += st.session_state.f_patience * 10
+                    st.session_state.f_served += 1
+                    st.session_state.f_patience = max(12, 25 - st.session_state.f_served)  # Speed increases
+                    
+                    # Spawn next patient location dynamically
+                    choices = [c for c in COUNTERS if c != (ny, nx)]
+                    st.session_state.f_target = random.choice(choices)
+                
+                if st.session_state.f_patience <= 0:
+                    st.session_state.f_game_over = True
+
+        f_rows = []
+        for y, row in enumerate(F_MAZE):
+            chars = []
+            for x, c in enumerate(row):
+                if y == st.session_state.f_y and x == st.session_state.f_x: chars.append("🧑‍🌾") # Budtender
+                elif (y, x) == st.session_state.f_target: chars.append("⏳") # Waiting Patient
+                elif c == "#": chars.append("🧱")
+                else: chars.append(" 🟩 ")
+            f_rows.append("".join(chars))
+
+        cf, cfp, cfc = st.columns([6, 3, 3])
+        with cf:
+            st.markdown(f'<div class="game-container">{"<br>".join(f_rows)}</div>', unsafe_allow_html=True)
+            if st.session_state.f_game_over:
+                st.error(f"⏱️ Lobby Walkout! A medical patient ran out of patience. You served {st.session_state.f_served} patrons.")
+            if st.button("🔄 Reset Shift Clock"):
+                st.session_state.f_x, st.session_state.f_y = 1, 1
+                st.session_state.f_score, st.session_state.f_patience, st.session_state.f_served = 0, 25, 0
+                st.session_state.f_game_over = False
+                st.session_state.f_target = random.choice(COUNTERS)
+                st.rerun()
+        with cfp:
+            st.metric("Total Sales Volume", f"{st.session_state.f_score} pts")
+            st.metric("Patience Counter", f"{st.session_state.f_patience} turns", delta=-1)
+            st.metric("Patients Checked Out", f"{st.session_state.f_served} served")
+        with cfc:
+            st.button("🔼", key="f_up", on_click=move_frenzy, args=(0, -1))
+            r_mid_f = st.columns(2)
+            r_mid_f[0].button("◀️", key="f_lf", on_click=move_frenzy, args=(-1, 0))
+            r_mid_f[1].button("▶️", key="f_rt", on_click=move_frenzy, args=(1, 0))
+            st.button("🔽", key="f_dn", on_click=move_frenzy, args=(0, 1))
