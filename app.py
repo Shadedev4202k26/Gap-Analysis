@@ -2,46 +2,36 @@ import streamlit as st, pandas as pd, base64, os, json, requests, re
 from urllib.request import Request, urlopen
 from urllib.parse import quote_plus
 from bs4 import BeautifulSoup
-from weasyprint import HTML
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from io import BytesIO
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
 def unlimited_live_search(query_string):
-    """
-    Scrapes live search results directly from DuckDuckGo HTML.
-    Completely free, requires no API keys, and has no usage caps.
-    """
     search_context = []
     try:
-        # Format the URL with proper encoding and mask the request with a standard browser User-Agent
         url = f"https://html.duckduckgo.com/html/?q={quote_plus(query_string)}"
         req = Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'})
-        
         with urlopen(req, timeout=8) as response:
             soup = BeautifulSoup(response.read(), 'html.parser')
-            
-        # Target the standard web result containers in DuckDuckGo's HTML structure
         results = soup.find_all('div', class_='result__body')
-        
-        for index, result in enumerate(results[:4]): # Grab top 4 organic results
+        for index, result in enumerate(results[:4]):
             snippet_element = result.find('a', class_='result__snip')
             title_element = result.find('a', class_='result__url')
-            
             if snippet_element and title_element:
                 text_content = snippet_element.get_text(strip=True)
                 title_text = title_element.get_text(strip=True)
                 search_context.append(f"Source [{index+1}]: {title_text}\nData: {text_content}")
-                
         return "\n\n".join(search_context)
     except Exception:
-        # Safe fallback if network/scraping gets temporarily blocked or timed out
         return ""
 
 def get_strain_profile(api_key, strain_name):
-    # Fire off the free live scraper with a hyper-targeted query structure
     query_string = f'"{strain_name}" strain lineage genetics terpenes effects'
     search_context = unlimited_live_search(query_string)
-
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
@@ -74,7 +64,6 @@ def get_strain_profile(api_key, strain_name):
             return json.loads(content)
     except Exception as e:
         return {"error": str(e)}
-        
     return {"classification": "HYBRID", "lineage": "Proprietary / Unverified Genetics", "terpenes": "N/A", "flavor": "N/A", "effects": "N/A"}
 
 def get_compound_profile(api_key, compound_name):
@@ -95,6 +84,62 @@ def get_compound_profile(api_key, compound_name):
             return json.loads(content)
         return {"error": f"Status code {res.status_code}"}
     except Exception as e: return {"error": str(e)}
+
+def build_pdf(dataframe):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+    story = []
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=22, textColor=colors.HexColor('#111827'), spaceAfter=4)
+    subtitle_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=11, textColor=colors.HexColor('#4B5563'), fontName='Helvetica-Bold', spaceAfter=20)
+    cell_style = ParagraphStyle('CellText', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#374151'))
+    header_style = ParagraphStyle('HeaderText', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold', textColor=colors.HexColor('#111827'))
+
+    story.append(Paragraph("Ziggyz Merchandise Gap Report", title_style))
+    story.append(Paragraph("HIGH-IMPACT FLOOR RESTOCK & DISCREPANCY MANIFEST", subtitle_style))
+    story.append(Spacer(1, 10))
+    
+    # Generate structured metrics block table
+    metric_data = [
+        [Paragraph(f"<b>High-Impact Gaps:</b> {len(dataframe)}", cell_style),
+         Paragraph(f"<b>Units to Move:</b> {dataframe['Available Qty'].sum()}", cell_style),
+         Paragraph("<b>Min Threshold:</b> 15+", cell_style)]
+    ]
+    metric_table = Table(metric_data, colWidths=[180, 180, 172])
+    metric_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F9FAFB')),
+        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#E5E7EB')),
+        ('PADDING', (0,0), (-1,-1), 12),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+    ]))
+    story.append(metric_table)
+    story.append(Spacer(1, 25))
+    
+    # Process products layout
+    table_content = [[Paragraph("Product Name", header_style), Paragraph("Location", header_style), Paragraph("Available Qty", header_style)]]
+    for _, row in dataframe.iterrows():
+        table_content.append([
+            Paragraph(str(row['Product Name']), cell_style),
+            Paragraph(str(row['Location']), cell_style),
+            Paragraph(str(row['Available Qty']), cell_style)
+        ])
+        
+    data_table = Table(table_content, colWidths=[312, 110, 110])
+    data_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F3F4F6')),
+        ('BOTTOMPADDING', (0,0), (-1,0), 10),
+        ('TOPPADDING', (0,0), (-1,0), 10),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F9FAFB')]),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('PADDING', (0,0), (-1,-1), 8),
+    ]))
+    
+    story.append(data_table)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 # UI Styling Configuration
 custom_css = """
@@ -162,50 +207,8 @@ with tab1:
                 st.write("---")
                 st.dataframe(final_df, use_container_width=True, hide_index=True)
                 
-                pdf_html = f"""
-                <html>
-                <head>
-                <style>
-                    @page {{ size: A4; margin: 20mm; background-color: #FFFFFF; }}
-                    body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1F2937; background-color: #FFFFFF; margin: 0; padding: 0; }}
-                    .header {{ border-left: 6px solid #EAB308; padding-left: 15px; margin-bottom: 25px; }}
-                    h1 {{ font-size: 26px; color: #111827; text-transform: uppercase; margin: 0; font-weight: bold; letter-spacing: -0.5px; }}
-                    .subhead {{ color: #4B5563; font-size: 12px; margin: 5px 0 0 0; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }}
-                    .summary-container {{ display: table; width: 100%; margin-top: 25px; margin-bottom: 30px; border-collapse: separate; border-spacing: 12px 0; }}
-                    .metric-box {{ display: table-cell; width: 33.33%; background-color: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 12px; text-align: center; vertical-align: middle; }}
-                    .label {{ color: #4B5563; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }}
-                    .value {{ font-size: 22px; font-weight: bold; color: #111827; margin: 0; }}
-                    table {{ width: 100%; border-collapse: collapse; background-color: #FFFFFF; border-radius: 8px; overflow: hidden; margin-top: 10px; border: 1px solid #E5E7EB; }}
-                    th {{ background-color: #F3F4F6; color: #111827; text-transform: uppercase; font-size: 11px; font-weight: bold; letter-spacing: 1px; padding: 12px; text-align: left; border-bottom: 2px solid #D1D5DB; }}
-                    td {{ padding: 12px; color: #374151; font-size: 13px; border-bottom: 1px solid #E5E7EB; }}
-                    tr:nth-child(even) {{ background-color: #F9FAFB; }}
-                </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <h1>Ziggyz Merchandise Gap Report</h1>
-                        <div class="subhead">High-Impact Floor Restock & Discrepancy Manifest</div>
-                    </div>
-                    <div class="summary-container">
-                        <div class="metric-box">
-                            <div class="label">High-Impact Gaps</div>
-                            <div class="value">{len(final_df)}</div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="label">Units to Move</div>
-                            <div class="value">{final_df["Available Qty"].sum()}</div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="label">Min Threshold</div>
-                            <div class="value">15+</div>
-                        </div>
-                    </div>
-                    {final_df.to_html(index=False)}
-                </body>
-                </html>
-                """
-                pdf_out = HTML(string=pdf_html).write_pdf()
-                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_out, "Ziggy_Report.pdf", "application/pdf")
+                pdf_data = build_pdf(final_df)
+                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_data, "Ziggy_Report.pdf", "application/pdf")
             else:
                 st.info("No gaps found matching the 15+ unit threshold.")
         except Exception as e: st.error(f"Analysis Error: {e}")
