@@ -1,19 +1,46 @@
-import streamlit as st, pandas as pd, base64, os, json, requests
+import streamlit as st, pandas as pd, base64, os, json, requests, re
+from urllib.request import Request, urlopen
+from urllib.parse import quote_plus
+from bs4 import BeautifulSoup
 from weasyprint import HTML
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
-def get_strain_profile(api_key, strain_name):
-    search_context = ""
+def unlimited_live_search(query_string):
+    """
+    Scrapes live search results directly from DuckDuckGo HTML.
+    Completely free, requires no API keys, and has no usage caps.
+    """
+    search_context = []
     try:
-        from duckduckgo_search import DDGS
-        with DDGS() as ddgs:
-            query_string = f'"{strain_name}" strain lineage genetics terpenes effects parents'
-            results = [r for r in ddgs.text(query_string, max_results=3)]
-            if results:
-                search_context = "\n\n".join([f"Data Source Snippet:\n{r['body']}" for r in results])
+        # Format the URL with proper encoding and mask the request with a standard browser User-Agent
+        url = f"https://html.duckduckgo.com/html/?q={quote_plus(query_string)}"
+        req = Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'})
+        
+        with urlopen(req, timeout=8) as response:
+            soup = BeautifulSoup(response.read(), 'html.parser')
+            
+        # Target the standard web result containers in DuckDuckGo's HTML structure
+        results = soup.find_all('div', class_='result__body')
+        
+        for index, result in enumerate(results[:4]): # Grab top 4 organic results
+            snippet_element = result.find('a', class_='result__snip')
+            title_element = result.find('a', class_='result__url')
+            
+            if snippet_element and title_element:
+                text_content = snippet_element.get_text(strip=True)
+                title_text = title_element.get_text(strip=True)
+                search_context.append(f"Source [{index+1}]: {title_text}\nData: {text_content}")
+                
+        return "\n\n".join(search_context)
     except Exception:
-        pass
+        # Safe fallback if network/scraping gets temporarily blocked or timed out
+        return ""
+
+def get_strain_profile(api_key, strain_name):
+    # Fire off the free live scraper with a hyper-targeted query structure
+    query_string = f'"{strain_name}" strain lineage genetics terpenes effects'
+    search_context = unlimited_live_search(query_string)
 
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -23,7 +50,7 @@ def get_strain_profile(api_key, strain_name):
         "You will synthesize your extensive pre-trained knowledge of cannabis genetics along with the provided live search context fragments to compile a 100% accurate profile for the requested strain.\n\n"
         "CRITICAL EXTRACTION INSTRUCTIONS:\n"
         "1. LINEAGE: Identify the exact direct parental cross (e.g., 'GSC X Pink Panties' for Sunset Sherbert). Prioritize universally accepted lineage facts. If the lineage is completely unknown or a closely guarded breeder secret, output 'Proprietary / Unverified Genetics'.\n"
-        "2. TERPENES: Isolate the dominant chemical terpene profile (e.g., 'Limone, Myrcene, Caryophyllene'). Never leave this blank or return N/A if the chemical properties are known in cannabis science.\n"
+        "2. TERPENES: Isolate the dominant chemical terpene profile (e.g., 'Limonene, Myrcene, Caryophyllene'). Never leave this blank or return N/A if the chemical properties are known in cannabis science.\n"
         "3. CLASSIFICATION: Must strictly be one of these three options: 'INDICA', 'SATIVA', or 'HYBRID'.\n"
         "4. FLAVOR & EFFECTS: Provide a concise list of consumer flavors and reported physical/cerebral effects.\n\n"
         "Return ONLY a clean, valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
@@ -106,7 +133,6 @@ st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<
 tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
 
 with tab1:
-    # --- MERCHANDISING GAP TOOL MODULE ---
     st.markdown("### 📥 Live Restock Gap Analyzer")
     uploaded_file = st.file_uploader("Select Salesfloor & Curbside + any Category🔥Export Product, Room, & Quantity ONLY🔥Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
     if uploaded_file:
@@ -206,7 +232,7 @@ with tab2:
         
         query = st.session_state.active_query.strip()
         if query:
-            with st.spinner(f"Querying molecular intelligence metrics for '{query}'..."):
+            with st.spinner(f"Running automated raw web extraction for '{query}'..."):
                 data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
                 if "error" not in data:
                     clf = str(data.get('classification', 'HYBRID')).upper()
