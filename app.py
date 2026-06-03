@@ -10,39 +10,75 @@ from io import BytesIO
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
-def unlimited_live_search(query_string):
+def free_google_live_search(query_string):
+    """
+    Scrapes live snippets from Google's fallback mobile interface.
+    Completely free and bypasses standard API restrictions.
+    """
     search_context = []
     try:
-        url = f"https://html.duckduckgo.com/html/?q={quote_plus(query_string)}"
-        req = Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'})
-        with urlopen(req, timeout=8) as response:
+        url = f"https://www.google.com/search?q={quote_plus(query_string)}"
+        # Emulate an old Android mobile device to force Google to return a clean, scrapeable HTML structure
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MTC20F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9'
+        }
+        req = Request(url, headers=headers)
+        
+        with urlopen(req, timeout=7) as response:
             soup = BeautifulSoup(response.read(), 'html.parser')
-        results = soup.find_all('div', class_='result__body')
-        for index, result in enumerate(results[:4]):
-            snippet_element = result.find('a', class_='result__snip')
-            title_element = result.find('a', class_='result__url')
-            if snippet_element and title_element:
-                text_content = snippet_element.get_text(strip=True)
-                title_text = title_element.get_text(strip=True)
-                search_context.append(f"Source [{index+1}]: {title_text}\nData: {text_content}")
+            
+        # Target Google's mobile result summary blocks (typically contained in 'div' elements with specific layout classes)
+        blocks = soup.find_all('div', class_='BNeawe s3v9rd AP77S')
+        
+        for index, block in enumerate(blocks[:5]): # Extract data fragments from top 5 matches
+            text = block.get_text(strip=True)
+            if len(text) > 30 and text not in search_context:
+                search_context.append(f"Google Extract [{index+1}]: {text}")
+                
         return "\n\n".join(search_context)
     except Exception:
         return ""
 
-def get_strain_profile(api_key, strain_name):
+def google_official_free_api(query_string, api_key, cse_id):
+    """
+    Optional Backup: Queries Google's official Programmable Search API (100 free queries/day).
+    To use this, add GOOGLE_API_KEY and GOOGLE_CSE_ID to your Streamlit secrets.
+    """
+    try:
+        url = f"https://www.googleapis.com/customsearch/v1?key={api_key}&cx={cse_id}&q={quote_plus(query_string)}"
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            items = res.json().get('items', [])
+            return "\n\n".join([f"Source: {i['title']}\nData: {i['snippet']}" for i in items[:3]])
+    except Exception:
+        pass
+    return ""
+
+def get_strain_profile(groq_key, strain_name):
     query_string = f'"{strain_name}" strain lineage genetics terpenes effects'
-    search_context = unlimited_live_search(query_string)
+    
+    # Check if official Google Custom Search secrets are present, otherwise default to the free scraper
+    google_key = st.secrets.get("GOOGLE_API_KEY", None)
+    cse_id = st.secrets.get("GOOGLE_CSE_ID", None)
+    
+    if google_key and cse_id:
+        search_context = google_official_free_api(query_string, google_key, cse_id)
+    else:
+        search_context = free_google_live_search(query_string)
+
     url = "https://api.groq.com/openai/v1/chat/completions"
-    api_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    api_headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
     
     system_prompt = (
-        "You are an expert, deterministic cannabis strain database parser. Your sole objective is outputting clean, structured JSON.\n"
-        "You will synthesize your extensive pre-trained knowledge of cannabis genetics along with the provided live search context fragments to compile a 100% accurate profile for the requested strain.\n\n"
+        "You are an expert cannabis strain database compiler. Your sole objective is outputting clean, structured JSON.\n"
+        "You will synthesize the live Google search text fragments provided to parse out true genetic facts. "
+        "Even for rare, proprietary, or boutique marketplace strains, use the context clues to deduce the lineage or brand profile.\n\n"
         "CRITICAL EXTRACTION INSTRUCTIONS:\n"
-        "1. LINEAGE: Identify the exact direct parental cross (e.g., 'GSC X Pink Panties' for Sunset Sherbert). Prioritize universally accepted lineage facts. If the lineage is completely unknown or a closely guarded breeder secret, output 'Proprietary / Unverified Genetics'.\n"
-        "2. TERPENES: Isolate the dominant chemical terpene profile (e.g., 'Limonene, Myrcene, Caryophyllene'). Never leave this blank or return N/A if the chemical properties are known in cannabis science.\n"
-        "3. CLASSIFICATION: Must strictly be one of these three options: 'INDICA', 'SATIVA', or 'HYBRID'.\n"
-        "4. FLAVOR & EFFECTS: Provide a concise list of consumer flavors and reported physical/cerebral effects.\n\n"
+        "1. LINEAGE: Identify the direct parental cross. If the snippets mention a specific breeder brand or localized origin, capture that context accurately.\n"
+        "2. TERPENES: Isolate the dominant terpene profile based on the search data. Never leave blank.\n"
+        "3. CLASSIFICATION: Strictly output 'INDICA', 'SATIVA', or 'HYBRID'.\n"
+        "4. FLAVOR & EFFECTS: Provide a summary of consumer properties found in the live text.\n\n"
         "Return ONLY a clean, valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
     )
     
@@ -50,7 +86,7 @@ def get_strain_profile(api_key, strain_name):
         "model": "llama-3.3-70b-versatile", 
         "messages": [
             {"role": "system", "content": system_prompt}, 
-            {"role": "user", "content": f"Target Strain: {strain_name}\n\nLive Supplemental Context:\n{search_context if search_context else 'No extra context available.'}"}
+            {"role": "user", "content": f"Target Strain: {strain_name}\n\nLive Google Context:\n{search_context if search_context else 'No extra context available.'}"}
         ], 
         "temperature": 0.0
     }
@@ -100,7 +136,6 @@ def build_pdf(dataframe):
     story.append(Paragraph("HIGH-IMPACT FLOOR RESTOCK & DISCREPANCY MANIFEST", subtitle_style))
     story.append(Spacer(1, 10))
     
-    # Generate structured metrics block table
     metric_data = [
         [Paragraph(f"<b>High-Impact Gaps:</b> {len(dataframe)}", cell_style),
          Paragraph(f"<b>Units to Move:</b> {dataframe['Available Qty'].sum()}", cell_style),
@@ -116,7 +151,6 @@ def build_pdf(dataframe):
     story.append(metric_table)
     story.append(Spacer(1, 25))
     
-    # Process products layout
     table_content = [[Paragraph("Product Name", header_style), Paragraph("Location", header_style), Paragraph("Available Qty", header_style)]]
     for _, row in dataframe.iterrows():
         table_content.append([
@@ -235,7 +269,7 @@ with tab2:
         
         query = st.session_state.active_query.strip()
         if query:
-            with st.spinner(f"Running automated raw web extraction for '{query}'..."):
+            with st.spinner(f"Running Google Engine raw parsing for '{query}'..."):
                 data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
                 if "error" not in data:
                     clf = str(data.get('classification', 'HYBRID')).upper()
@@ -255,6 +289,10 @@ with tab2:
 <div class="section-head">🧠 Reported Consumer Effects</div><div class="section-data">{data.get('effects', 'N/A')}</div>
 </div>"""
                     st.markdown(card_html, unsafe_allow_html=True)
+                    
+                    # Add a free fallback deep-link helper directly inside the UI card
+                    google_link = f"https://www.google.com/search?q={quote_plus(query + ' strain lineage genetics')}"
+                    st.markdown(f'🔗 **Not seeing specific boutique data?** [Click here to force open direct Google Search Results for "{query}"]({google_link})')
                 else: st.error(f"Engine connection blip. Details: {data['error']}")
         
         st.write("---")
