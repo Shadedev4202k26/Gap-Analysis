@@ -7,7 +7,7 @@ import random
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Ziggybot Hub", page_icon="🔥", layout="wide")
 
-# --- FULL UI STYLING ---
+# --- UI STYLING ---
 custom_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap');
@@ -24,7 +24,7 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# --- SVG HANGMAN ENGINE ---
+# --- SVG ENGINE ---
 def get_hangman_svg(stage):
     stages = [
         '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="190" x2="100" y2="20" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="20" x2="160" y2="20" stroke="#8B4513" stroke-width="6"/><line x1="160" y1="20" x2="160" y2="50" stroke="#8B4513" stroke-width="4"/></svg>',
@@ -37,7 +37,7 @@ def get_hangman_svg(stage):
     ]
     return stages[min(stage, len(stages)-1)]
 
-# --- GAME ENGINE ---
+# --- GAME LOGIC ---
 def reset_game():
     bank = {"PINENE": "Known for pine-like aroma.", "LINALOOL": "Floral, lavender-like scent.", "MYRCENE": "Earthy, musky, herbal terpene."}
     word = random.choice(list(bank.keys()))
@@ -45,13 +45,17 @@ def reset_game():
 
 if "game" not in st.session_state: reset_game()
 
-# --- UI RENDER ---
+# --- APP LAYOUT ---
 st.markdown(f'<div class="brand-banner"><div class="brand-text"><h1>ZIGGYZ STRAIN SNIFFER</h1></div></div>', unsafe_allow_html=True)
 tab1, tab2, tab3 = st.tabs(["📊 INVENTORY", "🔍 AI PROFILER", "🧠 GAME HUB"])
 
+with tab1:
+    st.markdown("### 📊 Inventory Overview")
+with tab2:
+    st.markdown("### 🔍 AI Strain Profiler")
 with tab3:
     st.markdown("### 🎮 Ziggy's Cannabis Hangman")
-    # Safety check for key existence
+    # Robust key existence check
     if "over" not in st.session_state.game: reset_game()
 
     c1, c2 = st.columns([1, 1.5])
