@@ -21,11 +21,12 @@ custom_css = """
 .hangman-box { display: flex; justify-content: center; align-items: center; background: #0B0F19; border-radius: 12px; padding: 20px; border: 1px solid #374151; }
 .letter-display { font-size: 50px; font-weight: 900; letter-spacing: 15px; color: #FDD835; text-align: center; margin: 30px 0; }
 .hint-box { background: #1F2937; padding: 15px; border-radius: 8px; border-left: 4px solid #10B981; margin-top: 10px; }
+.strain-card { background: #111827; padding: 20px; border-radius: 12px; border: 1px solid #374151; margin-bottom: 15px; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# --- SVG HANGMAN ENGINE ---
+# --- SVG ENGINE ---
 def get_hangman_svg(stage):
     stages = [
         '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="190" x2="100" y2="20" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="20" x2="160" y2="20" stroke="#8B4513" stroke-width="6"/><line x1="160" y1="20" x2="160" y2="50" stroke="#8B4513" stroke-width="4"/></svg>',
@@ -58,14 +59,21 @@ tab1, tab2, tab3 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BA
 with tab1:
     st.markdown("### 📥 Live Restock Gap Analyzer")
     uploaded_file = st.file_uploader("Upload Dutchie Export", type="csv")
-    # --- INSERT YOUR CSV PROCESSING LOGIC HERE ---
     if uploaded_file:
-        st.write("Processing file...")
+        df = pd.read_csv(uploaded_file)
+        st.dataframe(df, use_container_width=True)
 
 with tab2:
     st.markdown("### 🔍 Verified AI Strain Profiler")
-    strain_search = st.text_input("Enter Strain Name")
-    # --- INSERT YOUR SEARCH LOGIC HERE ---
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        search = st.text_input("Search Strain Library")
+        category = st.selectbox("Category", ["Flower", "Concentrate", "Edible", "Vape"])
+    with c2:
+        if st.button("Search Database"):
+            st.info(f"Searching for {search} in {category}...")
+            # Placeholder for your strain lookup display logic
+            st.markdown(f'<div class="strain-card"><h4>Results for {search}</h4><p>Data will appear here.</p></div>', unsafe_allow_html=True)
 
 with tab3:
     st.markdown("### 🎮 Ziggy's Learning Hub")
