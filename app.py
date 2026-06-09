@@ -46,12 +46,14 @@ def reset_game():
 if "game" not in st.session_state: reset_game()
 
 # --- UI RENDER ---
-logo_html = '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" style="height: 50px;">'
-st.markdown(f'<div class="brand-banner">{logo_html}<div class="brand-text"><h1>ZIGGYZ STRAIN SNIFFER</h1></div></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="brand-banner"><div class="brand-text"><h1>ZIGGYZ STRAIN SNIFFER</h1></div></div>', unsafe_allow_html=True)
 tab1, tab2, tab3 = st.tabs(["📊 INVENTORY", "🔍 AI PROFILER", "🧠 GAME HUB"])
 
 with tab3:
     st.markdown("### 🎮 Ziggy's Cannabis Hangman")
+    # Safety check for key existence
+    if "over" not in st.session_state.game: reset_game()
+
     c1, c2 = st.columns([1, 1.5])
     with c1:
         st.markdown(f'<div class="hangman-box">{get_hangman_svg(st.session_state.game["stage"])}</div>', unsafe_allow_html=True)
