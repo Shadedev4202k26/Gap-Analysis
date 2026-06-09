@@ -68,12 +68,12 @@ with tab2:
     c1, c2 = st.columns([1, 1])
     with c1:
         search = st.text_input("Search Strain Library")
-        category = st.selectbox("Category", ["Flower", "Concentrate", "Edible", "Vape"])
     with c2:
-        if st.button("Search Database"):
-            st.info(f"Searching for {search} in {category}...")
-            # Placeholder for your strain lookup display logic
-            st.markdown(f'<div class="strain-card"><h4>Results for {search}</h4><p>Data will appear here.</p></div>', unsafe_allow_html=True)
+        cannabinoid = st.selectbox("Cannabinoid Lookup", ["THC", "CBD", "CBG", "CBN", "CBC", "THCV"])
+        
+    if st.button("Search Database"):
+        st.info(f"Searching for {search} filtered by {cannabinoid}...")
+        st.markdown(f'<div class="strain-card"><h4>Results for {search} ({cannabinoid})</h4><p>Data will appear here.</p></div>', unsafe_allow_html=True)
 
 with tab3:
     st.markdown("### 🎮 Ziggy's Learning Hub")
