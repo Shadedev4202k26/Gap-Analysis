@@ -9,10 +9,6 @@ from io import BytesIO
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
 def parse_pasted_context(groq_key, strain_name, raw_pasted_text):
-    """
-    Takes raw pasted text from a manual search and uses Llama-3.3 to cleanly 
-    structure it, avoiding all data center blocks and CAPTCHAs.
-    """
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
     
@@ -68,7 +64,7 @@ def get_compound_profile(api_key, compound_name):
         return {"error": f"Status code {res.status_code}"}
     except Exception as e: return {"error": str(e)}
 
-def build_pdf(dataframe):
+def build_pdf(dataframe, threshold_value):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
     story = []
@@ -86,7 +82,7 @@ def build_pdf(dataframe):
     metric_data = [
         [Paragraph(f"<b>High-Impact Gaps:</b> {len(dataframe)}", cell_style),
          Paragraph(f"<b>Units to Move:</b> {dataframe['Available Qty'].sum()}", cell_style),
-         Paragraph("<b>Min Threshold:</b> 15+", cell_style)]
+         Paragraph(f"<b>Min Threshold:</b> {threshold_value}+", cell_style)]
     ]
     metric_table = Table(metric_data, colWidths=[180, 180, 172])
     metric_table.setStyle(TableStyle([
@@ -146,6 +142,8 @@ custom_css = """
 .section-data { font-size: 17px; color: #E2E8F0; margin-top: 4px; line-height: 1.5; }
 .stDownloadButton button { background-color: #FDD835 !important; color: #0B0F19 !important; font-family: 'Urbanist', sans-serif; font-weight: 900; border: none !important; border-radius: 8px !important; padding: 14px !important; width: 100%; letter-spacing: 1px; }
 [data-testid='stDataFrame'] { border: 1px solid rgba(253, 216, 53, 0.1); border-radius: 8px; }
+/* Custom layout overrides for slider visibility */
+div[data-testid="stSlider"] label { color: #FDD835 !important; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -160,7 +158,14 @@ tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
 
 with tab1:
     st.markdown("### 📥 Live Restock Gap Analyzer")
-    uploaded_file = st.file_uploader("Select Salesfloor & Curbside + any Category🔥Export Product, Room, & Quantity ONLY🔥Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
+    
+    # NEW FEATURE: Dynamic Threshold Slider setup
+    col_file, col_slider = st.columns([3, 2])
+    with col_file:
+        uploaded_file = st.file_uploader("Select Salesfloor & Curbside + any Category🔥Export Product, Room, & Quantity ONLY🔥Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
+    with col_slider:
+        min_threshold = st.slider("Adjust Minimum Backstock Target Threshold:", min_value=1, max_value=50, value=15, step=1, help="Adjust this lower (e.g., 5) for high-end concentrates/vapes or higher for top-tier pre-rolls/flower.")
+        
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
@@ -176,7 +181,9 @@ with tab1:
                 present, absent = row[row > 0].index.tolist(), row[row == 0].index.tolist()
                 if absent and present:
                     for r in present:
-                        if row[r] >= 15: results.append({"Product Name": product, "Location": r, "Available Qty": int(row[r])})
+                        # Evaluates dynamically using slider selection rather than a static 15
+                        if row[r] >= min_threshold: 
+                            results.append({"Product Name": product, "Location": r, "Available Qty": int(row[r])})
             
             final_df = pd.DataFrame(results)
             if not final_df.empty:
@@ -184,14 +191,14 @@ with tab1:
                 m1, m2, m3 = st.columns(3)
                 with m1: st.markdown(f'<div class="metric-tile"><div class="metric-label">High-Impact Gaps</div><div class="metric-value">{len(final_df)}</div></div>', unsafe_allow_html=True)
                 with m2: st.markdown(f'<div class="metric-tile"><div class="metric-label">Units to Move</div><div class="metric-value">{final_df["Available Qty"].sum()}</div></div>', unsafe_allow_html=True)
-                with m3: st.markdown(f'<div class="metric-tile"><div class="metric-label">Min Threshold</div><div class="metric-value">15+</div></div>', unsafe_allow_html=True)
+                with m3: st.markdown(f'<div class="metric-tile"><div class="metric-label">Min Threshold</div><div class="metric-value">{min_threshold}+</div></div>', unsafe_allow_html=True)
                 st.write("---")
                 st.dataframe(final_df, use_container_width=True, hide_index=True)
                 
-                pdf_data = build_pdf(final_df)
+                pdf_data = build_pdf(final_df, min_threshold)
                 st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_data, "Ziggy_Report.pdf", "application/pdf")
             else:
-                st.info("No gaps found matching the 15+ unit threshold.")
+                st.info(f"No gaps found matching the {min_threshold}+ unit threshold.")
         except Exception as e: st.error(f"Analysis Error: {e}")
 
 with tab2:
@@ -199,7 +206,6 @@ with tab2:
     if "GROQ_API_KEY" not in st.secrets:
         st.error("🔒 Security Alert: GROQ_API_KEY missing from Streamlit secrets vault.")
     else:
-        # Layout splitting input and deep-linking helpers
         col_input, col_link = st.columns([3, 2])
         
         with col_input:
