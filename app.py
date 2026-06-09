@@ -21,7 +21,6 @@ custom_css = """
 .hangman-box { display: flex; justify-content: center; align-items: center; background: #0B0F19; border-radius: 12px; padding: 20px; border: 1px solid #374151; }
 .letter-display { font-size: 50px; font-weight: 900; letter-spacing: 15px; color: #FDD835; text-align: center; margin: 30px 0; }
 .hint-box { background: #1F2937; padding: 15px; border-radius: 8px; border-left: 4px solid #10B981; margin-top: 10px; }
-.strain-card { background: #111827; padding: 20px; border-radius: 12px; border: 1px solid #374151; margin-bottom: 15px; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -46,6 +45,7 @@ def reset_game():
     st.session_state.game = {"word": word, "revealed": [word[0]] + ["_"]*(len(word)-1), "guesses": [word[0]], "stage": 0, "hint": bank[word], "over": False}
 
 # --- HEADER / BRANDING ---
+# Look for local image file
 logo_html = ""
 if os.path.exists('image.png'):
     with open('image.png', 'rb') as f:
@@ -65,15 +65,13 @@ with tab1:
 
 with tab2:
     st.markdown("### 🔍 Verified AI Strain Profiler")
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        search = st.text_input("Search Strain Library")
-    with c2:
-        cannabinoid = st.selectbox("Cannabinoid Lookup", ["THC", "CBD", "CBG", "CBN", "CBC", "THCV"])
+    # Restored Cannabinoid Lookup
+    strain_name = st.text_input("Search Strain Name")
+    cannabinoid_query = st.text_input("Cannabinoid Lookup (e.g., THC, CBD)")
         
     if st.button("Search Database"):
-        st.info(f"Searching for {search} filtered by {cannabinoid}...")
-        st.markdown(f'<div class="strain-card"><h4>Results for {search} ({cannabinoid})</h4><p>Data will appear here.</p></div>', unsafe_allow_html=True)
+        st.info(f"Searching for {strain_name} with focus on {cannabinoid_query}...")
+        st.markdown(f'<div class="strain-card"><h4>Results for {strain_name}</h4><p>Cannabinoid data ({cannabinoid_query}) will appear here.</p></div>', unsafe_allow_html=True)
 
 with tab3:
     st.markdown("### 🎮 Ziggy's Learning Hub")
