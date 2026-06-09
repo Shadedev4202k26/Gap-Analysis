@@ -70,10 +70,10 @@ def build_pdf(dataframe, threshold_value):
     story = []
     
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=22, textColor=colors.HexColor('#111827'), spaceAfter=4)
+    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=22, textColor=colors.HexColor('#0F172A'), spaceAfter=4)
     subtitle_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=11, textColor=colors.HexColor('#4B5563'), fontName='Helvetica-Bold', spaceAfter=20)
     cell_style = ParagraphStyle('CellText', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#374151'))
-    header_style = ParagraphStyle('HeaderText', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold', textColor=colors.HexColor('#111827'))
+    header_style = ParagraphStyle('HeaderText', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold', textColor=colors.HexColor('#0F172A'))
 
     story.append(Paragraph("Ziggyz Merchandise Gap Report", title_style))
     story.append(Paragraph("HIGH-IMPACT FLOOR RESTOCK & DISCREPANCY MANIFEST", subtitle_style))
@@ -86,7 +86,7 @@ def build_pdf(dataframe, threshold_value):
     ]
     metric_table = Table(metric_data, colWidths=[180, 180, 172])
     metric_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F9FAFB')),
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F8FAFC')),
         ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#E5E7EB')),
         ('PADDING', (0,0), (-1,-1), 12),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
@@ -107,7 +107,7 @@ def build_pdf(dataframe, threshold_value):
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F3F4F6')),
         ('BOTTOMPADDING', (0,0), (-1,0), 10),
         ('TOPPADDING', (0,0), (-1,0), 10),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F9FAFB')]),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F8FAFC')]),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('PADDING', (0,0), (-1,-1), 8),
@@ -118,32 +118,63 @@ def build_pdf(dataframe, threshold_value):
     buffer.seek(0)
     return buffer.getvalue()
 
-# UI Styling Configuration
+# UI Styling Configuration (Ziggy Urban Theme)
 custom_css = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap');
-.stApp { background-color: #0B0F19; color: #F9FAFB; font-family: 'DM Sans', sans-serif; }
-.brand-banner { background-color: #111827; border-radius: 12px; border-left: 6px solid #FDD835; margin-bottom: 25px; display: flex; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
-.brand-text h1 { font-family: 'Urbanist', sans-serif; font-weight: 900; color: #FDD835 !important; font-size: 40px; margin: 0; letter-spacing: -1px; text-transform: uppercase; }
-.brand-text p { color: #94A3B8; margin: 3px 0 0 0; font-size: 15px; letter-spacing: 0.5px; }
-.stTabs [data-baseweb='tab-list'] { gap: 8px; }
-.stTabs [data-baseweb='tab'] { height: 55px; background-color: #1F2937 !important; border-radius: 8px 8px 0 0 !important; padding: 10px 20px !important; color: #94A3B8 !important; font-family: 'Urbanist', sans-serif; font-weight: 700; border: none !important; }
-.stTabs [aria-selected='true'] { background-color: #FDD835 !important; color: #0B0F19 !important; }
-.metric-tile { background-color: #111827; padding: 25px; border-radius: 12px; border: 1px solid rgba(253, 216, 53, 0.15); text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
-.metric-label { color: #FDD835; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; }
-.metric-value { font-family: 'Urbanist', sans-serif; font-size: 44px; font-weight: 900; color: #F9FAFB; margin-top: 5px; }
-.strain-card { background-color: #111827; padding: 35px; border-radius: 12px; border-top: 4px solid #FDD835; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-top: 15px; margin-bottom: 25px; }
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght=400;600;800;900&family=Inter:wght=400;500;700&display=swap');
+
+.stApp { background-color: #0F172A; color: #F8FAFC; font-family: 'Inter', sans-serif; }
+
+/* The Hero Banner */
+.brand-banner {
+  background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-left: 6px solid #8B5CF6;
+  border-radius: 16px;
+  margin-bottom: 30px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+}
+.brand-text h1 { font-family: 'Poppins', sans-serif; font-weight: 900; color: #8B5CF6 !important; font-size: 42px; margin: 0; letter-spacing: -1.5px; text-transform: uppercase; text-shadow: 2px 2px 4px rgba(0,0,0,0.4); }
+.brand-text p { color: #E5E7EB; margin: 5px 0 0 0; font-size: 16px; font-weight: 500; letter-spacing: 0.5px; }
+
+/* Tabs */
+.stTabs [data-baseweb='tab-list'] { gap: 10px; background-color: transparent; }
+.stTabs [data-baseweb='tab'] { height: 60px; background-color: #1E293B !important; border-radius: 10px 10px 0 0 !important; padding: 10px 25px !important; color: #94A3B8 !important; font-family: 'Poppins', sans-serif; font-weight: 800; border: 1px solid transparent !important; border-bottom: none !important; transition: all 0.3s ease; }
+.stTabs [aria-selected='true'] { background-color: #8B5CF6 !important; color: #F8FAFC !important; box-shadow: 0 -4px 15px rgba(139, 92, 246, 0.4); }
+
+/* Metric Tiles (Ziggy Cards) */
+.metric-tile { background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); padding: 25px; border-radius: 16px; border: 1px solid rgba(139, 92, 246, 0.2); text-align: center; box-shadow: 0 8px 20px rgba(0,0,0,0.3); transition: transform 0.2s ease, border-color 0.2s ease; }
+.metric-tile:hover { transform: translateY(-3px); border-color: #8B5CF6; box-shadow: 0 12px 25px rgba(139, 92, 246, 0.25); }
+.metric-label { color: #A78BFA; font-size: 13px; font-weight: 800; font-family: 'Poppins', sans-serif; text-transform: uppercase; letter-spacing: 1.5px; }
+.metric-value { font-family: 'Poppins', sans-serif; font-size: 48px; font-weight: 900; color: #F8FAFC; margin-top: 5px; text-shadow: 0 2px 10px rgba(139, 92, 246, 0.3); }
+
+/* Strain & Chem Cards */
+.strain-card { background: linear-gradient(145deg, #1E293B 0%, #0F172A 100%); padding: 35px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); margin-top: 20px; margin-bottom: 30px; border: 1px solid rgba(139,92,246,0.15); border-top: 4px solid #8B5CF6; transition: all 0.3s ease; }
+.strain-card:hover { border-color: rgba(139,92,246,0.4); box-shadow: 0 15px 35px rgba(0,0,0,0.6); }
 .card-header-flow { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; }
-.strain-title { font-family: 'Urbanist', sans-serif; font-weight: 900; font-size: 32px; color: #FDD835; text-transform: uppercase; letter-spacing: -0.5px; }
-.badge-sativa { background: #10B981; color: #FFF; padding: 5px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-.badge-hybrid { background: #FDD835; color: #0B0F19; padding: 5px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-.badge-indica { background: #6366F1; color: #FFF; padding: 5px 14px; border-radius: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-.section-head { color: #64748B; font-weight: 700; text-transform: uppercase; font-size: 12px; margin-top: 20px; letter-spacing: 1px; }
-.section-data { font-size: 17px; color: #E2E8F0; margin-top: 4px; line-height: 1.5; }
-.stDownloadButton button { background-color: #FDD835 !important; color: #0B0F19 !important; font-family: 'Urbanist', sans-serif; font-weight: 900; border: none !important; border-radius: 8px !important; padding: 14px !important; width: 100%; letter-spacing: 1px; }
-[data-testid='stDataFrame'] { border: 1px solid rgba(253, 216, 53, 0.1); border-radius: 8px; }
-/* Custom layout overrides for slider visibility */
-div[data-testid="stSlider"] label { color: #FDD835 !important; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+.strain-title { font-family: 'Poppins', sans-serif; font-weight: 900; font-size: 34px; color: #F8FAFC; text-transform: uppercase; letter-spacing: -1px; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+
+/* Gradient Badges */
+.badge-sativa { background: linear-gradient(90deg, #10B981, #059669); color: #FFF; padding: 6px 16px; border-radius: 8px; font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; font-family: 'Poppins', sans-serif; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); }
+.badge-hybrid { background: linear-gradient(90deg, #8B5CF6, #6D28D9); color: #FFF; padding: 6px 16px; border-radius: 8px; font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; font-family: 'Poppins', sans-serif; box-shadow: 0 4px 10px rgba(139, 92, 246, 0.3); }
+.badge-indica { background: linear-gradient(90deg, #3B82F6, #2563EB); color: #FFF; padding: 6px 16px; border-radius: 8px; font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; font-family: 'Poppins', sans-serif; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3); }
+
+/* Text & Typography Formatting */
+.section-head { color: #A78BFA; font-weight: 800; text-transform: uppercase; font-size: 13px; margin-top: 24px; letter-spacing: 1.5px; font-family: 'Poppins', sans-serif; }
+.section-data { font-size: 16px; color: #E5E7EB; margin-top: 6px; line-height: 1.6; font-weight: 400; }
+
+/* Interactive Elements */
+.stDownloadButton button { background: linear-gradient(90deg, #8B5CF6 0%, #6D28D9 100%) !important; color: #F8FAFC !important; font-family: 'Poppins', sans-serif; font-weight: 900; border: none !important; border-radius: 10px !important; padding: 16px !important; width: 100%; letter-spacing: 1.5px; text-transform: uppercase; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); }
+.stDownloadButton button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139, 92, 246, 0.6); }
+
+[data-testid='stDataFrame'] { border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+div[data-testid="stSlider"] label { color: #A78BFA !important; font-family: 'Poppins', sans-serif; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+
+/* Dark Mode Input Overrides */
+div[data-baseweb="input"] > div, div[data-baseweb="textarea"] > div, div[data-baseweb="select"] > div { background-color: #1E293B !important; border: 1px solid rgba(139, 92, 246, 0.3) !important; border-radius: 8px !important; }
+div[data-baseweb="input"] > div:focus-within, div[data-baseweb="textarea"] > div:focus-within { border-color: #8B5CF6 !important; box-shadow: 0 0 0 1px #8B5CF6 !important; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -153,13 +184,12 @@ if os.path.exists(logo_path):
     with open(logo_path, 'rb') as img_file:
         logo_html = f'<img src="data:image/png;base64,{base64.b64encode(img_file.read()).decode("utf-8")}" style="height: 196px; margin-right: 30px; border-radius: 8px;">'
 
-st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<div class="brand-text"><h1>Ziggyz Strain Sniffer & Operational Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<div class="brand-text"><h1>Ziggyz Strain Sniffer & Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
 tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
 
 with tab1:
     st.markdown("### 📥 Live Restock Gap Analyzer")
     
-    # NEW FEATURE: Dynamic Threshold Slider setup
     col_file, col_slider = st.columns([3, 2])
     with col_file:
         uploaded_file = st.file_uploader("Select Salesfloor & Curbside + any Category🔥Export Product, Room, & Quantity ONLY🔥Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
@@ -181,7 +211,6 @@ with tab1:
                 present, absent = row[row > 0].index.tolist(), row[row == 0].index.tolist()
                 if absent and present:
                     for r in present:
-                        # Evaluates dynamically using slider selection rather than a static 15
                         if row[r] >= min_threshold: 
                             results.append({"Product Name": product, "Location": r, "Available Qty": int(row[r])})
             
@@ -215,7 +244,7 @@ with tab2:
             if target_strain:
                 google_query = f'"{target_strain}" strain genetics lineage terpenes effects site:leafly.com OR site:seedfinder.eu OR site:allbud.com OR site:hytiva.com'
                 google_url = f"https://www.google.com/search?q={quote_plus(google_query)}"
-                st.markdown(f'<div style="margin-top:28px;"><a href="{google_url}" target="_blank" style="background-color:#FDD835; color:#0B0F19; padding:10px 16px; border-radius:6px; font-weight:bold; text-decoration:none; display:inline-block;">⚡ OPEN GOOGLE FOR {target_strain.upper()}</a></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-top:28px;"><a href="{google_url}" target="_blank" style="background: linear-gradient(90deg, #8B5CF6, #6D28D9); color: #F8FAFC; padding:10px 16px; border-radius:8px; font-weight:800; font-family: \'Poppins\', sans-serif; text-transform: uppercase; text-decoration:none; display:inline-block; box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); transition: transform 0.2s;">⚡ OPEN GOOGLE FOR {target_strain.upper()}</a></div>', unsafe_allow_html=True)
             else:
                 st.markdown('<div style="margin-top:35px; color:#64748B; font-style:italic;">Enter a strain name to generate an instant Google link.</div>', unsafe_allow_html=True)
 
@@ -238,7 +267,7 @@ with tab2:
 <div class="strain-title">✨ {target_strain.upper()}</div>
 <span class="{badge_class}">{clf}</span>
 </div>
-<hr style="border: 0; border-top: 1px solid rgba(253, 216, 53, 0.15); margin-bottom: 15px;">
+<hr style="border: 0; border-top: 1px solid rgba(139, 92, 246, 0.2); margin-bottom: 15px;">
 <div class="section-head">🌿 Genetic Lineage</div><div class="section-data">{data.get('lineage', 'N/A')}</div>
 <div class="section-head">🧪 Dominant Terpenes</div><div class="section-data">{data.get('terpenes', 'N/A')}</div>
 <div class="section-head">🍋 Flavor Profile</div><div class="section-data">{data.get('flavor', 'N/A')}</div>
@@ -270,15 +299,15 @@ with tab2:
                 if "error" not in chem_data:
                     status_val = str(chem_data.get('status', 'N/A')).upper()
                     
-                    chem_card_html = f"""<div class="strain-card" style="border-top: 4px solid #10B981;">
+                    chem_card_html = f"""<div class="strain-card" style="border-top: 4px solid #3B82F6;">
 <div class="card-header-flow">
 <div class="strain-title">🔬 {target_chem.upper()}</div>
-<span class="badge-sativa" style="background-color: #6366F1;">{status_val}</span>
+<span class="badge-indica">{status_val}</span>
 </div>
-<hr style="border: 0; border-top: 1px solid rgba(148, 163, 184, 0.15); margin-bottom: 15px;">
+<hr style="border: 0; border-top: 1px solid rgba(139, 92, 246, 0.2); margin-bottom: 15px;">
 <div class="section-head">🧠 Primary Psychoactive & Physical Effects</div><div class="section-data">{chem_data.get('primary_effects', 'N/A')}</div>
 <div class="section-head">🩺 Reported Medicinal & Therapeutic Benefits</div><div class="section-data">{chem_data.get('medical_benefits', 'N/A')}</div>
-<div class="section-head">🎯 The Budtender Pitch (How to sell it to customers)</div><div class="section-data" style="color: #FDD835; font-style: italic;">"{chem_data.get('customer_pitch', 'N/A')}"</div>
+<div class="section-head">🎯 The Budtender Pitch (How to sell it to customers)</div><div class="section-data" style="color: #A78BFA; font-style: italic;">"{chem_data.get('customer_pitch', 'N/A')}"</div>
 </div>"""
                     st.markdown(chem_card_html, unsafe_allow_html=True)
                 else: st.error(f"Engine connection blip. Details: {chem_data['error']}")
