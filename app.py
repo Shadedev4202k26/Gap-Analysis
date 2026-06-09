@@ -25,8 +25,13 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
+# --- SESSION STATE INITIALIZATION ---
+if 'data' not in st.session_state:
+    st.session_state.data = pd.DataFrame() # Initialize empty DF
+
 # --- SVG ENGINE ---
 def get_hangman_svg(stage):
+    # (SVG path logic preserved)
     stages = [
         '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="190" x2="100" y2="20" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="20" x2="160" y2="20" stroke="#8B4513" stroke-width="6"/><line x1="160" y1="20" x2="160" y2="50" stroke="#8B4513" stroke-width="4"/></svg>',
         '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="190" x2="100" y2="20" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="20" x2="160" y2="20" stroke="#8B4513" stroke-width="6"/><line x1="160" y1="20" x2="160" y2="50" stroke="#8B4513" stroke-width="4"/><circle cx="160" cy="70" r="20" fill="none" stroke="#F9FAFB" stroke-width="4"/></svg>',
@@ -38,14 +43,12 @@ def get_hangman_svg(stage):
     ]
     return stages[min(stage, len(stages)-1)]
 
-# --- GAME LOGIC ---
 def reset_game():
     bank = {"PINENE": "Known for pine-like aroma.", "LINALOOL": "Floral, lavender-like scent.", "MYRCENE": "Earthy, musky, herbal terpene."}
     word = random.choice(list(bank.keys()))
     st.session_state.game = {"word": word, "revealed": [word[0]] + ["_"]*(len(word)-1), "guesses": [word[0]], "stage": 0, "hint": bank[word], "over": False}
 
-# --- HEADER / BRANDING ---
-# Look for local image file
+# --- HEADER ---
 logo_html = ""
 if os.path.exists('image.png'):
     with open('image.png', 'rb') as f:
@@ -53,37 +56,49 @@ if os.path.exists('image.png'):
 
 st.markdown(f'<div class="brand-banner">{logo_html}<div class="brand-text"><h1>ZIGGYZ STRAIN SNIFFER & OPERATIONAL HUB</h1><p>INVENTORY LOGISTICS & KNOWLEDGE MANAGEMENT ENGINE</p></div></div>', unsafe_allow_html=True)
 
-# --- TAB STRUCTURE ---
+# --- TABS ---
 tab1, tab2, tab3 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE", "🧠 GAMIFIED KNOWLEDGE"])
 
 with tab1:
     st.markdown("### 📥 Live Restock Gap Analyzer")
-    uploaded_file = st.file_uploader("Upload Dutchie Export", type="csv")
+    uploaded_file = st.file_uploader("Upload CSV", type="csv")
     if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-        st.dataframe(df, use_container_width=True)
+        st.session_state.data = pd.read_csv(uploaded_file)
+        st.dataframe(st.session_state.data, use_container_width=True)
 
 with tab2:
     st.markdown("### 🔍 Verified AI Strain Profiler")
-    # Restored Cannabinoid Lookup
-    strain_name = st.text_input("Search Strain Name")
-    cannabinoid_query = st.text_input("Cannabinoid Lookup (e.g., THC, CBD)")
-        
-    if st.button("Search Database"):
-        st.info(f"Searching for {strain_name} with focus on {cannabinoid_query}...")
-        st.markdown(f'<div class="strain-card"><h4>Results for {strain_name}</h4><p>Cannabinoid data ({cannabinoid_query}) will appear here.</p></div>', unsafe_allow_html=True)
+    if not st.session_state.data.empty:
+        col1, col2 = st.columns(2)
+        with col1:
+            search_val = st.text_input("Enter Strain Name")
+        with col2:
+            cannabinoid_val = st.text_input("Enter Cannabinoid to Filter")
+            
+        if st.button("Search Database"):
+            filtered_df = st.session_state.data.copy()
+            if search_val:
+                filtered_df = filtered_df[filtered_df.apply(lambda row: search_val.lower() in str(row).lower(), axis=1)]
+            if cannabinoid_val:
+                filtered_df = filtered_df[filtered_df.apply(lambda row: cannabinoid_val.lower() in str(row).lower(), axis=1)]
+            
+            if not filtered_df.empty:
+                st.write(f"Results found:")
+                st.dataframe(filtered_df)
+            else:
+                st.warning("No matches found.")
+    else:
+        st.info("Please upload a CSV file in the 'Inventory' tab first to enable search.")
 
 with tab3:
     st.markdown("### 🎮 Ziggy's Learning Hub")
     if "game" not in st.session_state or "over" not in st.session_state.game: reset_game()
-    
     c1, c2 = st.columns([1, 1.5])
     with c1:
         st.markdown(f'<div class="hangman-box">{get_hangman_svg(st.session_state.game["stage"])}</div>', unsafe_allow_html=True)
     with c2:
         st.markdown(f'<div class="letter-display">{" ".join(st.session_state.game["revealed"])}</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="hint-box">**💡 HINT:** {st.session_state.game["hint"]}</div>', unsafe_allow_html=True)
-        
         if not st.session_state.game["over"]:
             with st.form("guess_form", clear_on_submit=True):
                 guess = st.text_input("Guess a letter:", max_chars=1).upper()
