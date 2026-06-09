@@ -1,7 +1,5 @@
-import streamlit as st, pandas as pd, base64, os, json, requests, re
-from urllib.request import Request, urlopen
+import streamlit as st, pandas as pd, base64, os, json, requests
 from urllib.parse import quote_plus
-from bs4 import BeautifulSoup
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -10,75 +8,20 @@ from io import BytesIO
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
-def free_google_live_search(query_string):
-    """
-    Scrapes live snippets from Google's fallback mobile interface.
-    Completely free and bypasses standard API restrictions.
-    """
-    search_context = []
-    try:
-        url = f"https://www.google.com/search?q={quote_plus(query_string)}"
-        # Emulate an old Android mobile device to force Google to return a clean, scrapeable HTML structure
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MTC20F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9'
-        }
-        req = Request(url, headers=headers)
-        
-        with urlopen(req, timeout=7) as response:
-            soup = BeautifulSoup(response.read(), 'html.parser')
-            
-        # Target Google's mobile result summary blocks (typically contained in 'div' elements with specific layout classes)
-        blocks = soup.find_all('div', class_='BNeawe s3v9rd AP77S')
-        
-        for index, block in enumerate(blocks[:5]): # Extract data fragments from top 5 matches
-            text = block.get_text(strip=True)
-            if len(text) > 30 and text not in search_context:
-                search_context.append(f"Google Extract [{index+1}]: {text}")
-                
-        return "\n\n".join(search_context)
-    except Exception:
-        return ""
-
-def google_official_free_api(query_string, api_key, cse_id):
-    """
-    Optional Backup: Queries Google's official Programmable Search API (100 free queries/day).
-    To use this, add GOOGLE_API_KEY and GOOGLE_CSE_ID to your Streamlit secrets.
-    """
-    try:
-        url = f"https://www.googleapis.com/customsearch/v1?key={api_key}&cx={cse_id}&q={quote_plus(query_string)}"
-        res = requests.get(url, timeout=5)
-        if res.status_code == 200:
-            items = res.json().get('items', [])
-            return "\n\n".join([f"Source: {i['title']}\nData: {i['snippet']}" for i in items[:3]])
-    except Exception:
-        pass
-    return ""
-
-def get_strain_profile(groq_key, strain_name):
-    query_string = f'"{strain_name}" strain lineage genetics terpenes effects'
-    
-    # Check if official Google Custom Search secrets are present, otherwise default to the free scraper
-    google_key = st.secrets.get("GOOGLE_API_KEY", None)
-    cse_id = st.secrets.get("GOOGLE_CSE_ID", None)
-    
-    if google_key and cse_id:
-        search_context = google_official_free_api(query_string, google_key, cse_id)
-    else:
-        search_context = free_google_live_search(query_string)
-
+def parse_pasted_context(groq_key, strain_name, raw_pasted_text):
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
     
     system_prompt = (
         "You are an expert cannabis strain database compiler. Your sole objective is outputting clean, structured JSON.\n"
-        "You will synthesize the live Google search text fragments provided to parse out true genetic facts. "
-        "Even for rare, proprietary, or boutique marketplace strains, use the context clues to deduce the lineage or brand profile.\n\n"
+        "You will synthesize the raw text snippets provided by the user (copied from web search results, leafly, wikileaf, seedbanks, or grower forums) "
+        "to parse out true genetic facts for the target strain.\n"
+        "Even for rare, proprietary, or boutique marketplace strains, use the text clues to deduce the lineage or brand profile.\n\n"
         "CRITICAL EXTRACTION INSTRUCTIONS:\n"
-        "1. LINEAGE: Identify the direct parental cross. If the snippets mention a specific breeder brand or localized origin, capture that context accurately.\n"
-        "2. TERPENES: Isolate the dominant terpene profile based on the search data. Never leave blank.\n"
+        "1. LINEAGE: Identify the direct parental cross (e.g., 'Mendo Breath X Purple Punch'). If the text mentions a specific breeder brand or origin, capture that context accurately.\n"
+        "2. TERPENES: Isolate the dominant terpene profile based on the text. Do not leave blank if any flavor/aroma properties are described.\n"
         "3. CLASSIFICATION: Strictly output 'INDICA', 'SATIVA', or 'HYBRID'.\n"
-        "4. FLAVOR & EFFECTS: Provide a summary of consumer properties found in the live text.\n\n"
+        "4. FLAVOR & EFFECTS: Provide a summary of consumer properties found in the text.\n\n"
         "Return ONLY a clean, valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
     )
     
@@ -86,7 +29,7 @@ def get_strain_profile(groq_key, strain_name):
         "model": "llama-3.3-70b-versatile", 
         "messages": [
             {"role": "system", "content": system_prompt}, 
-            {"role": "user", "content": f"Target Strain: {strain_name}\n\nLive Google Context:\n{search_context if search_context else 'No extra context available.'}"}
+            {"role": "user", "content": f"Target Strain: {strain_name}\n\nRaw Search Text Provided:\n{raw_pasted_text}"}
         ], 
         "temperature": 0.0
     }
@@ -121,7 +64,7 @@ def get_compound_profile(api_key, compound_name):
         return {"error": f"Status code {res.status_code}"}
     except Exception as e: return {"error": str(e)}
 
-def build_pdf(dataframe):
+def build_pdf(dataframe, threshold_value):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
     story = []
@@ -139,7 +82,7 @@ def build_pdf(dataframe):
     metric_data = [
         [Paragraph(f"<b>High-Impact Gaps:</b> {len(dataframe)}", cell_style),
          Paragraph(f"<b>Units to Move:</b> {dataframe['Available Qty'].sum()}", cell_style),
-         Paragraph("<b>Min Threshold:</b> 15+", cell_style)]
+         Paragraph(f"<b>Min Threshold:</b> {threshold_value}+", cell_style)]
     ]
     metric_table = Table(metric_data, colWidths=[180, 180, 172])
     metric_table.setStyle(TableStyle([
@@ -199,6 +142,8 @@ custom_css = """
 .section-data { font-size: 17px; color: #E2E8F0; margin-top: 4px; line-height: 1.5; }
 .stDownloadButton button { background-color: #FDD835 !important; color: #0B0F19 !important; font-family: 'Urbanist', sans-serif; font-weight: 900; border: none !important; border-radius: 8px !important; padding: 14px !important; width: 100%; letter-spacing: 1px; }
 [data-testid='stDataFrame'] { border: 1px solid rgba(253, 216, 53, 0.1); border-radius: 8px; }
+/* Custom layout overrides for slider visibility */
+div[data-testid="stSlider"] label { color: #FDD835 !important; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -213,7 +158,14 @@ tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
 
 with tab1:
     st.markdown("### 📥 Live Restock Gap Analyzer")
-    uploaded_file = st.file_uploader("Select Salesfloor & Curbside + any Category🔥Export Product, Room, & Quantity ONLY🔥Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
+    
+    # NEW FEATURE: Dynamic Threshold Slider setup
+    col_file, col_slider = st.columns([3, 2])
+    with col_file:
+        uploaded_file = st.file_uploader("Select Salesfloor & Curbside + any Category🔥Export Product, Room, & Quantity ONLY🔥Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
+    with col_slider:
+        min_threshold = st.slider("Adjust Minimum Backstock Target Threshold:", min_value=1, max_value=50, value=15, step=1, help="Adjust this lower (e.g., 5) for high-end concentrates/vapes or higher for top-tier pre-rolls/flower.")
+        
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
@@ -229,7 +181,9 @@ with tab1:
                 present, absent = row[row > 0].index.tolist(), row[row == 0].index.tolist()
                 if absent and present:
                     for r in present:
-                        if row[r] >= 15: results.append({"Product Name": product, "Location": r, "Available Qty": int(row[r])})
+                        # Evaluates dynamically using slider selection rather than a static 15
+                        if row[r] >= min_threshold: 
+                            results.append({"Product Name": product, "Location": r, "Available Qty": int(row[r])})
             
             final_df = pd.DataFrame(results)
             if not final_df.empty:
@@ -237,49 +191,51 @@ with tab1:
                 m1, m2, m3 = st.columns(3)
                 with m1: st.markdown(f'<div class="metric-tile"><div class="metric-label">High-Impact Gaps</div><div class="metric-value">{len(final_df)}</div></div>', unsafe_allow_html=True)
                 with m2: st.markdown(f'<div class="metric-tile"><div class="metric-label">Units to Move</div><div class="metric-value">{final_df["Available Qty"].sum()}</div></div>', unsafe_allow_html=True)
-                with m3: st.markdown(f'<div class="metric-tile"><div class="metric-label">Min Threshold</div><div class="metric-value">15+</div></div>', unsafe_allow_html=True)
+                with m3: st.markdown(f'<div class="metric-tile"><div class="metric-label">Min Threshold</div><div class="metric-value">{min_threshold}+</div></div>', unsafe_allow_html=True)
                 st.write("---")
                 st.dataframe(final_df, use_container_width=True, hide_index=True)
                 
-                pdf_data = build_pdf(final_df)
+                pdf_data = build_pdf(final_df, min_threshold)
                 st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_data, "Ziggy_Report.pdf", "application/pdf")
             else:
-                st.info("No gaps found matching the 15+ unit threshold.")
+                st.info(f"No gaps found matching the {min_threshold}+ unit threshold.")
         except Exception as e: st.error(f"Analysis Error: {e}")
 
 with tab2:
-    st.markdown("### 🔍 Real-Time AI Strain Profiler")
+    st.markdown("### 🔍 Verified AI Strain Profiler")
     if "GROQ_API_KEY" not in st.secrets:
         st.error("🔒 Security Alert: GROQ_API_KEY missing from Streamlit secrets vault.")
     else:
-        if "active_query" not in st.session_state:
-            st.session_state.active_query = ""
-
-        def clear_input_box():
-            st.session_state.active_query = st.session_state.strain_input_widget
-            st.session_state.strain_input_widget = ""
-
-        st.text_input(
-            "AI Search Engine Input", 
-            placeholder="Type any strain name and press enter...", 
-            key="strain_input_widget", 
-            on_change=clear_input_box,
-            label_visibility="collapsed"
-        )
+        col_input, col_link = st.columns([3, 2])
         
-        query = st.session_state.active_query.strip()
-        if query:
-            with st.spinner(f"Running Google Engine raw parsing for '{query}'..."):
-                data = get_strain_profile(st.secrets["GROQ_API_KEY"], query)
-                if "error" not in data:
-                    clf = str(data.get('classification', 'HYBRID')).upper()
-                    badge_class = "badge-hybrid"
-                    if "SATIVA" in clf: badge_class = "badge-sativa"
-                    elif "INDICA" in clf: badge_class = "badge-indica"
-                    
-                    card_html = f"""<div class="strain-card">
+        with col_input:
+            target_strain = st.text_input("Enter Strain Name:", placeholder="e.g., permanent marker, jealousy, local drop...").strip()
+            
+        with col_link:
+            if target_strain:
+                google_query = f'"{target_strain}" strain genetics lineage terpenes effects site:leafly.com OR site:seedfinder.eu OR site:allbud.com OR site:hytiva.com'
+                google_url = f"https://www.google.com/search?q={quote_plus(google_query)}"
+                st.markdown(f'<div style="margin-top:28px;"><a href="{google_url}" target="_blank" style="background-color:#FDD835; color:#0B0F19; padding:10px 16px; border-radius:6px; font-weight:bold; text-decoration:none; display:inline-block;">⚡ OPEN GOOGLE FOR {target_strain.upper()}</a></div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div style="margin-top:35px; color:#64748B; font-style:italic;">Enter a strain name to generate an instant Google link.</div>', unsafe_allow_html=True)
+
+        if target_strain:
+            st.write("---")
+            st.markdown(f"### 📥 Step 2: Paste Google Snippets for **{target_strain.upper()}**")
+            pasted_info = st.text_area("Right-click copy the top search summaries, description paragraphs, or profile pages, then paste them here:", height=130, placeholder="Paste whatever text you find on Google here... Llama will instantly strip out the clutter and clean it up.")
+            
+            if pasted_info.strip():
+                with st.spinner("Extracting molecular details and compiling genetic layout..."):
+                    data = parse_pasted_context(st.secrets["GROQ_API_KEY"], target_strain, pasted_info)
+                    if "error" not in data:
+                        clf = str(data.get('classification', 'HYBRID')).upper()
+                        badge_class = "badge-hybrid"
+                        if "SATIVA" in clf: badge_class = "badge-sativa"
+                        elif "INDICA" in clf: badge_class = "badge-indica"
+                        
+                        card_html = f"""<div class="strain-card">
 <div class="card-header-flow">
-<div class="strain-title">✨ {query.upper()}</div>
+<div class="strain-title">✨ {target_strain.upper()}</div>
 <span class="{badge_class}">{clf}</span>
 </div>
 <hr style="border: 0; border-top: 1px solid rgba(253, 216, 53, 0.15); margin-bottom: 15px;">
@@ -288,12 +244,9 @@ with tab2:
 <div class="section-head">🍋 Flavor Profile</div><div class="section-data">{data.get('flavor', 'N/A')}</div>
 <div class="section-head">🧠 Reported Consumer Effects</div><div class="section-data">{data.get('effects', 'N/A')}</div>
 </div>"""
-                    st.markdown(card_html, unsafe_allow_html=True)
-                    
-                    # Add a free fallback deep-link helper directly inside the UI card
-                    google_link = f"https://www.google.com/search?q={quote_plus(query + ' strain lineage genetics')}"
-                    st.markdown(f'🔗 **Not seeing specific boutique data?** [Click here to force open direct Google Search Results for "{query}"]({google_link})')
-                else: st.error(f"Engine connection blip. Details: {data['error']}")
+                        st.markdown(card_html, unsafe_allow_html=True)
+                    else: 
+                        st.error(f"Engine connection blip. Details: {data['error']}")
         
         st.write("---")
         st.markdown("### 🧪 Cannabinoid & THC Compound Encyclopedia")
