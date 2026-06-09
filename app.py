@@ -8,7 +8,6 @@ import random
 st.set_page_config(page_title="Ziggybot Hub", page_icon="🔥", layout="wide")
 
 # --- CUSTOM CSS ---
-# Ensure this matches your existing CSS exactly
 custom_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=DM+Sans:wght=400;700&display=swap');
@@ -26,7 +25,7 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# --- SVG ENGINE ---
+# --- SVG HANGMAN ENGINE ---
 def get_hangman_svg(stage):
     stages = [
         '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="190" x2="100" y2="20" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="20" x2="160" y2="20" stroke="#8B4513" stroke-width="6"/><line x1="160" y1="20" x2="160" y2="50" stroke="#8B4513" stroke-width="4"/></svg>',
@@ -39,27 +38,34 @@ def get_hangman_svg(stage):
     ]
     return stages[min(stage, len(stages)-1)]
 
-# --- GAME ENGINE ---
+# --- GAME LOGIC ---
 def reset_game():
-    bank = {"PINENE": "Major terpene found in pine trees, known for distinct aroma.", "LINALOOL": "Floral, lavender-like scent.", "MYRCENE": "Earthy, musky, herbal terpene."}
+    bank = {"PINENE": "Known for pine-like aroma.", "LINALOOL": "Floral, lavender-like scent.", "MYRCENE": "Earthy, musky, herbal terpene."}
     word = random.choice(list(bank.keys()))
     st.session_state.game = {"word": word, "revealed": [word[0]] + ["_"]*(len(word)-1), "guesses": [word[0]], "stage": 0, "hint": bank[word], "over": False}
 
-if "game" not in st.session_state: reset_game()
+# --- HEADER / BRANDING ---
+logo_html = ""
+if os.path.exists('image.png'):
+    with open('image.png', 'rb') as f:
+        logo_html = f'<img src="data:image/png;base64,{base64.b64encode(f.read()).decode("utf-8")}" style="height: 196px; margin-right: 30px; border-radius: 8px;">'
 
-# --- HEADER (Insert your Logo/Banner logic here) ---
-# Ensure your logo/branding code remains exactly where it was in your original script
-st.markdown('<div class="brand-banner"><div class="brand-text"><h1>ZIGGYZ STRAIN SNIFFER & OPERATIONAL HUB</h1><p>INVENTORY LOGISTICS & KNOWLEDGE MANAGEMENT ENGINE</p></div></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="brand-banner">{logo_html}<div class="brand-text"><h1>ZIGGYZ STRAIN SNIFFER & OPERATIONAL HUB</h1><p>INVENTORY LOGISTICS & KNOWLEDGE MANAGEMENT ENGINE</p></div></div>', unsafe_allow_html=True)
 
 # --- TAB STRUCTURE ---
-# Please ensure the labels match your original app exactly
 tab1, tab2, tab3 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE", "🧠 GAMIFIED KNOWLEDGE"])
 
-# Keep your original content in tab1 and tab2
 with tab1:
-    st.markdown("### 📊 Inventory Intelligence")
+    st.markdown("### 📥 Live Restock Gap Analyzer")
+    uploaded_file = st.file_uploader("Upload Dutchie Export", type="csv")
+    # --- INSERT YOUR CSV PROCESSING LOGIC HERE ---
+    if uploaded_file:
+        st.write("Processing file...")
+
 with tab2:
-    st.markdown("### 🔍 AI Knowledge Base")
+    st.markdown("### 🔍 Verified AI Strain Profiler")
+    strain_search = st.text_input("Enter Strain Name")
+    # --- INSERT YOUR SEARCH LOGIC HERE ---
 
 with tab3:
     st.markdown("### 🎮 Ziggy's Learning Hub")
