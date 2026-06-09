@@ -33,4 +33,50 @@ def get_hangman_svg(stage):
         '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="190" x2="100" y2="20" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="20" x2="160" y2="20" stroke="#8B4513" stroke-width="6"/><line x1="160" y1="20" x2="160" y2="50" stroke="#8B4513" stroke-width="4"/><circle cx="160" cy="70" r="20" fill="none" stroke="#F9FAFB" stroke-width="4"/></svg>',
         '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="190" x2="100" y2="20" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="20" x2="160" y2="20" stroke="#8B4513" stroke-width="6"/><line x1="160" y1="20" x2="160" y2="50" stroke="#8B4513" stroke-width="4"/><circle cx="160" cy="70" r="20" fill="none" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="90" x2="160" y2="140" stroke="#F9FAFB" stroke-width="4"/></svg>',
         '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="190" x2="100" y2="20" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="20" x2="160" y2="20" stroke="#8B4513" stroke-width="6"/><line x1="160" y1="20" x2="160" y2="50" stroke="#8B4513" stroke-width="4"/><circle cx="160" cy="70" r="20" fill="none" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="90" x2="160" y2="140" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="100" x2="130" y2="120" stroke="#F9FAFB" stroke-width="4"/></svg>',
-        '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="10
+        '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="190" x2="100" y2="20" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="20" x2="160" y2="20" stroke="#8B4513" stroke-width="6"/><line x1="160" y1="20" x2="160" y2="50" stroke="#8B4513" stroke-width="4"/><circle cx="160" cy="70" r="20" fill="none" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="90" x2="160" y2="140" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="100" x2="130" y2="120" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="100" x2="190" y2="120" stroke="#F9FAFB" stroke-width="4"/></svg>',
+        '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="190" x2="100" y2="20" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="20" x2="160" y2="20" stroke="#8B4513" stroke-width="6"/><line x1="160" y1="20" x2="160" y2="50" stroke="#8B4513" stroke-width="4"/><circle cx="160" cy="70" r="20" fill="none" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="90" x2="160" y2="140" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="100" x2="130" y2="120" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="100" x2="190" y2="120" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="140" x2="130" y2="180" stroke="#F9FAFB" stroke-width="4"/></svg>',
+        '<svg width="200" height="200"><line x1="20" y1="190" x2="180" y2="190" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="190" x2="100" y2="20" stroke="#8B4513" stroke-width="8"/><line x1="100" y1="20" x2="160" y2="20" stroke="#8B4513" stroke-width="6"/><line x1="160" y1="20" x2="160" y2="50" stroke="#8B4513" stroke-width="4"/><circle cx="160" cy="70" r="20" fill="none" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="90" x2="160" y2="140" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="100" x2="130" y2="120" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="100" x2="190" y2="120" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="140" x2="130" y2="180" stroke="#F9FAFB" stroke-width="4"/><line x1="160" y1="140" x2="190" y2="180" stroke="#F9FAFB" stroke-width="4"/></svg>'
+    ]
+    return stages[min(stage, len(stages)-1)]
+
+# --- INITIALIZATION ---
+logo_html = ""
+if os.path.exists('image.png'):
+    with open('image.png', 'rb') as f:
+        logo_html = f'<img src="data:image/png;base64,{base64.b64encode(f.read()).decode("utf-8")}" style="height: 196px; margin-right: 30px; border-radius: 8px;">'
+
+st.markdown(f'<div class="brand-banner">{logo_html}<div class="brand-text"><h1>ZIGGYZ STRAIN SNIFFER & OPERATIONAL HUB</h1><p>INVENTORY LOGISTICS & KNOWLEDGE MANAGEMENT ENGINE</p></div></div>', unsafe_allow_html=True)
+tab1, tab2, tab3 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE", "🧠 GAMIFIED KNOWLEDGE"])
+
+with tab1:
+    st.markdown("### 📥 Live Restock Gap Analyzer")
+    st.file_uploader("Upload Dutchie Export")
+
+with tab2:
+    st.markdown("### 🔍 Verified AI Strain Profiler")
+    st.text_input("Enter Strain Name")
+
+with tab3:
+    st.markdown("### 🎮 Ziggy's Learning Hub: Cannabis Hangman")
+    if "game" not in st.session_state:
+        target = "PINENE"
+        st.session_state.game = {"word": target, "revealed": [target[0]] + ["_"]*5, "guesses": [target[0]], "stage": 0, "hint": "A terpene known for pine-like aroma."}
+    
+    c1, c2 = st.columns([1, 1.5])
+    with c1:
+        st.markdown(f'<div class="hangman-box">{get_hangman_svg(st.session_state.game["stage"])}</div>', unsafe_allow_html=True)
+    with c2:
+        st.markdown(f'<div class="letter-display">{" ".join(st.session_state.game["revealed"])}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="hint-box">**💡 HINT:** {st.session_state.game["hint"]}</div>', unsafe_allow_html=True)
+        
+        with st.form("h", clear_on_submit=True):
+            guess = st.text_input("GUESS A LETTER:", max_chars=1).upper()
+            if st.form_submit_button("SUBMIT"):
+                if guess and guess not in st.session_state.game["guesses"]:
+                    st.session_state.game["guesses"].append(guess)
+                    if guess in st.session_state.game["word"]:
+                        for i, char in enumerate(st.session_state.game["word"]):
+                            if char == guess: st.session_state.game["revealed"][i] = guess
+                    else:
+                        st.session_state.game["stage"] += 1
+                st.rerun()
