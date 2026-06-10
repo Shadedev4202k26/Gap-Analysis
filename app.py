@@ -8,48 +8,25 @@ from io import BytesIO
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
-# Callback function to clear the input
-def clear_search():
-    st.session_state.strain_input = ""
-
 def generate_strain_profile(groq_key, strain_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
-    
-    system_prompt = (
-        "You are an expert cannabis strain database. Output clean, structured JSON. "
-        "Keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects', 'cannabinoids'."
-    )
-    
-    payload = {
-        "model": "llama-3.3-70b-versatile", 
-        "messages": [
-            {"role": "system", "content": system_prompt}, 
-            {"role": "user", "content": f"Target Strain: {strain_name}"}
-        ], 
-        "temperature": 0.1
-    }
-    
+    system_prompt = "You are an expert cannabis strain database. Output JSON with keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects', 'cannabinoids'."
+    payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Target Strain: {strain_name}"}], "temperature": 0.1}
     try:
         res = requests.post(url, headers=api_headers, json=payload, timeout=12)
         if res.status_code == 200:
             content = res.json()['choices'][0]['message']['content'].strip()
-            if "{" in content and "}" in content: 
-                content = content[content.find("{"):content.rfind("}") + 1]
+            if "{" in content and "}" in content: content = content[content.find("{"):content.rfind("}") + 1]
             return json.loads(content)
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception as e: return {"error": str(e)}
     return {"classification": "HYBRID", "lineage": "N/A", "terpenes": "N/A", "flavor": "N/A", "effects": "N/A", "cannabinoids": "N/A"}
 
 def get_compound_profile(api_key, compound_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    system_prompt = (
-        "You are an advanced cannabinoid science database. Output JSON. "
-        "Keys: 'status', 'primary_effects', 'medical_benefits', 'customer_pitch'."
-    )
-    user_prompt = f"Provide a consumer-facing operational profile for: {compound_name}"
-    payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}], "temperature": 0.1}
+    system_prompt = "You are an advanced cannabinoid science database. Output JSON. Keys: 'status', 'primary_effects', 'medical_benefits', 'customer_pitch'."
+    payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Profile for: {compound_name}"}], "temperature": 0.1}
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=10)
         if res.status_code == 200:
@@ -68,57 +45,29 @@ def build_pdf(dataframe, threshold_value):
     subtitle_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=11, textColor=colors.HexColor('#4B5563'), fontName='Helvetica-Bold', spaceAfter=20)
     cell_style = ParagraphStyle('CellText', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#374151'))
     header_style = ParagraphStyle('HeaderText', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold', textColor=colors.HexColor('#0F172A'))
-
     story.append(Paragraph("Ziggyz Merchandise Gap Report", title_style))
     story.append(Paragraph("HIGH-IMPACT FLOOR RESTOCK & DISCREPANCY MANIFEST", subtitle_style))
-    story.append(Spacer(1, 10))
     metric_data = [[Paragraph(f"<b>High-Impact Gaps:</b> {len(dataframe)}", cell_style), Paragraph(f"<b>Units to Move:</b> {dataframe['Available Qty'].sum()}", cell_style), Paragraph(f"<b>Min Threshold:</b> {threshold_value}+", cell_style)]]
     metric_table = Table(metric_data, colWidths=[180, 180, 172])
     metric_table.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F8FAFC')), ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#E5E7EB')), ('PADDING', (0,0), (-1,-1), 12), ('ALIGN', (0,0), (-1,-1), 'CENTER')]))
     story.append(metric_table)
-    story.append(Spacer(1, 25))
     table_content = [[Paragraph("Product Name", header_style), Paragraph("Location", header_style), Paragraph("Available Qty", header_style)]]
     for _, row in dataframe.iterrows():
         table_content.append([Paragraph(str(row['Product Name']), cell_style), Paragraph(str(row['Location']), cell_style), Paragraph(str(row['Available Qty']), cell_style)])
     data_table = Table(table_content, colWidths=[312, 110, 110])
-    data_table.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F3F4F6')), ('BOTTOMPADDING', (0,0), (-1,0), 10), ('TOPPADDING', (0,0), (-1,0), 10), ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F8FAFC')]), ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('PADDING', (0,0), (-1,-1), 8)]))
+    data_table.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F3F4F6')), ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')), ('PADDING', (0,0), (-1,-1), 8)]))
     story.append(data_table)
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
 
-custom_css = """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800;900&family=Inter:wght@400;500;700&display=swap');
-.stApp { background-color: #0F172A; color: #F8FAFC; font-family: 'Inter', sans-serif; }
-.brand-banner { background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid rgba(139, 92, 246, 0.3); border-left: 6px solid #8B5CF6; border-radius: 16px; margin-bottom: 30px; display: flex; align-items: center; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
-.brand-text h1 { font-family: 'Poppins', sans-serif; font-weight: 900; color: #8B5CF6 !important; font-size: 42px; margin: 0; letter-spacing: -1.5px; text-transform: uppercase; text-shadow: 2px 2px 4px rgba(0,0,0,0.4); }
-.brand-text p { color: #E5E7EB; margin: 5px 0 0 0; font-size: 16px; font-weight: 500; letter-spacing: 0.5px; }
-.stTabs [data-baseweb='tab-list'] { gap: 10px; background-color: transparent; }
-.stTabs [data-baseweb='tab'] { height: 60px; background-color: #1E293B !important; border-radius: 10px 10px 0 0 !important; padding: 10px 25px !important; color: #94A3B8 !important; font-family: 'Poppins', sans-serif; font-weight: 800; border: 1px solid transparent !important; border-bottom: none !important; transition: all 0.3s ease; }
-.stTabs [aria-selected='true'] { background-color: #8B5CF6 !important; color: #F8FAFC !important; box-shadow: 0 -4px 15px rgba(139, 92, 246, 0.4); }
-.metric-tile { background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); padding: 25px; border-radius: 16px; border: 1px solid rgba(139, 92, 246, 0.2); text-align: center; box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
-.metric-label { color: #A78BFA; font-size: 13px; font-weight: 800; font-family: 'Poppins', sans-serif; text-transform: uppercase; letter-spacing: 1.5px; }
-.metric-value { font-family: 'Poppins', sans-serif; font-size: 48px; font-weight: 900; color: #F8FAFC; margin-top: 5px; }
-.strain-card { background: linear-gradient(145deg, #1E293B 0%, #0F172A 100%); padding: 35px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); margin-top: 20px; border-top: 4px solid #8B5CF6; }
-.strain-title { font-family: 'Poppins', sans-serif; font-weight: 900; font-size: 34px; color: #F8FAFC; text-transform: uppercase; }
-.badge-sativa { background: linear-gradient(90deg, #10B981, #059669); color: #FFF; padding: 6px 16px; border-radius: 8px; font-weight: 800; font-size: 12px; text-transform: uppercase; font-family: 'Poppins', sans-serif; }
-.badge-hybrid { background: linear-gradient(90deg, #8B5CF6, #6D28D9); color: #FFF; padding: 6px 16px; border-radius: 8px; font-weight: 800; font-size: 12px; text-transform: uppercase; font-family: 'Poppins', sans-serif; }
-.badge-indica { background: linear-gradient(90deg, #3B82F6, #2563EB); color: #FFF; padding: 6px 16px; border-radius: 8px; font-weight: 800; font-size: 12px; text-transform: uppercase; font-family: 'Poppins', sans-serif; }
-.section-head { color: #A78BFA; font-weight: 800; text-transform: uppercase; font-size: 13px; margin-top: 24px; font-family: 'Poppins', sans-serif; }
-.section-data { font-size: 16px; color: #E5E7EB; margin-top: 6px; }
-.google-btn { background: linear-gradient(90deg, #8B5CF6, #6D28D9); color: #F8FAFC !important; padding: 10px 16px; border-radius: 8px; font-weight: 800; font-family: 'Poppins', sans-serif; text-transform: uppercase; text-decoration: none; display: inline-block; }
-.stDownloadButton button { background: linear-gradient(90deg, #8B5CF6 0%, #6D28D9 100%) !important; color: #F8FAFC !important; font-family: 'Poppins', sans-serif; font-weight: 900; border: none !important; border-radius: 10px !important; padding: 16px !important; width: 100%; text-transform: uppercase; }
-</style>
-"""
+custom_css = "<style>@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800;900&family=Inter:wght@400;500;700&display=swap'); .stApp { background-color: #0F172A; color: #F8FAFC; font-family: 'Inter', sans-serif; } .brand-banner { background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid rgba(139, 92, 246, 0.3); border-left: 6px solid #8B5CF6; border-radius: 16px; margin-bottom: 30px; display: flex; align-items: center; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); } .brand-text h1 { font-family: 'Poppins', sans-serif; font-weight: 900; color: #8B5CF6 !important; font-size: 42px; margin: 0; letter-spacing: -1.5px; text-transform: uppercase; } .stTabs [data-baseweb='tab'] { height: 60px; background-color: #1E293B !important; border-radius: 10px 10px 0 0 !important; color: #94A3B8 !important; font-weight: 800; } .stTabs [aria-selected='true'] { background-color: #8B5CF6 !important; color: #F8FAFC !important; } .strain-card { background: linear-gradient(145deg, #1E293B 0%, #0F172A 100%); padding: 35px; border-radius: 16px; border-top: 4px solid #8B5CF6; margin-top: 20px; } .strain-title { font-family: 'Poppins', sans-serif; font-weight: 900; font-size: 34px; color: #F8FAFC; text-transform: uppercase; } .google-btn { background: linear-gradient(90deg, #8B5CF6, #6D28D9); color: #F8FAFC !important; padding: 10px 16px; border-radius: 8px; font-weight: 800; text-transform: uppercase; text-decoration: none; display: inline-block; }</style>"
 st.markdown(custom_css, unsafe_allow_html=True)
 
-logo_path, logo_html = 'image.png', ""
-if os.path.exists(logo_path):
-    with open(logo_path, 'rb') as img_file:
-        logo_html = f'<img src="data:image/png;base64,{base64.b64encode(img_file.read()).decode("utf-8")}" style="height: 196px; margin-right: 30px; border-radius: 8px;">'
-
+logo_path = 'image.png'
+logo_html = f'<img src="data:image/png;base64,{base64.b64encode(open(logo_path, "rb").read()).decode("utf-8")}" style="height: 196px; margin-right: 30px; border-radius: 8px;">' if os.path.exists(logo_path) else ""
 st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<div class="brand-text"><h1>Ziggyz Strain Sniffer & Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
+
 tab1, tab2 = st.tabs(["🔍 STRAIN SNIFFER", "📊 INVENTORY INTELLIGENCE"])
 
 with tab1:
@@ -126,59 +75,26 @@ with tab1:
     if "GROQ_API_KEY" not in st.secrets:
         st.error("🔒 Security Alert: GROQ_API_KEY missing.")
     else:
-        if "strain_input" not in st.session_state: st.session_state.strain_input = ""
-        
-        col_input, col_link = st.columns([3, 2])
-        with col_input:
-            # Added on_change callback to trigger clearing
-            target_strain = st.text_input("Enter Strain Name:", key="strain_input", placeholder="e.g., permanent marker...").strip()
-            
-        with col_link:
-            if target_strain:
-                google_url = f"https://www.google.com/search?q={quote_plus(target_strain + ' strain')}"
-                st.markdown(f'<div style="margin-top:28px;"><a href="{google_url}" target="_blank" class="google-btn">💥 MORE RESULTS</a></div>', unsafe_allow_html=True)
+        # Use a form to safely manage state and clearing
+        with st.form("strain_form", clear_on_submit=True):
+            user_input = st.text_input("Enter Strain Name:", placeholder="e.g., permanent marker...")
+            submitted = st.form_submit_button("SEARCH STRAIN")
 
-        if target_strain:
-            st.write("---")
-            with st.spinner("Extracting..."):
-                data = generate_strain_profile(st.secrets["GROQ_API_KEY"], target_strain)
+        if submitted and user_input:
+            st.session_state.last_strain = user_input
+            st.rerun()
+
+        if "last_strain" in st.session_state and st.session_state.last_strain:
+            strain = st.session_state.last_strain
+            google_url = f"https://www.google.com/search?q={quote_plus(strain + ' strain')}"
+            st.markdown(f'<a href="{google_url}" target="_blank" class="google-btn">💥 MORE RESULTS FOR {strain.upper()}</a>', unsafe_allow_html=True)
+            with st.spinner("Extracting lineage records..."):
+                data = generate_strain_profile(st.secrets["GROQ_API_KEY"], strain)
                 if "error" not in data:
                     clf = str(data.get('classification', 'HYBRID')).upper()
-                    badge_class = "badge-sativa" if "SATIVA" in clf else ("badge-indica" if "INDICA" in clf else "badge-hybrid")
-                    card_html = f"""<div class="strain-card">
-                        <div class="card-header-flow"><div class="strain-title">✨ {target_strain.upper()}</div><span class="{badge_class}">{clf}</span></div>
-                        <hr style="border: 0; border-top: 1px solid rgba(139, 92, 246, 0.2); margin-bottom: 15px;">
-                        <div class="section-head">🌿 Genetic Lineage</div><div class="section-data">{data.get('lineage', 'N/A')}</div>
-                        <div class="section-head">🧪 Dominant Terpenes</div><div class="section-data">{data.get('terpenes', 'N/A')}</div>
-                        <div class="section-head">🍋 Flavor Profile</div><div class="section-data">{data.get('flavor', 'N/A')}</div>
-                        <div class="section-head">⚡ Cannabinoid Profile</div><div class="section-data" style="color: #A78BFA; font-weight: 600;">{data.get('cannabinoids', 'N/A')}</div>
-                        <div class="section-head">🧠 Reported Consumer Effects</div><div class="section-data">{data.get('effects', 'N/A')}</div>
-                    </div>"""
-                    st.markdown(card_html, unsafe_allow_html=True)
-                    clear_search() # Trigger clear after rendering
-                    st.rerun() # Refresh to clear input immediately
-                else: st.error(f"Engine connection blip: {data['error']}")
-        
-        st.write("---")
-        st.markdown("### 🧪 Cannabinoid & THC Compound Encyclopedia")
-        col_select, col_custom = st.columns([2, 2])
-        with col_select:
-            selected_chem = st.selectbox("Quick Select Target Compound", ["-- Choose a Compound --", "THC", "THCV", "THCP", "CBD", "CBG", "CBN", "Delta-8 THC"])
-        with col_custom:
-            custom_chem = st.text_input("Or Type a Specific Compound Variant", placeholder="e.g., THCO, CBDA...").strip()
-            
-        target_chem = custom_chem if custom_chem else (None if selected_chem == "-- Choose a Compound --" else selected_chem)
-        if target_chem:
-            chem_data = get_compound_profile(st.secrets["GROQ_API_KEY"], target_chem)
-            if "error" not in chem_data:
-                status_val = str(chem_data.get('status', 'N/A')).upper()
-                chem_card_html = f"""<div class="strain-card" style="border-top: 4px solid #3B82F6;">
-                    <div class="card-header-flow"><div class="strain-title">🔬 {target_chem.upper()}</div><span class="badge-indica">{status_val}</span></div>
-                    <div class="section-head">🧠 Primary Effects</div><div class="section-data">{chem_data.get('primary_effects', 'N/A')}</div>
-                    <div class="section-head">🩺 Benefits</div><div class="section-data">{chem_data.get('medical_benefits', 'N/A')}</div>
-                    <div class="section-head">🎯 The Budtender Pitch</div><div class="section-data" style="color: #A78BFA; font-style: italic;">"{chem_data.get('customer_pitch', 'N/A')}"</div>
-                </div>"""
-                st.markdown(chem_card_html, unsafe_allow_html=True)
+                    st.markdown(f'<div class="strain-card"><div class="strain-title">✨ {strain.upper()}</div><div class="section-head">🌿 Lineage</div><div class="section-data">{data.get("lineage")}</div><div class="section-head">⚡ Cannabinoids</div><div class="section-data">{data.get("cannabinoids")}</div></div>', unsafe_allow_html=True)
+                else: st.error(f"Engine blip: {data['error']}")
+            st.session_state.last_strain = None # Clear after display
 
 with tab2:
     st.markdown("### 📥 Live Restock Gap Analyzer")
