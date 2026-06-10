@@ -118,7 +118,7 @@ def build_pdf(dataframe, threshold_value):
     buffer.seek(0)
     return buffer.getvalue()
 
-# UI Styling Configuration (Ziggy Urban Theme)
+# UI Styling Configuration (Ziggy Urban Theme - Repaired)
 custom_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght=400;600;800;900&family=Inter:wght=400;500;700&display=swap');
@@ -166,15 +166,30 @@ custom_css = """
 .section-data { font-size: 16px; color: #E5E7EB; margin-top: 6px; line-height: 1.6; font-weight: 400; }
 
 /* Interactive Elements */
+.google-btn {
+    background: linear-gradient(90deg, #8B5CF6, #6D28D9); 
+    color: #F8FAFC !important; 
+    padding: 10px 16px; 
+    border-radius: 8px; 
+    font-weight: 800; 
+    font-family: 'Poppins', sans-serif; 
+    text-transform: uppercase; 
+    text-decoration: none; 
+    display: inline-block; 
+    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); 
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.google-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.6);
+    color: #FFFFFF !important;
+}
+
 .stDownloadButton button { background: linear-gradient(90deg, #8B5CF6 0%, #6D28D9 100%) !important; color: #F8FAFC !important; font-family: 'Poppins', sans-serif; font-weight: 900; border: none !important; border-radius: 10px !important; padding: 16px !important; width: 100%; letter-spacing: 1.5px; text-transform: uppercase; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); }
 .stDownloadButton button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139, 92, 246, 0.6); }
 
 [data-testid='stDataFrame'] { border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
 div[data-testid="stSlider"] label { color: #A78BFA !important; font-family: 'Poppins', sans-serif; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
-
-/* Dark Mode Input Overrides */
-div[data-baseweb="input"] > div, div[data-baseweb="textarea"] > div, div[data-baseweb="select"] > div { background-color: #1E293B !important; border: 1px solid rgba(139, 92, 246, 0.3) !important; border-radius: 8px !important; }
-div[data-baseweb="input"] > div:focus-within, div[data-baseweb="textarea"] > div:focus-within { border-color: #8B5CF6 !important; box-shadow: 0 0 0 1px #8B5CF6 !important; }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -244,7 +259,7 @@ with tab2:
             if target_strain:
                 google_query = f'"{target_strain}" strain genetics lineage terpenes effects site:leafly.com OR site:seedfinder.eu OR site:allbud.com OR site:hytiva.com'
                 google_url = f"https://www.google.com/search?q={quote_plus(google_query)}"
-                st.markdown(f'<div style="margin-top:28px;"><a href="{google_url}" target="_blank" style="background: linear-gradient(90deg, #8B5CF6, #6D28D9); color: #F8FAFC; padding:10px 16px; border-radius:8px; font-weight:800; font-family: \'Poppins\', sans-serif; text-transform: uppercase; text-decoration:none; display:inline-block; box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); transition: transform 0.2s;">⚡ OPEN GOOGLE FOR {target_strain.upper()}</a></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-top:28px;"><a href="{google_url}" target="_blank" class="google-btn">⚡ OPEN GOOGLE FOR {target_strain.upper()}</a></div>', unsafe_allow_html=True)
             else:
                 st.markdown('<div style="margin-top:35px; color:#64748B; font-style:italic;">Enter a strain name to generate an instant Google link.</div>', unsafe_allow_html=True)
 
