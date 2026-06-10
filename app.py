@@ -256,7 +256,7 @@ with tab2:
             
         with col_link:
             if target_strain:
-                google_query = f'"{target_strain}" strain genetics lineage terpenes effects site:leafly.com OR site:seedfinder.eu OR site:allbud.com OR site:hytiva.com'
+                google_query = f'"{target_strain}" strain'
                 google_url = f"https://www.google.com/search?q={quote_plus(google_query)}"
                 st.markdown(f'<div style="margin-top:28px;"><a href="{google_url}" target="_blank" class="google-btn">💥 MORE RESULTS</a></div>', unsafe_allow_html=True)
             else:
