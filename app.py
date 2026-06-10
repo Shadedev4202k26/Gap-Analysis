@@ -146,8 +146,8 @@ with tab2:
 
 with tab3:
     st.markdown("### 🏷️ Automated Hook Tab Formatter")
-    # --- DIAGNOSTIC TOOL ---
-       if st.button("🔍 Find My PDF Box Names"):
+# --- DIAGNOSTIC TOOL ---
+    if st.button("🔍 Find My PDF Box Names"):
         try:
             from pypdf import PdfReader
             reader = PdfReader("master_template.pdf")
