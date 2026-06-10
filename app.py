@@ -206,10 +206,18 @@ with tab1:
     if "GROQ_API_KEY" not in st.secrets:
         st.error("🔒 Security Alert: GROQ_API_KEY missing from Streamlit secrets vault.")
     else:
+        # Initialize session state for the clear functionality
+        if "strain_input" not in st.session_state:
+            st.session_state.strain_input = ""
+
         col_input, col_link = st.columns([3, 2])
         
         with col_input:
-            target_strain = st.text_input("Enter Strain Name:", placeholder="e.g., permanent marker, jealousy, local drop...").strip()
+            target_strain = st.text_input(
+                "Enter Strain Name:", 
+                placeholder="e.g., permanent marker, jealousy, local drop...",
+                key="strain_input"
+            ).strip()
             
         with col_link:
             if target_strain:
@@ -242,6 +250,7 @@ with tab1:
 <div class="section-head">🧠 Reported Consumer Effects</div><div class="section-data">{data.get('effects', 'N/A')}</div>
 </div>"""
                     st.markdown(card_html, unsafe_allow_html=True)
+                    st.session_state.strain_input = ""
                 else: 
                     st.error(f"Engine connection blip. Details: {data['error']}")
         
