@@ -5,6 +5,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from io import BytesIO
+from pypdf import PdfReader, PdfWriter
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
@@ -87,7 +88,8 @@ logo_path = 'image.png'
 logo_html = f'<img src="data:image/png;base64,{base64.b64encode(open(logo_path, "rb").read()).decode("utf-8")}" style="height: 196px; margin-right: 30px; border-radius: 8px;">' if os.path.exists(logo_path) else ""
 st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<div class="brand-text"><h1>Ziggyz Strain Sniffer & Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
 
-tab1, tab2 = st.tabs(["🔍 STRAIN SNIFFER", "📊 INVENTORY INTELLIGENCE"])
+# ADDED TAB 3 FOR HOOK TAG GENERATOR
+tab1, tab2, tab3 = st.tabs(["🔍 STRAIN SNIFFER", "📊 INVENTORY INTELLIGENCE", "🏷️ HOOK TAG GENERATOR"])
 
 with tab1:
     st.markdown("### 🔍 Verified AI Strain Profiler")
@@ -141,3 +143,87 @@ with tab2:
         if not final_df.empty:
             st.dataframe(final_df, use_container_width=True, hide_index=True)
             st.download_button("📥 DOWNLOAD MERCHANDISING PDF", build_pdf(final_df, min_threshold), "Ziggy_Report.pdf", "application/pdf")
+
+with tab3:
+    st.markdown("### 🏷️ Automated Hook Tab Formatter")
+    st.write("Upload your inventory CSV to instantly map the data into your exact Adobe template.")
+
+    hook_file = st.file_uploader("Drop Hook Tag CSV Export Here", type=["csv"], key="hook_csv")
+
+    if hook_file is not None:
+        df_hook = pd.read_csv(hook_file)
+        cleaned_data = []
+
+        for index, row in df_hook.iterrows():
+            product_name = str(row.get('Product', ''))
+            
+            # Skip empty rows or malformed text fragments
+            if not product_name.strip() or product_name.startswith('Green Crack'):
+                continue
+                
+            # Parse Category/Brand and Strain by splitting "|"
+            parts = [p.strip() for p in product_name.split('|')]
+            
+            if len(parts) >= 2:
+                brand = f"{parts[0]} | {parts[2]}" if len(parts) > 2 else parts[0]
+                strain = parts[1]
+            else:
+                brand = "MUHA MEDS"
+                strain = product_name
+                
+            # Format THC (round up decimal)
+            raw_thc = str(row.get('THC', '0'))
+            try:
+                thc_val = float(raw_thc.replace('%', '').strip())
+                thc = f"{round(thc_val)}%"
+            except ValueError:
+                thc = "88%" 
+                
+            # Format Price
+            price_val = str(row.get('Current price', '0')).replace('$', '')
+            price = f"${price_val}"
+            
+            cleaned_data.append({
+                "brand": brand.upper(),
+                "strain": strain.upper(),
+                "thc_price": f"{thc} Smilez  {price}"
+            })
+
+        if cleaned_data:
+            st.success(f"Successfully processed {len(cleaned_data)} items!")
+            
+            try:
+                # Load the master template (must be saved as 'master_template.pdf' in the same folder)
+                reader = PdfReader("master_template.pdf")
+                writer = PdfWriter()
+                writer.append(reader)
+                
+                # Map data directly to Adobe Form Fields
+                form_fields_dict = {}
+                for i, item in enumerate(cleaned_data):
+                    if i >= 12: # Example limit assuming 12 tabs per page
+                        break
+                        
+                    # Dynamically target the exact form field names in your PDF
+                    form_fields_dict[f"Brand_Row_{i}"] = item["brand"]
+                    form_fields_dict[f"Strain_Row_{i}"] = item["strain"]
+                    form_fields_dict[f"Details_Row_{i}"] = item["thc_price"]
+                
+                # Update the fields on the first page
+                writer.update_page_form_field_values(writer.pages[0], form_fields_dict)
+                
+                # Write out to a byte buffer for downloading
+                pdf_output = BytesIO()
+                writer.write(pdf_output)
+                pdf_output.seek(0)
+                
+                # Streamlit Download Button
+                st.download_button(
+                    label="📥 DOWNLOAD EXACT-MATCH HOOK TABS PDF",
+                    data=pdf_output,
+                    file_name="Filled_Hook_Tabs.pdf",
+                    mime="application/pdf"
+                )
+                
+            except FileNotFoundError:
+                st.error("⚠️ Please ensure your editable Adobe template is saved in the same directory as this script and named exactly 'master_template.pdf'.")
