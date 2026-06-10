@@ -147,20 +147,22 @@ with tab2:
 with tab3:
     st.markdown("### 🏷️ Automated Hook Tab Formatter")
     # --- DIAGNOSTIC TOOL ---
-    if st.button("🔍 Find My PDF Box Names"):
+       if st.button("🔍 Find My PDF Box Names"):
         try:
             from pypdf import PdfReader
             reader = PdfReader("master_template.pdf")
             fields = reader.get_fields()
             if fields:
-                st.write("Here are the exact names of the boxes in your PDF:")
-                st.json(list(fields.keys()))
+                field_names = list(fields.keys())
+                st.success(f"Found {len(field_names)} total boxes! Here are the first 15 names:")
+                for name in field_names[:15]:
+                    st.write(f"- {name}")
             else:
                 st.error("No fillable form fields found in this PDF!")
         except Exception as e:
             st.error(f"Error reading PDF: {e}")
     # -----------------------
-    st.write("Upload your inventory CSV to instantly map the data into your exact Adobe template.")
+        st.write("Upload your inventory CSV to instantly map the data into your exact Adobe template.")
 
     hook_file = st.file_uploader("Drop Hook Tag CSV Export Here", type=["csv"], key="hook_csv")
 
