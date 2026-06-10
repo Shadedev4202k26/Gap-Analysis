@@ -8,30 +8,29 @@ from io import BytesIO
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
-def parse_pasted_context(groq_key, strain_name, raw_pasted_text):
+def generate_strain_profile(groq_key, strain_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
     
     system_prompt = (
-        "You are an expert cannabis strain database compiler. Your sole objective is outputting clean, structured JSON.\n"
-        "You will synthesize the raw text snippets provided by the user (copied from web search results, leafly, wikileaf, seedbanks, or grower forums) "
-        "to parse out true genetic facts for the target strain.\n"
-        "Even for rare, proprietary, or boutique marketplace strains, use the text clues to deduce the lineage or brand profile.\n\n"
+        "You are an expert cannabis strain database. Your sole objective is outputting clean, structured JSON.\n"
+        "Provide highly accurate factual data for the target strain based on aggregate dispensary analytics, testing history (like Leafly, AllBud, and WikiLeaf), and breeder records.\n\n"
         "CRITICAL EXTRACTION INSTRUCTIONS:\n"
-        "1. LINEAGE: Identify the direct parental cross (e.g., 'Mendo Breath X Purple Punch'). If the text mentions a specific breeder brand or origin, capture that context accurately.\n"
-        "2. TERPENES: Isolate the dominant terpene profile based on the text. Do not leave blank if any flavor/aroma properties are described.\n"
+        "1. LINEAGE: Identify the direct parental cross (e.g., 'Mendo Breath X Purple Punch'). If rare or boutique, use deep knowledge to state the breeder origin.\n"
+        "2. TERPENES: Provide the dominant terpene profile (e.g., 'Limonene, Myrcene, Caryophyllene').\n"
         "3. CLASSIFICATION: Strictly output 'INDICA', 'SATIVA', or 'HYBRID'.\n"
-        "4. FLAVOR & EFFECTS: Provide a summary of consumer properties found in the text.\n\n"
-        "Return ONLY a clean, valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects'."
+        "4. FLAVOR & EFFECTS: Provide a brief breakdown of common flavors and standard consumer effects.\n"
+        "5. CANNABINOIDS: Provide the average typical cannabinoid potency matrix (e.g., 'THC: 24-28%, CBD: <1%, CBG: ~1%').\n\n"
+        "Return ONLY a clean, valid JSON object containing exactly these keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects', 'cannabinoids'."
     )
     
     payload = {
         "model": "llama-3.3-70b-versatile", 
         "messages": [
             {"role": "system", "content": system_prompt}, 
-            {"role": "user", "content": f"Target Strain: {strain_name}\n\nRaw Search Text Provided:\n{raw_pasted_text}"}
+            {"role": "user", "content": f"Target Strain: {strain_name}"}
         ], 
-        "temperature": 0.0
+        "temperature": 0.1
     }
     
     try:
@@ -43,7 +42,7 @@ def parse_pasted_context(groq_key, strain_name, raw_pasted_text):
             return json.loads(content)
     except Exception as e:
         return {"error": str(e)}
-    return {"classification": "HYBRID", "lineage": "Proprietary / Unverified Genetics", "terpenes": "N/A", "flavor": "N/A", "effects": "N/A"}
+    return {"classification": "HYBRID", "lineage": "Proprietary / Unverified Genetics", "terpenes": "N/A", "flavor": "N/A", "effects": "N/A", "cannabinoids": "N/A"}
 
 def get_compound_profile(api_key, compound_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -118,7 +117,7 @@ def build_pdf(dataframe, threshold_value):
     buffer.seek(0)
     return buffer.getvalue()
 
-# UI Styling Configuration (Ziggy Urban Theme - Repaired)
+# UI Styling Configuration (Ziggy Urban Theme)
 custom_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght=400;600;800;900&family=Inter:wght=400;500;700&display=swap');
@@ -259,25 +258,21 @@ with tab2:
             if target_strain:
                 google_query = f'"{target_strain}" strain genetics lineage terpenes effects site:leafly.com OR site:seedfinder.eu OR site:allbud.com OR site:hytiva.com'
                 google_url = f"https://www.google.com/search?q={quote_plus(google_query)}"
-                st.markdown(f'<div style="margin-top:28px;"><a href="{google_url}" target="_blank" class="google-btn">⚡ OPEN GOOGLE FOR {target_strain.upper()}</a></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-top:28px;"><a href="{google_url}" target="_blank" class="google-btn">💥 MORE RESULTS</a></div>', unsafe_allow_html=True)
             else:
-                st.markdown('<div style="margin-top:35px; color:#64748B; font-style:italic;">Enter a strain name to generate an instant Google link.</div>', unsafe_allow_html=True)
+                st.markdown('<div style="margin-top:35px; color:#64748B; font-style:italic;">Enter a strain name to process profile data.</div>', unsafe_allow_html=True)
 
         if target_strain:
             st.write("---")
-            st.markdown(f"### 📥 Step 2: Paste Google Snippets for **{target_strain.upper()}**")
-            pasted_info = st.text_area("Right-click copy the top search summaries, description paragraphs, or profile pages, then paste them here:", height=130, placeholder="Paste whatever text you find on Google here... Llama will instantly strip out the clutter and clean it up.")
-            
-            if pasted_info.strip():
-                with st.spinner("Extracting molecular details and compiling genetic layout..."):
-                    data = parse_pasted_context(st.secrets["GROQ_API_KEY"], target_strain, pasted_info)
-                    if "error" not in data:
-                        clf = str(data.get('classification', 'HYBRID')).upper()
-                        badge_class = "badge-hybrid"
-                        if "SATIVA" in clf: badge_class = "badge-sativa"
-                        elif "INDICA" in clf: badge_class = "badge-indica"
-                        
-                        card_html = f"""<div class="strain-card">
+            with st.spinner("Extracting lineage records and rendering cannabinoid architecture..."):
+                data = generate_strain_profile(st.secrets["GROQ_API_KEY"], target_strain)
+                if "error" not in data:
+                    clf = str(data.get('classification', 'HYBRID')).upper()
+                    badge_class = "badge-hybrid"
+                    if "SATIVA" in clf: badge_class = "badge-sativa"
+                    elif "INDICA" in clf: badge_class = "badge-indica"
+                    
+                    card_html = f"""<div class="strain-card">
 <div class="card-header-flow">
 <div class="strain-title">✨ {target_strain.upper()}</div>
 <span class="{badge_class}">{clf}</span>
@@ -286,11 +281,12 @@ with tab2:
 <div class="section-head">🌿 Genetic Lineage</div><div class="section-data">{data.get('lineage', 'N/A')}</div>
 <div class="section-head">🧪 Dominant Terpenes</div><div class="section-data">{data.get('terpenes', 'N/A')}</div>
 <div class="section-head">🍋 Flavor Profile</div><div class="section-data">{data.get('flavor', 'N/A')}</div>
+<div class="section-head">⚡ Cannabinoid Profile</div><div class="section-data" style="color: #A78BFA; font-weight: 600;">{data.get('cannabinoids', 'N/A')}</div>
 <div class="section-head">🧠 Reported Consumer Effects</div><div class="section-data">{data.get('effects', 'N/A')}</div>
 </div>"""
-                        st.markdown(card_html, unsafe_allow_html=True)
-                    else: 
-                        st.error(f"Engine connection blip. Details: {data['error']}")
+                    st.markdown(card_html, unsafe_allow_html=True)
+                else: 
+                    st.error(f"Engine connection blip. Details: {data['error']}")
         
         st.write("---")
         st.markdown("### 🧪 Cannabinoid & THC Compound Encyclopedia")
