@@ -120,7 +120,7 @@ def build_pdf(dataframe, threshold_value):
 # UI Styling Configuration (Ziggy Urban Theme)
 custom_css = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght=400;600;800;900&family=Inter:wght=400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800;900&family=Inter:wght@400;500;700&display=swap');
 
 .stApp { background-color: #0F172A; color: #F8FAFC; font-family: 'Inter', sans-serif; }
 
@@ -199,52 +199,9 @@ if os.path.exists(logo_path):
         logo_html = f'<img src="data:image/png;base64,{base64.b64encode(img_file.read()).decode("utf-8")}" style="height: 196px; margin-right: 30px; border-radius: 8px;">'
 
 st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<div class="brand-text"><h1>Ziggyz Strain Sniffer & Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
-tab1, tab2 = st.tabs(["📊 INVENTORY INTELLIGENCE", "🔍 AI KNOWLEDGE BASE"])
+tab1, tab2 = st.tabs(["🔍 STRAIN SNIFFER", "📊 INVENTORY INTELLIGENCE"])
 
 with tab1:
-    st.markdown("### 📥 Live Restock Gap Analyzer")
-    
-    col_file, col_slider = st.columns([3, 2])
-    with col_file:
-        uploaded_file = st.file_uploader("Select Salesfloor & Curbside + any Category🔥Export Product, Room, & Quantity ONLY🔥Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
-    with col_slider:
-        min_threshold = st.slider("Adjust Minimum Backstock Target Threshold:", min_value=1, max_value=50, value=15, step=1, help="Adjust this lower (e.g., 5) for high-end concentrates/vapes or higher for top-tier pre-rolls/flower.")
-        
-    if uploaded_file:
-        try:
-            df = pd.read_csv(uploaded_file)
-            df.columns = [str(col).strip('="').strip() for col in df.columns]
-            qty_col = [col for col in df.columns if 'Quantity' in col or 'Qty' in col][0]
-            df['Product'] = df['Product'].apply(lambda x: str(x).strip('="').strip())
-            df['Room'] = df['Room'].apply(lambda x: str(x).strip('="').strip())
-            df['Qty'] = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
-            
-            pivot = df.groupby(['Product', 'Room'])['Qty'].sum().unstack(fill_value=0)
-            results = []
-            for product, row in pivot.iterrows():
-                present, absent = row[row > 0].index.tolist(), row[row == 0].index.tolist()
-                if absent and present:
-                    for r in present:
-                        if row[r] >= min_threshold: 
-                            results.append({"Product Name": product, "Location": r, "Available Qty": int(row[r])})
-            
-            final_df = pd.DataFrame(results)
-            if not final_df.empty:
-                final_df = final_df.sort_values("Product Name")
-                m1, m2, m3 = st.columns(3)
-                with m1: st.markdown(f'<div class="metric-tile"><div class="metric-label">High-Impact Gaps</div><div class="metric-value">{len(final_df)}</div></div>', unsafe_allow_html=True)
-                with m2: st.markdown(f'<div class="metric-tile"><div class="metric-label">Units to Move</div><div class="metric-value">{final_df["Available Qty"].sum()}</div></div>', unsafe_allow_html=True)
-                with m3: st.markdown(f'<div class="metric-tile"><div class="metric-label">Min Threshold</div><div class="metric-value">{min_threshold}+</div></div>', unsafe_allow_html=True)
-                st.write("---")
-                st.dataframe(final_df, use_container_width=True, hide_index=True)
-                
-                pdf_data = build_pdf(final_df, min_threshold)
-                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_data, "Ziggy_Report.pdf", "application/pdf")
-            else:
-                st.info(f"No gaps found matching the {min_threshold}+ unit threshold.")
-        except Exception as e: st.error(f"Analysis Error: {e}")
-
-with tab2:
     st.markdown("### 🔍 Verified AI Strain Profiler")
     if "GROQ_API_KEY" not in st.secrets:
         st.error("🔒 Security Alert: GROQ_API_KEY missing from Streamlit secrets vault.")
@@ -322,3 +279,46 @@ with tab2:
 </div>"""
                     st.markdown(chem_card_html, unsafe_allow_html=True)
                 else: st.error(f"Engine connection blip. Details: {chem_data['error']}")
+
+with tab2:
+    st.markdown("### 📥 Live Restock Gap Analyzer")
+    
+    col_file, col_slider = st.columns([3, 2])
+    with col_file:
+        uploaded_file = st.file_uploader("Select Salesfloor & Curbside + any Category🔥Export Product, Room, & Quantity ONLY🔥Drop Dutchie CSV Export Here", type="csv", key="dutchie_uploader")
+    with col_slider:
+        min_threshold = st.slider("Adjust Minimum Backstock Target Threshold:", min_value=1, max_value=50, value=15, step=1, help="Adjust this lower (e.g., 5) for high-end concentrates/vapes or higher for top-tier pre-rolls/flower.")
+        
+    if uploaded_file:
+        try:
+            df = pd.read_csv(uploaded_file)
+            df.columns = [str(col).strip('="').strip() for col in df.columns]
+            qty_col = [col for col in df.columns if 'Quantity' in col or 'Qty' in col][0]
+            df['Product'] = df['Product'].apply(lambda x: str(x).strip('="').strip())
+            df['Room'] = df['Room'].apply(lambda x: str(x).strip('="').strip())
+            df['Qty'] = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
+            
+            pivot = df.groupby(['Product', 'Room'])['Qty'].sum().unstack(fill_value=0)
+            results = []
+            for product, row in pivot.iterrows():
+                present, absent = row[row > 0].index.tolist(), row[row == 0].index.tolist()
+                if absent and present:
+                    for r in present:
+                        if row[r] >= min_threshold: 
+                            results.append({"Product Name": product, "Location": r, "Available Qty": int(row[r])})
+            
+            final_df = pd.DataFrame(results)
+            if not final_df.empty:
+                final_df = final_df.sort_values("Product Name")
+                m1, m2, m3 = st.columns(3)
+                with m1: st.markdown(f'<div class="metric-tile"><div class="metric-label">High-Impact Gaps</div><div class="metric-value">{len(final_df)}</div></div>', unsafe_allow_html=True)
+                with m2: st.markdown(f'<div class="metric-tile"><div class="metric-label">Units to Move</div><div class="metric-value">{final_df["Available Qty"].sum()}</div></div>', unsafe_allow_html=True)
+                with m3: st.markdown(f'<div class="metric-tile"><div class="metric-label">Min Threshold</div><div class="metric-value">{min_threshold}+</div></div>', unsafe_allow_html=True)
+                st.write("---")
+                st.dataframe(final_df, use_container_width=True, hide_index=True)
+                
+                pdf_data = build_pdf(final_df, min_threshold)
+                st.download_button("📥 DOWNLOAD MERCHANDISING PDF", pdf_data, "Ziggy_Report.pdf", "application/pdf")
+            else:
+                st.info(f"No gaps found matching the {min_threshold}+ unit threshold.")
+        except Exception as e: st.error(f"Analysis Error: {e}")
