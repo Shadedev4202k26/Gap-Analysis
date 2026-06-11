@@ -25,11 +25,11 @@ def generate_strain_profile(groq_key, strain_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
     
+    # BALANCED PROMPT: Strict enough to be factual, loose enough to actually answer
     system_prompt = (
-        "You are a strict, factual cannabis strain database. "
-        "If you do not have 100% definitive, verified knowledge of a strain's exact genetic lineage, "
-        "you MUST output exactly 'Unknown strain, please choose \"MORE RESULTS\"' for the lineage field. "
-        "Do NOT guess, hallucinate, or combine conflicting rumors. "
+        "You are a highly accurate cannabis strain database for a retail dispensary. "
+        "Provide the most widely accepted genetic lineage, terpenes, flavor, and effects for the requested strain based on established industry knowledge. "
+        "If the strain name is completely unrecognizable or clearly fictional, output 'Unknown strain, please check Google' for the lineage. "
         "Output clean, structured JSON. Keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects', 'cannabinoids'."
     )
     
@@ -39,7 +39,7 @@ def generate_strain_profile(groq_key, strain_name):
             {"role": "system", "content": system_prompt}, 
             {"role": "user", "content": f"Target Strain: {strain_name}"}
         ], 
-        "temperature": 0.0
+        "temperature": 0.1 # Low creativity, high factual recall
     }
     
     try:
@@ -185,7 +185,6 @@ with tab3:
         hook_file = st.file_uploader("Drop Hook Tag Inventory (CSV)", type=["csv"], key="hook_csv")
 
         if hook_file is not None:
-            # Check if the template exists in the GitHub root directory
             template_path = "master_template.pdf"
             
             if not os.path.exists(template_path):
@@ -193,15 +192,12 @@ with tab3:
             else:
                 df_hook = pd.read_csv(hook_file)
                 
-                # 1. Clean columns
                 df_hook.columns = [str(col).strip('="').strip() for col in df_hook.columns]
                 
-                # 2. Drop duplicated products
                 if 'Product' in df_hook.columns:
                     df_hook['Product'] = df_hook['Product'].apply(lambda x: str(x).strip('="').strip())
                     df_hook = df_hook.drop_duplicates(subset=['Product']).dropna(subset=['Product'])
                 
-                # 3. Gather all cleaned data into a flat stream
                 flat_data_stream = []
 
                 for index, row in df_hook.iterrows():
@@ -306,12 +302,7 @@ with tab3:
                                     annot_obj = annot.get_object()
                                     if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
                                         old_name = annot_obj["/T"]
-                                        
-                                        # Rename to prevent cross-page overwriting
                                         annot_obj[NameObject("/T")] = create_string_object(f"{old_name}_pg{page_num}")
-                                        
-                                        # --- FORCE BOLD TEXT HACK ---
-                                        # Overwrite the Default Appearance (/DA) to force Helvetica-Bold, Auto-Size, Black Text
                                         annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 0 g")
                                         
                                 final_writer.add_page(temp_writer.pages[0])
