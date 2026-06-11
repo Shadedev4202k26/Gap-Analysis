@@ -183,10 +183,9 @@ with tab3:
                 brand = "MUHA MEDS"
                 strain = product_name
                 
-            # Format THC safely (Removes % and spaces, rounds up decimal)
+            # Format THC safely
             raw_thc = str(row.get('THC', '0'))
             try:
-                # Extracts only the digits and decimals safely
                 thc_str = ''.join(c for c in raw_thc if c.isdigit() or c == '.')
                 if thc_str:
                     thc_val = float(thc_str)
@@ -196,7 +195,7 @@ with tab3:
             except ValueError:
                 thc = "88%" 
                 
-            # Format Price (Checks for "Current price" first, then "Price")
+            # Format Price
             price_col = 'Current price' if 'Current price' in df_hook.columns else 'Price'
             raw_price = str(row.get(price_col, '0')).replace('$', '')
             try:
@@ -209,41 +208,83 @@ with tab3:
             except ValueError:
                 price = "$0"
             
-            # Append in the exact 1-2-3 sequential order of your Adobe PDF boxes
+            # Append in the exact 1-2-3 sequential order: Brand, Strain, Details
             flat_data_stream.extend([brand.upper(), strain.upper(), f"{thc} Smilez  {price}"])
 
         if flat_data_stream:
             try:
-                # Open the Master Template
                 reader = PdfReader("master_template.pdf")
-                writer = PdfWriter()
-                writer.append(reader)
+                page = reader.pages[0]
                 
-                # Get the actual list of the exact hidden Adobe box names
-                pdf_fields = reader.get_fields()
+                # --- NEW SPATIAL MAPPING ALGORITHM ---
+                # This ignores Adobe's internal names and reads the exact X/Y geometry of the boxes
+                field_coords = []
+                if "/Annots" in page:
+                    for annot in page["/Annots"]:
+                        annot_obj = annot.get_object()
+                        if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
+                            name = annot_obj.get("/T")
+                            rect = annot_obj.get("/Rect")
+                            if name and rect:
+                                name_str = str(name)
+                                x_center = (float(rect[0]) + float(rect[2])) / 2
+                                y_center = (float(rect[1]) + float(rect[3])) / 2
+                                field_coords.append({
+                                    "name": name_str,
+                                    "x": x_center,
+                                    "y": y_center
+                                })
                 
-                if pdf_fields:
-                    field_names = list(pdf_fields.keys())
+                if field_coords:
+                    # 1. Sort fields from top to bottom based on Y-axis
+                    field_coords.sort(key=lambda v: v['y'], reverse=True)
                     
-                    # Zip the data sequentially into the boxes
+                    # 2. Group the boxes into "Rows" of Hook Tabs (tolerance of 120 points / ~1.6 inches)
+                    rows = []
+                    current_row = []
+                    current_y_max = None
+                    
+                    for box in field_coords:
+                        if current_y_max is None:
+                            current_y_max = box['y']
+                            current_row.append(box)
+                        else:
+                            if current_y_max - box['y'] < 120: 
+                                current_row.append(box)
+                            else:
+                                rows.append(current_row)
+                                current_row = [box]
+                                current_y_max = box['y']
+                    if current_row:
+                        rows.append(current_row)
+                    
+                    # 3. Sort each row Left-to-Right, then perfectly Top-to-Bottom within each column
+                    ordered_field_names = []
+                    for row in rows:
+                        row.sort(key=lambda v: (round(v['x'] / 10), -v['y']))
+                        for box in row:
+                            ordered_field_names.append(box['name'])
+
+                    # --- END SPATIAL MAPPING ---
+                    
+                    # Zip the data perfectly into the visually sorted boxes
+                    writer = PdfWriter()
+                    writer.append(reader)
                     form_fields_dict = {}
                     
-                    # Stop either when we run out of data, or we run out of blank boxes in the PDF
-                    fill_limit = min(len(flat_data_stream), len(field_names))
+                    fill_limit = min(len(flat_data_stream), len(ordered_field_names))
                     for i in range(fill_limit):
-                        target_box_name = field_names[i]
+                        target_box_name = ordered_field_names[i]
                         form_fields_dict[target_box_name] = flat_data_stream[i]
                     
-                    # Apply changes to the PDF
                     writer.update_page_form_field_values(writer.pages[0], form_fields_dict)
                     
                     pdf_output = BytesIO()
                     writer.write(pdf_output)
                     pdf_output.seek(0)
                     
-                    # Tell the user how many tags were made
                     total_tags = fill_limit // 3
-                    st.success(f"Successfully generated {total_tags} unique hook tags!")
+                    st.success(f"Successfully generated {total_tags} perfectly aligned hook tags!")
                     
                     st.download_button(
                         label="📥 DOWNLOAD EXACT-MATCH HOOK TABS PDF",
@@ -252,7 +293,7 @@ with tab3:
                         mime="application/pdf"
                     )
                 else:
-                    st.error("No fillable form fields detected in master_template.pdf.")
+                    st.error("No fillable form boxes detected in master_template.pdf.")
                 
             except FileNotFoundError:
-                st.error("⚠️ Please ensure your editable Adobe template is saved in the same directory as this script and named exactly 'master_template.pdf'.")
+                st.error("⚠️ Please ensure 'master_template.pdf' is saved in your Streamlit app folder.")
