@@ -4,6 +4,7 @@ import base64
 import os
 import json
 import requests
+import re
 from urllib.parse import quote_plus
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -25,7 +26,6 @@ def generate_strain_profile(groq_key, strain_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
     
-    # BALANCED PROMPT: Strict enough to be factual, loose enough to actually answer
     system_prompt = (
         "You are a highly accurate cannabis strain database for a retail dispensary. "
         "Provide the most widely accepted genetic lineage, terpenes, flavor, and effects for the requested strain based on established industry knowledge. "
@@ -39,7 +39,7 @@ def generate_strain_profile(groq_key, strain_name):
             {"role": "system", "content": system_prompt}, 
             {"role": "user", "content": f"Target Strain: {strain_name}"}
         ], 
-        "temperature": 0.1 # Low creativity, high factual recall
+        "temperature": 0.1
     }
     
     try:
@@ -198,7 +198,7 @@ with tab3:
                     df_hook['Product'] = df_hook['Product'].apply(lambda x: str(x).strip('="').strip())
                     df_hook = df_hook.drop_duplicates(subset=['Product']).dropna(subset=['Product'])
                 
-                flat_data_stream = []
+                product_list = []
 
                 for index, row in df_hook.iterrows():
                     product_name = str(row.get('Product', ''))
@@ -238,64 +238,58 @@ with tab3:
                     except ValueError:
                         price = "$0"
                     
-                    flat_data_stream.extend([brand.upper(), strain.upper(), f"{thc} Smilez  {price}"])
+                    product_list.append({
+                        "brand": brand.upper(),
+                        "strain": strain.upper(),
+                        "price": f"{thc} Smilez  {price}"
+                    })
 
-                if flat_data_stream:
+                if product_list:
                     try:
                         blueprint_reader = PdfReader(template_path)
-                        blueprint_page = blueprint_reader.pages[0]
+                        pdf_fields = blueprint_reader.get_fields()
                         
-                        field_coords = []
-                        if "/Annots" in blueprint_page:
-                            for annot in blueprint_page["/Annots"]:
-                                annot_obj = annot.get_object()
-                                if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
-                                    name = annot_obj.get("/T")
-                                    rect = annot_obj.get("/Rect")
-                                    if name and rect:
-                                        field_coords.append({
-                                            "name": str(name),
-                                            "x": (float(rect[0]) + float(rect[2])) / 2,
-                                            "y": (float(rect[1]) + float(rect[3])) / 2
-                                        })
-                        
-                        if field_coords:
-                            field_coords.sort(key=lambda v: v['y'], reverse=True)
-                            rows, current_row, current_y_max = [], [], None
+                        if pdf_fields:
+                            field_names = list(pdf_fields.keys())
                             
-                            for box in field_coords:
-                                if current_y_max is None:
-                                    current_y_max = box['y']
-                                    current_row.append(box)
-                                else:
-                                    if current_y_max - box['y'] < 120: 
-                                        current_row.append(box)
-                                    else:
-                                        rows.append(current_row)
-                                        current_row = [box]
-                                        current_y_max = box['y']
-                            if current_row:
-                                rows.append(current_row)
-                            
-                            ordered_field_names = []
-                            for row in rows:
-                                row.sort(key=lambda v: (round(v['x'] / 10), -v['y']))
-                                for box in row:
-                                    ordered_field_names.append(box['name'])
-                            
+                            # Find the maximum tag number in the template
+                            tag_numbers = []
+                            for name in field_names:
+                                match = re.search(r'\d+', name)
+                                if match:
+                                    tag_numbers.append(int(match.group()))
+                                    
+                            tags_per_page = max(tag_numbers) if tag_numbers else 1
                             final_writer = PdfWriter()
-                            boxes_per_page = len(ordered_field_names)
                             
-                            data_chunks = [flat_data_stream[i:i + boxes_per_page] for i in range(0, len(flat_data_stream), boxes_per_page)]
+                            # Chunk data into page-sized groups
+                            data_chunks = [product_list[i:i + tags_per_page] for i in range(0, len(product_list), tags_per_page)]
                             
                             for page_num, chunk in enumerate(data_chunks):
                                 temp_writer = PdfWriter()
                                 temp_writer.append(blueprint_reader) 
                                 
                                 form_fields_dict = {}
-                                for i in range(len(chunk)):
-                                    form_fields_dict[ordered_field_names[i]] = chunk[i]
+                                for field_name in field_names:
+                                    # Extract the tag number from the field name (e.g., 'Brand_1' -> 1)
+                                    match = re.search(r'\d+', field_name)
+                                    if not match:
+                                        continue
+                                        
+                                    tag_idx = int(match.group()) - 1
                                     
+                                    if tag_idx < len(chunk):
+                                        product = chunk[tag_idx]
+                                        name_lower = field_name.lower()
+                                        
+                                        # Smart Matching: Only fill the boxes it actually finds
+                                        if 'brand' in name_lower:
+                                            form_fields_dict[field_name] = product['brand']
+                                        elif 'strain' in name_lower:
+                                            form_fields_dict[field_name] = product['strain']
+                                        elif 'price' in name_lower or 'thc' in name_lower:
+                                            form_fields_dict[field_name] = product['price']
+                                            
                                 temp_writer.update_page_form_field_values(temp_writer.pages[0], form_fields_dict)
                                 
                                 for annot in temp_writer.pages[0].get("/Annots", []):
@@ -311,8 +305,8 @@ with tab3:
                             final_writer.write(pdf_output)
                             pdf_output.seek(0)
                             
-                            total_tags = len(flat_data_stream) // 3
-                            st.success(f"Successfully mapped {total_tags} bold tags across {len(data_chunks)} pages!")
+                            total_tags = len(product_list)
+                            st.success(f"Successfully mapped {total_tags} tags across {len(data_chunks)} pages based on your custom names!")
                             
                             st.download_button(
                                 label="📥 DOWNLOAD MULTI-PAGE HOOK TABS PDF",
