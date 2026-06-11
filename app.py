@@ -11,7 +11,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from io import BytesIO
 
-# Updated to use the modern 'create_string_object' for the latest pypdf version
+# Safe import wrapper
 try:
     from pypdf import PdfReader, PdfWriter
     from pypdf.generic import NameObject, create_string_object
@@ -304,8 +304,13 @@ with tab3:
                                 annot_obj = annot.get_object()
                                 if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
                                     old_name = annot_obj["/T"]
-                                    # Fix: Used create_string_object instead of StringObject
+                                    
+                                    # Rename to prevent cross-page overwriting
                                     annot_obj[NameObject("/T")] = create_string_object(f"{old_name}_pg{page_num}")
+                                    
+                                    # --- FORCE BOLD TEXT HACK ---
+                                    # Overwrite the Default Appearance (/DA) to force Helvetica-Bold, Auto-Size, Black Text
+                                    annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 0 g")
                                     
                             final_writer.add_page(temp_writer.pages[0])
                         
@@ -314,7 +319,7 @@ with tab3:
                         pdf_output.seek(0)
                         
                         total_tags = len(flat_data_stream) // 3
-                        st.success(f"Successfully mapped {total_tags} tags across {len(data_chunks)} pages!")
+                        st.success(f"Successfully mapped {total_tags} bold tags across {len(data_chunks)} pages!")
                         
                         st.download_button(
                             label="📥 DOWNLOAD MULTI-PAGE HOOK TABS PDF",
