@@ -15,7 +15,7 @@ from io import BytesIO
 # Safe import wrapper to prevent crashes if pypdf is missing
 try:
     from pypdf import PdfReader, PdfWriter
-    from pypdf.generic import NameObject, create_string_object
+    from pypdf.generic import NameObject, create_string_object, NumberObject
     PYPDF_AVAILABLE = True
 except ImportError:
     PYPDF_AVAILABLE = False
@@ -252,7 +252,6 @@ with tab3:
                         if pdf_fields:
                             field_names = list(pdf_fields.keys())
                             
-                            # Find the maximum tag number in the template
                             tag_numbers = []
                             for name in field_names:
                                 match = re.search(r'\d+', name)
@@ -262,7 +261,6 @@ with tab3:
                             tags_per_page = max(tag_numbers) if tag_numbers else 1
                             final_writer = PdfWriter()
                             
-                            # Chunk data into page-sized groups
                             data_chunks = [product_list[i:i + tags_per_page] for i in range(0, len(product_list), tags_per_page)]
                             
                             for page_num, chunk in enumerate(data_chunks):
@@ -271,7 +269,6 @@ with tab3:
                                 
                                 form_fields_dict = {}
                                 for field_name in field_names:
-                                    # Extract the tag number from the field name (e.g., 'Brand_1' -> 1)
                                     match = re.search(r'\d+', field_name)
                                     if not match:
                                         continue
@@ -282,7 +279,6 @@ with tab3:
                                         product = chunk[tag_idx]
                                         name_lower = field_name.lower()
                                         
-                                        # Smart Matching: Only fill the boxes it actually finds
                                         if 'brand' in name_lower:
                                             form_fields_dict[field_name] = product['brand']
                                         elif 'strain' in name_lower:
@@ -295,10 +291,25 @@ with tab3:
                                 for annot in temp_writer.pages[0].get("/Annots", []):
                                     annot_obj = annot.get_object()
                                     if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
-                                        old_name = annot_obj["/T"]
-                                        annot_obj[NameObject("/T")] = create_string_object(f"{old_name}_pg{page_num}")
-                                        annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 0 g")
+                                        old_name = str(annot_obj["/T"])
                                         
+                                        # Rename to prevent cross-page overwriting
+                                        annot_obj[NameObject("/T")] = create_string_object(f"{old_name}_pg{page_num}")
+                                        
+                                        # Force DoNotScroll flag so the box auto-shrinks text perfectly instead of cutting it off
+                                        current_ff = int(annot_obj.get("/Ff", 0))
+                                        annot_obj[NameObject("/Ff")] = NumberObject(current_ff | 4194304)
+                                        
+                                        # Align text to Center for visual balance
+                                        annot_obj[NameObject("/Q")] = NumberObject(1)
+                                        
+                                        if 'brand' in old_name.lower():
+                                            # MAX BOLD HACK: Helvetica Bold + 0.5 thickness Black Stroke Outline
+                                            annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 2 Tr 0.5 w 0 g 0 G")
+                                        else:
+                                            # Standard Bold for Strain/Price
+                                            annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 0 g")
+                                            
                                 final_writer.add_page(temp_writer.pages[0])
                             
                             pdf_output = BytesIO()
