@@ -1,4 +1,9 @@
-import streamlit as st, pandas as pd, base64, os, json, requests
+import streamlit as st
+import pandas as pd
+import base64
+import os
+import json
+import requests
 from urllib.parse import quote_plus
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -6,21 +11,42 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from io import BytesIO
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import NameObject, StringObject
 
 st.set_page_config(page_title="Ziggybot", page_icon="🔥", layout="wide")
 
 def generate_strain_profile(groq_key, strain_name):
     url = "https://api.groq.com/openai/v1/chat/completions"
     api_headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
-    system_prompt = "You are an expert cannabis strain database. Output clean, structured JSON. Keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects', 'cannabinoids'."
-    payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Target Strain: {strain_name}"}], "temperature": 0.1}
+    
+    # Strict rule to prevent the AI from guessing fake genetics
+    system_prompt = (
+        "You are a strict, factual cannabis strain database. "
+        "If you do not have 100% definitive, verified knowledge of a strain's exact genetic lineage, "
+        "you MUST output exactly 'Unknown strain, please choose \"MORE RESULTS\"' for the lineage field. "
+        "Do NOT guess, hallucinate, or combine conflicting rumors. "
+        "Output clean, structured JSON. Keys: 'classification', 'lineage', 'terpenes', 'flavor', 'effects', 'cannabinoids'."
+    )
+    
+    payload = {
+        "model": "llama-3.3-70b-versatile", 
+        "messages": [
+            {"role": "system", "content": system_prompt}, 
+            {"role": "user", "content": f"Target Strain: {strain_name}"}
+        ], 
+        "temperature": 0.0 # Locked down to zero creativity
+    }
+    
     try:
         res = requests.post(url, headers=api_headers, json=payload, timeout=12)
         if res.status_code == 200:
             content = res.json()['choices'][0]['message']['content'].strip()
-            if "{" in content and "}" in content: content = content[content.find("{"):content.rfind("}") + 1]
+            if "{" in content and "}" in content: 
+                content = content[content.find("{"):content.rfind("}") + 1]
             return json.loads(content)
-    except Exception as e: return {"error": str(e)}
+    except Exception as e: 
+        return {"error": str(e)}
+        
     return {"classification": "HYBRID", "lineage": "N/A", "terpenes": "N/A", "flavor": "N/A", "effects": "N/A", "cannabinoids": "N/A"}
 
 def get_compound_profile(api_key, compound_name):
@@ -127,7 +153,7 @@ with tab1:
 
 with tab2:
     st.markdown("### 📥 Live Restock Gap Analyzer")
-    uploaded_file = st.file_uploader("Drop Dutchie CSV Export Here", type="csv")
+    uploaded_file = st.file_uploader("Drop Dutchie CSV Export Here", type="csv", key="restock_csv")
     min_threshold = st.slider("Min Threshold:", 1, 50, 15)
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
@@ -145,34 +171,34 @@ with tab2:
 
 with tab3:
     st.markdown("### 🏷️ Automated Hook Tab Formatter")
-    st.write("Upload your inventory CSV to instantly map the data into your exact Adobe template.")
+    st.write("Upload your 1-page blank editable PDF template and your inventory CSV to instantly generate a multi-page print file.")
 
-    hook_file = st.file_uploader("Drop Hook Tag CSV Export Here", type=["csv"], key="hook_csv")
+    col1, col2 = st.columns(2)
+    with col1:
+        template_file = st.file_uploader("1. Drop Adobe Master Template (PDF)", type=["pdf"], key="pdf_template")
+    with col2:
+        hook_file = st.file_uploader("2. Drop Hook Tag Inventory (CSV)", type=["csv"], key="hook_csv")
 
-    if hook_file is not None:
+    if hook_file is not None and template_file is not None:
         df_hook = pd.read_csv(hook_file)
         
-        # 1. Clean columns (strips Dutchie formatting symbols if present)
+        # 1. Clean columns
         df_hook.columns = [str(col).strip('="').strip() for col in df_hook.columns]
         
-        # 2. Automatically drop duplicated products so we only print ONE tag per unique strain
+        # 2. Drop duplicated products
         if 'Product' in df_hook.columns:
             df_hook['Product'] = df_hook['Product'].apply(lambda x: str(x).strip('="').strip())
             df_hook = df_hook.drop_duplicates(subset=['Product']).dropna(subset=['Product'])
         
-        # 3. Gather all the cleaned data components into a flat line
+        # 3. Gather all cleaned data into a flat stream
         flat_data_stream = []
 
         for index, row in df_hook.iterrows():
             product_name = str(row.get('Product', ''))
-            
-            # Skip empty rows or 'nan'
             if not product_name.strip() or product_name.lower() == 'nan':
                 continue
                 
-            # Parse Category/Brand and Strain by splitting "|"
             parts = [p.strip() for p in product_name.split('|')]
-            
             if len(parts) >= 3:
                 brand = f"{parts[0]} | {parts[2]}"
                 strain = parts[1]
@@ -183,19 +209,16 @@ with tab3:
                 brand = "MUHA MEDS"
                 strain = product_name
                 
-            # Format THC safely
             raw_thc = str(row.get('THC', '0'))
             try:
                 thc_str = ''.join(c for c in raw_thc if c.isdigit() or c == '.')
                 if thc_str:
-                    thc_val = float(thc_str)
-                    thc = f"{round(thc_val)}%"
+                    thc = f"{round(float(thc_str))}%"
                 else:
                     thc = "88%"
             except ValueError:
                 thc = "88%" 
                 
-            # Format Price
             price_col = 'Current price' if 'Current price' in df_hook.columns else 'Price'
             raw_price = str(row.get(price_col, '0')).replace('$', '')
             try:
@@ -208,41 +231,32 @@ with tab3:
             except ValueError:
                 price = "$0"
             
-            # Append in the exact 1-2-3 sequential order: Brand, Strain, Details
             flat_data_stream.extend([brand.upper(), strain.upper(), f"{thc} Smilez  {price}"])
 
         if flat_data_stream:
             try:
-                reader = PdfReader("master_template.pdf")
-                page = reader.pages[0]
+                # Open blueprint template
+                blueprint_reader = PdfReader(template_file)
+                blueprint_page = blueprint_reader.pages[0]
                 
-                # --- NEW SPATIAL MAPPING ALGORITHM ---
-                # This ignores Adobe's internal names and reads the exact X/Y geometry of the boxes
+                # Map the visual boxes
                 field_coords = []
-                if "/Annots" in page:
-                    for annot in page["/Annots"]:
+                if "/Annots" in blueprint_page:
+                    for annot in blueprint_page["/Annots"]:
                         annot_obj = annot.get_object()
                         if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
                             name = annot_obj.get("/T")
                             rect = annot_obj.get("/Rect")
                             if name and rect:
-                                name_str = str(name)
-                                x_center = (float(rect[0]) + float(rect[2])) / 2
-                                y_center = (float(rect[1]) + float(rect[3])) / 2
                                 field_coords.append({
-                                    "name": name_str,
-                                    "x": x_center,
-                                    "y": y_center
+                                    "name": str(name),
+                                    "x": (float(rect[0]) + float(rect[2])) / 2,
+                                    "y": (float(rect[1]) + float(rect[3])) / 2
                                 })
                 
                 if field_coords:
-                    # 1. Sort fields from top to bottom based on Y-axis
                     field_coords.sort(key=lambda v: v['y'], reverse=True)
-                    
-                    # 2. Group the boxes into "Rows" of Hook Tabs (tolerance of 120 points / ~1.6 inches)
-                    rows = []
-                    current_row = []
-                    current_y_max = None
+                    rows, current_row, current_y_max = [], [], None
                     
                     for box in field_coords:
                         if current_y_max is None:
@@ -258,42 +272,53 @@ with tab3:
                     if current_row:
                         rows.append(current_row)
                     
-                    # 3. Sort each row Left-to-Right, then perfectly Top-to-Bottom within each column
                     ordered_field_names = []
                     for row in rows:
                         row.sort(key=lambda v: (round(v['x'] / 10), -v['y']))
                         for box in row:
                             ordered_field_names.append(box['name'])
-
-                    # --- END SPATIAL MAPPING ---
                     
-                    # Zip the data perfectly into the visually sorted boxes
-                    writer = PdfWriter()
-                    writer.append(reader)
-                    form_fields_dict = {}
+                    # --- MULTI-PAGE GENERATION LOGIC ---
+                    final_writer = PdfWriter()
+                    boxes_per_page = len(ordered_field_names)
                     
-                    fill_limit = min(len(flat_data_stream), len(ordered_field_names))
-                    for i in range(fill_limit):
-                        target_box_name = ordered_field_names[i]
-                        form_fields_dict[target_box_name] = flat_data_stream[i]
+                    # Chunk the data into page-sized groups
+                    data_chunks = [flat_data_stream[i:i + boxes_per_page] for i in range(0, len(flat_data_stream), boxes_per_page)]
                     
-                    writer.update_page_form_field_values(writer.pages[0], form_fields_dict)
+                    for page_num, chunk in enumerate(data_chunks):
+                        temp_writer = PdfWriter()
+                        temp_writer.append(blueprint_reader) 
+                        
+                        form_fields_dict = {}
+                        for i in range(len(chunk)):
+                            form_fields_dict[ordered_field_names[i]] = chunk[i]
+                            
+                        temp_writer.update_page_form_field_values(temp_writer.pages[0], form_fields_dict)
+                        
+                        # Isolate the fields so pages don't overwrite each other
+                        for annot in temp_writer.pages[0].get("/Annots", []):
+                            annot_obj = annot.get_object()
+                            if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
+                                old_name = annot_obj["/T"]
+                                annot_obj[NameObject("/T")] = StringObject(f"{old_name}_pg{page_num}")
+                                
+                        final_writer.add_page(temp_writer.pages[0])
                     
                     pdf_output = BytesIO()
-                    writer.write(pdf_output)
+                    final_writer.write(pdf_output)
                     pdf_output.seek(0)
                     
-                    total_tags = fill_limit // 3
-                    st.success(f"Successfully generated {total_tags} perfectly aligned hook tags!")
+                    total_tags = len(flat_data_stream) // 3
+                    st.success(f"Successfully mapped {total_tags} tags across {len(data_chunks)} pages!")
                     
                     st.download_button(
-                        label="📥 DOWNLOAD EXACT-MATCH HOOK TABS PDF",
+                        label="📥 DOWNLOAD MULTI-PAGE HOOK TABS PDF",
                         data=pdf_output,
                         file_name="Filled_Hook_Tabs.pdf",
                         mime="application/pdf"
                     )
                 else:
-                    st.error("No fillable form boxes detected in master_template.pdf.")
+                    st.error("No fillable form boxes detected in the uploaded PDF template.")
                 
-            except FileNotFoundError:
-                st.error("⚠️ Please ensure 'master_template.pdf' is saved in your Streamlit app folder.")
+            except Exception as e:
+                st.error(f"Error processing the PDF: {e}")
