@@ -15,7 +15,7 @@ from io import BytesIO
 # Safe import wrapper to prevent crashes if pypdf is missing
 try:
     from pypdf import PdfReader, PdfWriter
-    from pypdf.generic import NameObject, create_string_object, NumberObject
+    from pypdf.generic import NameObject, create_string_object, NumberObject, BooleanObject
     PYPDF_AVAILABLE = True
 except ImportError:
     PYPDF_AVAILABLE = False
@@ -286,31 +286,40 @@ with tab3:
                                         elif 'price' in name_lower or 'thc' in name_lower:
                                             form_fields_dict[field_name] = product['price']
                                             
+                                # Fill the values
                                 temp_writer.update_page_form_field_values(temp_writer.pages[0], form_fields_dict)
                                 
+                                # Hack the visual fields
                                 for annot in temp_writer.pages[0].get("/Annots", []):
                                     annot_obj = annot.get_object()
                                     if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
                                         old_name = str(annot_obj["/T"])
                                         
-                                        # Rename to prevent cross-page overwriting
-                                        annot_obj[NameObject("/T")] = create_string_object(f"{old_name}_pg{page_num}")
-                                        
-                                        # Force DoNotScroll flag so the box auto-shrinks text perfectly instead of cutting it off
-                                        current_ff = int(annot_obj.get("/Ff", 0))
-                                        annot_obj[NameObject("/Ff")] = NumberObject(current_ff | 4194304)
-                                        
-                                        # Align text to Center for visual balance
+                                        # 1. Force Center Align
                                         annot_obj[NameObject("/Q")] = NumberObject(1)
                                         
+                                        # 2. Force Multiline & Do Not Scroll so text wraps instead of bleeding off the edge
+                                        current_ff = int(annot_obj.get("/Ff", 0))
+                                        annot_obj[NameObject("/Ff")] = NumberObject(current_ff | 4096 | 4194304)
+                                        
+                                        # 3. Apply Max Bold & Auto-Size Typography
                                         if 'brand' in old_name.lower():
-                                            # MAX BOLD HACK: Helvetica Bold + 0.5 thickness Black Stroke Outline
-                                            annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 2 Tr 0.5 w 0 g 0 G")
+                                            annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 2 Tr 0.5 w 0 g")
                                         else:
-                                            # Standard Bold for Strain/Price
                                             annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 0 g")
+                                        
+                                        # 4. WIPE the frozen Python appearance stream so the Browser handles rendering
+                                        if "/AP" in annot_obj:
+                                            del annot_obj["/AP"]
                                             
+                                        # 5. Rename field to prevent multi-page ghosting
+                                        annot_obj[NameObject("/T")] = create_string_object(f"{old_name}_pg{page_num}")
+                                        
                                 final_writer.add_page(temp_writer.pages[0])
+                            
+                            # FORCE the PDF software (Chrome/Adobe) to read our rules and build the visuals on open
+                            if "/AcroForm" in final_writer.root_object:
+                                final_writer.root_object["/AcroForm"][NameObject("/NeedAppearances")] = BooleanObject(True)
                             
                             pdf_output = BytesIO()
                             final_writer.write(pdf_output)
