@@ -152,62 +152,99 @@ with tab3:
     if hook_file is not None:
         df_hook = pd.read_csv(hook_file)
         
-        # 1. Gather all the cleaned data components into a flat line
+        # 1. Clean columns (strips Dutchie formatting symbols if present)
+        df_hook.columns = [str(col).strip('="').strip() for col in df_hook.columns]
+        
+        # 2. Automatically drop duplicated products so we only print ONE tag per unique strain
+        if 'Product' in df_hook.columns:
+            df_hook['Product'] = df_hook['Product'].apply(lambda x: str(x).strip('="').strip())
+            df_hook = df_hook.drop_duplicates(subset=['Product']).dropna(subset=['Product'])
+        
+        # 3. Gather all the cleaned data components into a flat line
         flat_data_stream = []
 
         for index, row in df_hook.iterrows():
             product_name = str(row.get('Product', ''))
-            if not product_name.strip() or product_name.startswith('Green Crack'):
+            
+            # Skip empty rows or 'nan'
+            if not product_name.strip() or product_name.lower() == 'nan':
                 continue
                 
+            # Parse Category/Brand and Strain by splitting "|"
             parts = [p.strip() for p in product_name.split('|')]
-            if len(parts) >= 2:
-                brand = f"{parts[0]} | {parts[2]}" if len(parts) > 2 else parts[0]
+            
+            if len(parts) >= 3:
+                brand = f"{parts[0]} | {parts[2]}"
+                strain = parts[1]
+            elif len(parts) == 2:
+                brand = parts[0]
                 strain = parts[1]
             else:
                 brand = "MUHA MEDS"
                 strain = product_name
                 
+            # Format THC safely (Removes % and spaces, rounds up decimal)
             raw_thc = str(row.get('THC', '0'))
             try:
-                thc_val = float(raw_thc.replace('%', '').strip())
-                thc = f"{round(thc_val)}%"
+                # Extracts only the digits and decimals safely
+                thc_str = ''.join(c for c in raw_thc if c.isdigit() or c == '.')
+                if thc_str:
+                    thc_val = float(thc_str)
+                    thc = f"{round(thc_val)}%"
+                else:
+                    thc = "88%"
             except ValueError:
                 thc = "88%" 
                 
-            price_val = str(row.get('Current price', '0')).replace('$', '')
-            price = f"${price_val}"
+            # Format Price (Checks for "Current price" first, then "Price")
+            price_col = 'Current price' if 'Current price' in df_hook.columns else 'Price'
+            raw_price = str(row.get(price_col, '0')).replace('$', '')
+            try:
+                price_str = ''.join(c for c in raw_price if c.isdigit() or c == '.')
+                if price_str:
+                    price_val = float(price_str)
+                    price = f"${int(price_val)}" if price_val.is_integer() else f"${price_val:.2f}"
+                else:
+                    price = "$0"
+            except ValueError:
+                price = "$0"
             
-            # Append in the exact 1-2-3 order of the boxes: Brand, Strain, Details
+            # Append in the exact 1-2-3 sequential order of your Adobe PDF boxes
             flat_data_stream.extend([brand.upper(), strain.upper(), f"{thc} Smilez  {price}"])
 
         if flat_data_stream:
             try:
+                # Open the Master Template
                 reader = PdfReader("master_template.pdf")
                 writer = PdfWriter()
                 writer.append(reader)
                 
-                # 2. Get the actual list of whatever crazy names Adobe generated
+                # Get the actual list of the exact hidden Adobe box names
                 pdf_fields = reader.get_fields()
                 
                 if pdf_fields:
                     field_names = list(pdf_fields.keys())
                     
-                    # 3. Zip the data into the boxes sequentially
+                    # Zip the data sequentially into the boxes
                     form_fields_dict = {}
                     
-                    # Loop through whichever is shorter: our data list or the available boxes
-                    for i in range(min(len(flat_data_stream), len(field_names))):
+                    # Stop either when we run out of data, or we run out of blank boxes in the PDF
+                    fill_limit = min(len(flat_data_stream), len(field_names))
+                    for i in range(fill_limit):
                         target_box_name = field_names[i]
                         form_fields_dict[target_box_name] = flat_data_stream[i]
                     
+                    # Apply changes to the PDF
                     writer.update_page_form_field_values(writer.pages[0], form_fields_dict)
                     
                     pdf_output = BytesIO()
                     writer.write(pdf_output)
                     pdf_output.seek(0)
                     
-                    st.success(f"Successfully mapped data into {len(form_fields_dict)} fields!")
+                    # Tell the user how many tags were made
+                    total_tags = fill_limit // 3
+                    st.success(f"Successfully generated {total_tags} unique hook tags!")
+                    
                     st.download_button(
                         label="📥 DOWNLOAD EXACT-MATCH HOOK TABS PDF",
                         data=pdf_output,
@@ -215,7 +252,7 @@ with tab3:
                         mime="application/pdf"
                     )
                 else:
-                    st.error("No form fields detected in master_template.pdf.")
+                    st.error("No fillable form fields detected in master_template.pdf.")
                 
             except FileNotFoundError:
-                st.error("⚠️ Please ensure 'master_template.pdf' is saved in your Streamlit app folder.")
+                st.error("⚠️ Please ensure your editable Adobe template is saved in the same directory as this script and named exactly 'master_template.pdf'.")
