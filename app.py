@@ -11,7 +11,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from io import BytesIO
 
-# Safe import wrapper
+# Safe import wrapper to prevent crashes if pypdf is missing
 try:
     from pypdf import PdfReader, PdfWriter
     from pypdf.generic import NameObject, create_string_object
@@ -175,160 +175,162 @@ with tab2:
             st.download_button("📥 DOWNLOAD MERCHANDISING PDF", build_pdf(final_df, min_threshold), "Ziggy_Report.pdf", "application/pdf")
 
 with tab3:
-    st.markdown("### 🏷️ Automated Hook Tab Formatter")
+    st.markdown("### 🏷️ Automated Hook Tag Formatter")
     
     if not PYPDF_AVAILABLE:
         st.error("⚠️ The required library 'pypdf' is not installed yet. Please add 'pypdf' to your requirements.txt file in GitHub to activate this feature.")
     else:
-        st.write("Upload your 1-page blank editable PDF template and your inventory CSV to instantly generate a multi-page print file.")
+        st.write("Upload your inventory CSV to instantly generate a multi-page print file using your GitHub template.")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            template_file = st.file_uploader("1. Drop Adobe Master Template (PDF)", type=["pdf"], key="pdf_template")
-        with col2:
-            hook_file = st.file_uploader("2. Drop Hook Tag Inventory (CSV)", type=["csv"], key="hook_csv")
+        hook_file = st.file_uploader("Drop Hook Tag Inventory (CSV)", type=["csv"], key="hook_csv")
 
-        if hook_file is not None and template_file is not None:
-            df_hook = pd.read_csv(hook_file)
+        if hook_file is not None:
+            # Check if the template exists in the GitHub root directory
+            template_path = "master_template.pdf"
             
-            # 1. Clean columns
-            df_hook.columns = [str(col).strip('="').strip() for col in df_hook.columns]
-            
-            # 2. Drop duplicated products
-            if 'Product' in df_hook.columns:
-                df_hook['Product'] = df_hook['Product'].apply(lambda x: str(x).strip('="').strip())
-                df_hook = df_hook.drop_duplicates(subset=['Product']).dropna(subset=['Product'])
-            
-            # 3. Gather all cleaned data into a flat stream
-            flat_data_stream = []
-
-            for index, row in df_hook.iterrows():
-                product_name = str(row.get('Product', ''))
-                if not product_name.strip() or product_name.lower() == 'nan':
-                    continue
-                    
-                parts = [p.strip() for p in product_name.split('|')]
-                if len(parts) >= 3:
-                    brand = f"{parts[0]} | {parts[2]}"
-                    strain = parts[1]
-                elif len(parts) == 2:
-                    brand = parts[0]
-                    strain = parts[1]
-                else:
-                    brand = "MUHA MEDS"
-                    strain = product_name
-                    
-                raw_thc = str(row.get('THC', '0'))
-                try:
-                    thc_str = ''.join(c for c in raw_thc if c.isdigit() or c == '.')
-                    if thc_str:
-                        thc = f"{round(float(thc_str))}%"
-                    else:
-                        thc = "88%"
-                except ValueError:
-                    thc = "88%" 
-                    
-                price_col = 'Current price' if 'Current price' in df_hook.columns else 'Price'
-                raw_price = str(row.get(price_col, '0')).replace('$', '')
-                try:
-                    price_str = ''.join(c for c in raw_price if c.isdigit() or c == '.')
-                    if price_str:
-                        price_val = float(price_str)
-                        price = f"${int(price_val)}" if price_val.is_integer() else f"${price_val:.2f}"
-                    else:
-                        price = "$0"
-                except ValueError:
-                    price = "$0"
+            if not os.path.exists(template_path):
+                st.error("⚠️ 'master_template.pdf' is missing from your GitHub repository. Please upload it to your main folder to proceed.")
+            else:
+                df_hook = pd.read_csv(hook_file)
                 
-                flat_data_stream.extend([brand.upper(), strain.upper(), f"{thc} Smilez  {price}"])
+                # 1. Clean columns
+                df_hook.columns = [str(col).strip('="').strip() for col in df_hook.columns]
+                
+                # 2. Drop duplicated products
+                if 'Product' in df_hook.columns:
+                    df_hook['Product'] = df_hook['Product'].apply(lambda x: str(x).strip('="').strip())
+                    df_hook = df_hook.drop_duplicates(subset=['Product']).dropna(subset=['Product'])
+                
+                # 3. Gather all cleaned data into a flat stream
+                flat_data_stream = []
 
-            if flat_data_stream:
-                try:
-                    blueprint_reader = PdfReader(template_file)
-                    blueprint_page = blueprint_reader.pages[0]
+                for index, row in df_hook.iterrows():
+                    product_name = str(row.get('Product', ''))
+                    if not product_name.strip() or product_name.lower() == 'nan':
+                        continue
+                        
+                    parts = [p.strip() for p in product_name.split('|')]
+                    if len(parts) >= 3:
+                        brand = f"{parts[0]} | {parts[2]}"
+                        strain = parts[1]
+                    elif len(parts) == 2:
+                        brand = parts[0]
+                        strain = parts[1]
+                    else:
+                        brand = "MUHA MEDS"
+                        strain = product_name
+                        
+                    raw_thc = str(row.get('THC', '0'))
+                    try:
+                        thc_str = ''.join(c for c in raw_thc if c.isdigit() or c == '.')
+                        if thc_str:
+                            thc = f"{round(float(thc_str))}%"
+                        else:
+                            thc = "88%"
+                    except ValueError:
+                        thc = "88%" 
+                        
+                    price_col = 'Current price' if 'Current price' in df_hook.columns else 'Price'
+                    raw_price = str(row.get(price_col, '0')).replace('$', '')
+                    try:
+                        price_str = ''.join(c for c in raw_price if c.isdigit() or c == '.')
+                        if price_str:
+                            price_val = float(price_str)
+                            price = f"${int(price_val)}" if price_val.is_integer() else f"${price_val:.2f}"
+                        else:
+                            price = "$0"
+                    except ValueError:
+                        price = "$0"
                     
-                    field_coords = []
-                    if "/Annots" in blueprint_page:
-                        for annot in blueprint_page["/Annots"]:
-                            annot_obj = annot.get_object()
-                            if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
-                                name = annot_obj.get("/T")
-                                rect = annot_obj.get("/Rect")
-                                if name and rect:
-                                    field_coords.append({
-                                        "name": str(name),
-                                        "x": (float(rect[0]) + float(rect[2])) / 2,
-                                        "y": (float(rect[1]) + float(rect[3])) / 2
-                                    })
-                    
-                    if field_coords:
-                        field_coords.sort(key=lambda v: v['y'], reverse=True)
-                        rows, current_row, current_y_max = [], [], None
+                    flat_data_stream.extend([brand.upper(), strain.upper(), f"{thc} Smilez  {price}"])
+
+                if flat_data_stream:
+                    try:
+                        blueprint_reader = PdfReader(template_path)
+                        blueprint_page = blueprint_reader.pages[0]
                         
-                        for box in field_coords:
-                            if current_y_max is None:
-                                current_y_max = box['y']
-                                current_row.append(box)
-                            else:
-                                if current_y_max - box['y'] < 120: 
-                                    current_row.append(box)
-                                else:
-                                    rows.append(current_row)
-                                    current_row = [box]
-                                    current_y_max = box['y']
-                        if current_row:
-                            rows.append(current_row)
-                        
-                        ordered_field_names = []
-                        for row in rows:
-                            row.sort(key=lambda v: (round(v['x'] / 10), -v['y']))
-                            for box in row:
-                                ordered_field_names.append(box['name'])
-                        
-                        final_writer = PdfWriter()
-                        boxes_per_page = len(ordered_field_names)
-                        
-                        data_chunks = [flat_data_stream[i:i + boxes_per_page] for i in range(0, len(flat_data_stream), boxes_per_page)]
-                        
-                        for page_num, chunk in enumerate(data_chunks):
-                            temp_writer = PdfWriter()
-                            temp_writer.append(blueprint_reader) 
-                            
-                            form_fields_dict = {}
-                            for i in range(len(chunk)):
-                                form_fields_dict[ordered_field_names[i]] = chunk[i]
-                                
-                            temp_writer.update_page_form_field_values(temp_writer.pages[0], form_fields_dict)
-                            
-                            for annot in temp_writer.pages[0].get("/Annots", []):
+                        field_coords = []
+                        if "/Annots" in blueprint_page:
+                            for annot in blueprint_page["/Annots"]:
                                 annot_obj = annot.get_object()
                                 if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
-                                    old_name = annot_obj["/T"]
-                                    
-                                    # Rename to prevent cross-page overwriting
-                                    annot_obj[NameObject("/T")] = create_string_object(f"{old_name}_pg{page_num}")
-                                    
-                                    # --- FORCE BOLD TEXT HACK ---
-                                    # Overwrite the Default Appearance (/DA) to force Helvetica-Bold, Auto-Size, Black Text
-                                    annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 0 g")
-                                    
-                            final_writer.add_page(temp_writer.pages[0])
+                                    name = annot_obj.get("/T")
+                                    rect = annot_obj.get("/Rect")
+                                    if name and rect:
+                                        field_coords.append({
+                                            "name": str(name),
+                                            "x": (float(rect[0]) + float(rect[2])) / 2,
+                                            "y": (float(rect[1]) + float(rect[3])) / 2
+                                        })
                         
-                        pdf_output = BytesIO()
-                        final_writer.write(pdf_output)
-                        pdf_output.seek(0)
+                        if field_coords:
+                            field_coords.sort(key=lambda v: v['y'], reverse=True)
+                            rows, current_row, current_y_max = [], [], None
+                            
+                            for box in field_coords:
+                                if current_y_max is None:
+                                    current_y_max = box['y']
+                                    current_row.append(box)
+                                else:
+                                    if current_y_max - box['y'] < 120: 
+                                        current_row.append(box)
+                                    else:
+                                        rows.append(current_row)
+                                        current_row = [box]
+                                        current_y_max = box['y']
+                            if current_row:
+                                rows.append(current_row)
+                            
+                            ordered_field_names = []
+                            for row in rows:
+                                row.sort(key=lambda v: (round(v['x'] / 10), -v['y']))
+                                for box in row:
+                                    ordered_field_names.append(box['name'])
+                            
+                            final_writer = PdfWriter()
+                            boxes_per_page = len(ordered_field_names)
+                            
+                            data_chunks = [flat_data_stream[i:i + boxes_per_page] for i in range(0, len(flat_data_stream), boxes_per_page)]
+                            
+                            for page_num, chunk in enumerate(data_chunks):
+                                temp_writer = PdfWriter()
+                                temp_writer.append(blueprint_reader) 
+                                
+                                form_fields_dict = {}
+                                for i in range(len(chunk)):
+                                    form_fields_dict[ordered_field_names[i]] = chunk[i]
+                                    
+                                temp_writer.update_page_form_field_values(temp_writer.pages[0], form_fields_dict)
+                                
+                                for annot in temp_writer.pages[0].get("/Annots", []):
+                                    annot_obj = annot.get_object()
+                                    if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
+                                        old_name = annot_obj["/T"]
+                                        
+                                        # Rename to prevent cross-page overwriting
+                                        annot_obj[NameObject("/T")] = create_string_object(f"{old_name}_pg{page_num}")
+                                        
+                                        # --- FORCE BOLD TEXT HACK ---
+                                        # Overwrite the Default Appearance (/DA) to force Helvetica-Bold, Auto-Size, Black Text
+                                        annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 0 g")
+                                        
+                                final_writer.add_page(temp_writer.pages[0])
+                            
+                            pdf_output = BytesIO()
+                            final_writer.write(pdf_output)
+                            pdf_output.seek(0)
+                            
+                            total_tags = len(flat_data_stream) // 3
+                            st.success(f"Successfully mapped {total_tags} bold tags across {len(data_chunks)} pages!")
+                            
+                            st.download_button(
+                                label="📥 DOWNLOAD MULTI-PAGE HOOK TABS PDF",
+                                data=pdf_output,
+                                file_name="Filled_Hook_Tabs.pdf",
+                                mime="application/pdf"
+                            )
+                        else:
+                            st.error("No fillable form boxes detected in the master_template.pdf.")
                         
-                        total_tags = len(flat_data_stream) // 3
-                        st.success(f"Successfully mapped {total_tags} bold tags across {len(data_chunks)} pages!")
-                        
-                        st.download_button(
-                            label="📥 DOWNLOAD MULTI-PAGE HOOK TABS PDF",
-                            data=pdf_output,
-                            file_name="Filled_Hook_Tabs.pdf",
-                            mime="application/pdf"
-                        )
-                    else:
-                        st.error("No fillable form boxes detected in the uploaded PDF template.")
-                    
-                except Exception as e:
-                    st.error(f"Error processing the PDF: {e}")
+                    except Exception as e:
+                        st.error(f"Error processing the PDF: {e}")
