@@ -116,9 +116,10 @@ custom_css = """
 </style>"""
 st.markdown(custom_css, unsafe_allow_html=True)
 
-logo_path = 'image.png'
-logo_html = f'<img src="data:image/png;base64,{base64.b64encode(open(logo_path, "rb").read()).decode("utf-8")}" style="height: 196px; margin-right: 30px; border-radius: 8px;">' if os.path.exists(logo_path) else ""
-st.markdown(f'<div class="brand-banner" style="padding: 50px 35px;">{logo_html}<div class="brand-text"><h1>Ziggyz Strain Sniffer & Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
+video_file = open('video.mp4', 'rb')
+video_bytes = video_file.read()
+
+st.video(video_bytes, loop=True, autoplay=True, muted=True)
 
 tab1, tab2, tab3 = st.tabs(["🔍 STRAIN SNIFFER", "📊 INVENTORY INTELLIGENCE", "🏷️ HOOK TAG GENERATOR"])
 
