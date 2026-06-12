@@ -254,10 +254,11 @@ with tab3:
                         
                         field_data = {}
                         if "/Annots" in blueprint_page:
-                            for annot in blueprint_page["/Annots"]:
+                            for annot in blueprint_page.get("/Annots", []):
                                 annot_obj = annot.get_object()
                                 if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
-                                    name = str(annot_obj.get("/T"))
+                                    # Strip parenthesis from the raw string object
+                                    name = str(annot_obj.get("/T")).strip("()")
                                     rect = annot_obj.get("/Rect")
                                     if rect:
                                         field_data[name] = [float(r) for r in rect]
@@ -279,8 +280,6 @@ with tab3:
                                 c = canvas.Canvas(packet, pagesize=(page_width, page_height))
                                 
                                 for field_name, rect in field_data.items():
-                                    
-                                    # Fix: Safe fallback if no number is found in the box name
                                     match = re.search(r'\d+', field_name)
                                     tag_idx = (int(match.group()) - 1) if match else 0
                                     
@@ -320,7 +319,7 @@ with tab3:
                                             
                                             if is_brand:
                                                 c.setTextRenderMode(2) 
-                                                c.setLineWidth(0.8)    
+                                                c.setLineWidth(0.4)    
                                                 c.setStrokeColorRGB(0, 0, 0)
                                             else:
                                                 c.setTextRenderMode(0)
@@ -328,7 +327,6 @@ with tab3:
                                             c.setFillColorRGB(0, 0, 0)
                                             c.drawCentredString(center_x, center_y, text)
 
-                                # Fix: Force the creation of the page layer to prevent "Sequence index out of range"
                                 c.showPage()
                                 c.save()
                                 packet.seek(0)
@@ -338,10 +336,15 @@ with tab3:
                                 base_page = fresh_reader.pages[0]
                                 base_page.merge_page(overlay.pages[0])
                                 
+                                # HACK 1: Completely delete all visual form boxes from the page
                                 if "/Annots" in base_page:
-                                    del base_page["/Annots"]
+                                    del base_page[NameObject("/Annots")]
                                     
                                 final_writer.add_page(base_page)
+                                
+                            # HACK 2: Completely destroy the master form dictionary at the root of the file
+                            if "/AcroForm" in final_writer.root_object:
+                                del final_writer.root_object[NameObject("/AcroForm")]
                             
                             pdf_output = BytesIO()
                             final_writer.write(pdf_output)
