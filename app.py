@@ -118,7 +118,7 @@ st.markdown(custom_css, unsafe_allow_html=True)
 
 video_file = open('video.mp4', 'rb')
 video_bytes = video_file.read()
-st.video(video_bytes, loop=True, autoplay=True, muted=True)<div class="brand-text"><h1>Ziggyz Strain Sniffer & Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
+st.video(video_bytes, loop=True, autoplay=True, muted=True) class="brand-text"><h1>Ziggyz Strain Sniffer & Hub</h1><p>Inventory Logistics & Base Knowledge Management Engine</p></div></div>', unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["🔍 STRAIN SNIFFER", "📊 INVENTORY INTELLIGENCE", "🏷️ HOOK TAG GENERATOR"])
 
