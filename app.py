@@ -126,7 +126,7 @@ with tab1:
     st.markdown("### 🔍 Verified AI Strain Profiler")
     with st.form("strain_form", clear_on_submit=True):
         user_input = st.text_input("Enter Strain Name:", placeholder="e.g., permanent marker...")
-        
+        submitted = st.form_submit_button("SEARCH STRAIN")
 
     if submitted and user_input:
         st.session_state.last_strain = user_input
