@@ -116,9 +116,24 @@ custom_css = """
 </style>"""
 st.markdown(custom_css, unsafe_allow_html=True)
 
-video_file = open('video.mp4', 'rb')
-video_bytes = video_file.read()
-st.video(video_bytes, loop=True, autoplay=True, muted=True) 
+# 1. Split top area into perfect columns to exactly restrict the video size
+header_col1, header_col2 = st.columns([1, 1])
+
+with header_col1:
+    video_file = open('video.mp4', 'rb')
+    video_bytes = video_file.read()
+    st.video(video_bytes, loop=True, autoplay=True, muted=True) 
+
+with header_col2:
+    # 2. Add matching container banner with bold purple title text matching layout styles
+    st.markdown(
+        '<div class="brand-banner" style="height: 100%; min-height: 160px; padding: 25px;">'
+        '<div class="brand-text">'
+        '<h1>Ziggy\'s Strain Sniffer & Inventory Assistant</h1>'
+        '<p style="color: #94A3B8; font-weight: 500; margin-top: 4px;">Dispensary Operational Base Engine</p>'
+        '</div></div>', 
+        unsafe_allow_html=True
+    )
 
 tab1, tab2, tab3 = st.tabs(["🔍 STRAIN SNIFFER", "📊 INVENTORY INTELLIGENCE", "🏷️ HOOK TAG GENERATOR"])
 
@@ -340,7 +355,7 @@ with tab3:
                                     del base_page[NameObject("/Annots")]
                                     
                                 final_writer.add_page(base_page)
-                            
+                                
                             if "/AcroForm" in final_writer.root_object:
                                 del final_writer.root_object[NameObject("/AcroForm")]
                             
