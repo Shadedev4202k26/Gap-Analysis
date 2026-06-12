@@ -10,12 +10,13 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from reportlab.pdfgen import canvas  # NEW IMPORT FOR FLATTENING
 from io import BytesIO
 
 # Safe import wrapper to prevent crashes if pypdf is missing
 try:
     from pypdf import PdfReader, PdfWriter
-    from pypdf.generic import NameObject, create_string_object, NumberObject, BooleanObject
+    from pypdf.generic import NameObject, create_string_object, NumberObject
     PYPDF_AVAILABLE = True
 except ImportError:
     PYPDF_AVAILABLE = False
@@ -246,14 +247,25 @@ with tab3:
 
                 if product_list:
                     try:
+                        # Extract exact coordinates of all boxes in the template
                         blueprint_reader = PdfReader(template_path)
-                        pdf_fields = blueprint_reader.get_fields()
+                        blueprint_page = blueprint_reader.pages[0]
+                        page_width = float(blueprint_page.mediabox.width)
+                        page_height = float(blueprint_page.mediabox.height)
                         
-                        if pdf_fields:
-                            field_names = list(pdf_fields.keys())
-                            
+                        field_data = {}
+                        if "/Annots" in blueprint_page:
+                            for annot in blueprint_page["/Annots"]:
+                                annot_obj = annot.get_object()
+                                if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
+                                    name = str(annot_obj.get("/T"))
+                                    rect = annot_obj.get("/Rect")
+                                    if rect:
+                                        field_data[name] = [float(r) for r in rect]
+                        
+                        if field_data:
                             tag_numbers = []
-                            for name in field_names:
+                            for name in field_data.keys():
                                 match = re.search(r'\d+', name)
                                 if match:
                                     tag_numbers.append(int(match.group()))
@@ -263,12 +275,12 @@ with tab3:
                             
                             data_chunks = [product_list[i:i + tags_per_page] for i in range(0, len(product_list), tags_per_page)]
                             
+                            # Flattening Logic: Draw the text mathematically instead of filling forms
                             for page_num, chunk in enumerate(data_chunks):
-                                temp_writer = PdfWriter()
-                                temp_writer.append(blueprint_reader) 
+                                packet = BytesIO()
+                                c = canvas.Canvas(packet, pagesize=(page_width, page_height))
                                 
-                                form_fields_dict = {}
-                                for field_name in field_names:
+                                for field_name, rect in field_data.items():
                                     match = re.search(r'\d+', field_name)
                                     if not match:
                                         continue
@@ -279,63 +291,81 @@ with tab3:
                                         product = chunk[tag_idx]
                                         name_lower = field_name.lower()
                                         
+                                        text = ""
+                                        is_brand = False
+                                        max_size = 14
+                                        
                                         if 'brand' in name_lower:
-                                            form_fields_dict[field_name] = product['brand']
+                                            text = product['brand']
+                                            max_size = 28  # Huge starting font for Brands
+                                            is_brand = True
                                         elif 'strain' in name_lower:
-                                            form_fields_dict[field_name] = product['strain']
+                                            text = product['strain']
+                                            max_size = 16
                                         elif 'price' in name_lower or 'thc' in name_lower:
-                                            form_fields_dict[field_name] = product['price']
+                                            text = product['price']
+                                            max_size = 14
                                             
-                                # Fill the values
-                                temp_writer.update_page_form_field_values(temp_writer.pages[0], form_fields_dict)
+                                        if text:
+                                            ll_x, ll_y, ur_x, ur_y = rect
+                                            box_width = ur_x - ll_x
+                                            box_height = ur_y - ll_y
+                                            center_x = ll_x + (box_width / 2)
+                                            
+                                            font_size = max_size
+                                            c.setFont("Helvetica-Bold", font_size)
+                                            
+                                            # Dynamically shrink text until it fits perfectly inside the specific box
+                                            while c.stringWidth(text, "Helvetica-Bold", font_size) > (box_width - 8) and font_size > 6:
+                                                font_size -= 0.5
+                                                c.setFont("Helvetica-Bold", font_size)
+                                            
+                                            # Mathematically calculate the true vertical center of the box
+                                            center_y = ll_y + (box_height / 2) - (font_size * 0.35)
+                                            
+                                            # MAX BOLD HACK
+                                            if is_brand:
+                                                c.setTextRenderMode(2) # Mode 2 = Fill AND Stroke outline
+                                                c.setLineWidth(0.8)    # Thick bold outline
+                                                c.setStrokeColorRGB(0, 0, 0)
+                                            else:
+                                                c.setTextRenderMode(0) # Standard Fill
+                                                
+                                            c.setFillColorRGB(0, 0, 0)
+                                            c.drawCentredString(center_x, center_y, text)
+
+                                c.save()
+                                packet.seek(0)
+                                overlay = PdfReader(packet)
                                 
-                                # Hack the visual fields
-                                for annot in temp_writer.pages[0].get("/Annots", []):
-                                    annot_obj = annot.get_object()
-                                    if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
-                                        old_name = str(annot_obj["/T"])
-                                        
-                                        # 1. Force Center Align
-                                        annot_obj[NameObject("/Q")] = NumberObject(1)
-                                        
-                                        # 2. Force Multiline & Do Not Scroll so text wraps instead of bleeding off the edge
-                                        current_ff = int(annot_obj.get("/Ff", 0))
-                                        annot_obj[NameObject("/Ff")] = NumberObject(current_ff | 4096 | 4194304)
-                                        
-                                        # 3. Apply Max Bold & Auto-Size Typography
-                                        if 'brand' in old_name.lower():
-                                            annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 2 Tr 0.5 w 0 g")
-                                        else:
-                                            annot_obj[NameObject("/DA")] = create_string_object("/HeBo 0 Tf 0 g")
-                                        
-                                        # 4. WIPE the frozen Python appearance stream so the Browser handles rendering
-                                        if "/AP" in annot_obj:
-                                            del annot_obj["/AP"]
-                                            
-                                        # 5. Rename field to prevent multi-page ghosting
-                                        annot_obj[NameObject("/T")] = create_string_object(f"{old_name}_pg{page_num}")
-                                        
-                                final_writer.add_page(temp_writer.pages[0])
-                            
-                            # FORCE the PDF software (Chrome/Adobe) to read our rules and build the visuals on open
-                            if "/AcroForm" in final_writer.root_object:
-                                final_writer.root_object["/AcroForm"][NameObject("/NeedAppearances")] = BooleanObject(True)
+                                # Grab a totally fresh, clean copy of the original template page
+                                fresh_reader = PdfReader(template_path)
+                                base_page = fresh_reader.pages[0]
+                                
+                                # Merge our perfectly sized text overlay onto the blueprint
+                                base_page.merge_page(overlay.pages[0])
+                                
+                                # Completely delete the original broken form fields so they don't block the text
+                                if "/Annots" in base_page:
+                                    del base_page["/Annots"]
+                                    
+                                final_writer.add_page(base_page)
                             
                             pdf_output = BytesIO()
                             final_writer.write(pdf_output)
                             pdf_output.seek(0)
                             
                             total_tags = len(product_list)
-                            st.success(f"Successfully mapped {total_tags} tags across {len(data_chunks)} pages based on your custom names!")
+                            st.success(f"Successfully baked {total_tags} perfectly sized tags across {len(data_chunks)} pages!")
                             
                             st.download_button(
-                                label="📥 DOWNLOAD MULTI-PAGE HOOK TABS PDF",
+                                label="📥 DOWNLOAD FLATTENED PRINT FILE",
                                 data=pdf_output,
-                                file_name="Filled_Hook_Tabs.pdf",
+                                file_name="Print_Ready_Hook_Tabs.pdf",
                                 mime="application/pdf"
                             )
                         else:
-                            st.error("No fillable form boxes detected in the master_template.pdf.")
+                            st.error("No invisible layout boxes detected in the master_template.pdf.")
                         
                     except Exception as e:
                         st.error(f"Error processing the PDF: {e}")
