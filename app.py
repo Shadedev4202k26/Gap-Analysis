@@ -10,7 +10,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from reportlab.pdfgen import canvas  # NEW IMPORT FOR FLATTENING
+from reportlab.pdfgen import canvas
 from io import BytesIO
 
 # Safe import wrapper to prevent crashes if pypdf is missing
@@ -247,7 +247,6 @@ with tab3:
 
                 if product_list:
                     try:
-                        # Extract exact coordinates of all boxes in the template
                         blueprint_reader = PdfReader(template_path)
                         blueprint_page = blueprint_reader.pages[0]
                         page_width = float(blueprint_page.mediabox.width)
@@ -275,17 +274,15 @@ with tab3:
                             
                             data_chunks = [product_list[i:i + tags_per_page] for i in range(0, len(product_list), tags_per_page)]
                             
-                            # Flattening Logic: Draw the text mathematically instead of filling forms
                             for page_num, chunk in enumerate(data_chunks):
                                 packet = BytesIO()
                                 c = canvas.Canvas(packet, pagesize=(page_width, page_height))
                                 
                                 for field_name, rect in field_data.items():
+                                    
+                                    # Fix: Safe fallback if no number is found in the box name
                                     match = re.search(r'\d+', field_name)
-                                    if not match:
-                                        continue
-                                        
-                                    tag_idx = int(match.group()) - 1
+                                    tag_idx = (int(match.group()) - 1) if match else 0
                                     
                                     if tag_idx < len(chunk):
                                         product = chunk[tag_idx]
@@ -297,7 +294,7 @@ with tab3:
                                         
                                         if 'brand' in name_lower:
                                             text = product['brand']
-                                            max_size = 28  # Huge starting font for Brands
+                                            max_size = 28
                                             is_brand = True
                                         elif 'strain' in name_lower:
                                             text = product['strain']
@@ -315,37 +312,32 @@ with tab3:
                                             font_size = max_size
                                             c.setFont("Helvetica-Bold", font_size)
                                             
-                                            # Dynamically shrink text until it fits perfectly inside the specific box
                                             while c.stringWidth(text, "Helvetica-Bold", font_size) > (box_width - 8) and font_size > 6:
                                                 font_size -= 0.5
                                                 c.setFont("Helvetica-Bold", font_size)
                                             
-                                            # Mathematically calculate the true vertical center of the box
                                             center_y = ll_y + (box_height / 2) - (font_size * 0.35)
                                             
-                                            # MAX BOLD HACK
                                             if is_brand:
-                                                c.setTextRenderMode(2) # Mode 2 = Fill AND Stroke outline
-                                                c.setLineWidth(0.8)    # Thick bold outline
+                                                c.setTextRenderMode(2) 
+                                                c.setLineWidth(0.8)    
                                                 c.setStrokeColorRGB(0, 0, 0)
                                             else:
-                                                c.setTextRenderMode(0) # Standard Fill
+                                                c.setTextRenderMode(0)
                                                 
                                             c.setFillColorRGB(0, 0, 0)
                                             c.drawCentredString(center_x, center_y, text)
 
+                                # Fix: Force the creation of the page layer to prevent "Sequence index out of range"
+                                c.showPage()
                                 c.save()
                                 packet.seek(0)
                                 overlay = PdfReader(packet)
                                 
-                                # Grab a totally fresh, clean copy of the original template page
                                 fresh_reader = PdfReader(template_path)
                                 base_page = fresh_reader.pages[0]
-                                
-                                # Merge our perfectly sized text overlay onto the blueprint
                                 base_page.merge_page(overlay.pages[0])
                                 
-                                # Completely delete the original broken form fields so they don't block the text
                                 if "/Annots" in base_page:
                                     del base_page["/Annots"]
                                     
