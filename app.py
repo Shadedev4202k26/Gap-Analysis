@@ -98,8 +98,11 @@ custom_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800;900&family=Inter:wght@400;500;700&display=swap');
 .stApp { background-color: #0F172A; color: #F8FAFC; font-family: 'Inter', sans-serif; }
-.brand-banner { background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid rgba(139, 92, 246, 0.3); border-left: 6px solid #8B5CF6; border-radius: 16px; margin-bottom: 30px; display: flex; align-items: center; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
+.brand-banner { background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid rgba(139, 92, 246, 0.3); border-left: 6px solid #8B5CF6; border-radius: 16px; margin-bottom: 20px; display: flex; align-items: center; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
 .brand-text h1 { font-family: 'Poppins', sans-serif; font-weight: 900; color: #8B5CF6 !important; font-size: 42px; margin: 0; letter-spacing: -1.5px; text-transform: uppercase; }
+.quote-banner { background: #1E293B; border-radius: 12px; padding: 15px 25px; margin-bottom: 30px; border: 1px solid rgba(139, 92, 246, 0.15); text-align: center; }
+.quote-text { font-family: 'Inter', sans-serif; font-size: 16px; font-style: italic; color: #E5E7EB; margin: 0; font-weight: 500; }
+.quote-author { color: #A78BFA; font-weight: 700; font-style: normal; }
 .stTabs [data-baseweb='tab'] { height: 60px; background-color: #1E293B !important; border-radius: 10px 10px 0 0 !important; color: #94A3B8 !important; font-weight: 800; }
 .stTabs [aria-selected='true'] { background-color: #8B5CF6 !important; color: #F8FAFC !important; }
 .strain-card { background: linear-gradient(145deg, #1E293B 0%, #0F172A 100%); padding: 35px; border-radius: 16px; border-top: 4px solid #8B5CF6; margin-top: 20px; }
@@ -116,7 +119,7 @@ custom_css = """
 </style>"""
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# 1. Split top area into perfect columns to exactly restrict the video size
+# Split top area into perfect columns to exactly restrict the video size
 header_col1, header_col2 = st.columns([1, 1])
 
 with header_col1:
@@ -125,7 +128,7 @@ with header_col1:
     st.video(video_bytes, loop=True, autoplay=True, muted=True) 
 
 with header_col2:
-    # 2. Add matching container banner with bold purple title text matching layout styles
+    # Add matching container banner with bold purple title text matching layout styles
     st.markdown(
         '<div class="brand-banner" style="height: 100%; min-height: 160px; padding: 25px;">'
         '<div class="brand-text">'
@@ -134,6 +137,14 @@ with header_col2:
         '</div></div>', 
         unsafe_allow_html=True
     )
+
+# Dedicated Quote Banner directly below the title banners
+st.markdown(
+    '<div class="quote-banner">'
+    '<p class="quote-text">"Your attitude, not your aptitude, will determine your altitude." &mdash; <span class="quote-author">Zig</span></p>'
+    '</div>',
+    unsafe_allow_html=True
+)
 
 tab1, tab2, tab3 = st.tabs(["🔍 STRAIN SNIFFER", "📊 INVENTORY INTELLIGENCE", "🏷️ HOOK TAG GENERATOR"])
 
