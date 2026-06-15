@@ -132,6 +132,102 @@ def build_pdf(dataframe, threshold_value):
     buffer.seek(0)
     return buffer.getvalue()
 
+def build_aging_pdf(watch_items, summary, today_date, watch_days=45, exp_soon_days=60):
+    """Build a print-ready PDF of the aging-stock watch list, grouped by
+    category and color-coded by severity. `watch_items` is the list of
+    aggregated product dicts; `summary` is a dict of headline counts."""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter,
+                            rightMargin=36, leftMargin=36, topMargin=40, bottomMargin=40)
+    styles = getSampleStyleSheet()
+    ts = ParagraphStyle('T', parent=styles['Heading1'], fontSize=22,
+                        textColor=colors.HexColor('#0F172A'), spaceAfter=4)
+    ss = ParagraphStyle('S', parent=styles['Normal'], fontSize=11,
+                        textColor=colors.HexColor('#4B5563'), fontName='Helvetica-Bold', spaceAfter=14)
+    note = ParagraphStyle('N', parent=styles['Normal'], fontSize=8,
+                          textColor=colors.HexColor('#6B7280'), spaceAfter=18, leading=11)
+    cs = ParagraphStyle('C', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#374151'), leading=11)
+    cs_b = ParagraphStyle('CB', parent=cs, fontName='Helvetica-Bold')
+    hs = ParagraphStyle('H', parent=styles['Normal'], fontSize=9,
+                        fontName='Helvetica-Bold', textColor=colors.HexColor('#FFFFFF'))
+    cat_style = ParagraphStyle('Cat', parent=styles['Normal'], fontSize=11,
+                               fontName='Helvetica-Bold', textColor=colors.HexColor('#5B21B6'),
+                               spaceBefore=14, spaceAfter=6)
+
+    def sev_color(age):
+        if age >= 90: return colors.HexColor('#DC2626')   # red
+        if age >= 60: return colors.HexColor('#D97706')   # amber
+        return colors.HexColor('#2563EB')                 # blue
+
+    story = [Paragraph("Ziggyz Aging Stock Watch List", ts),
+             Paragraph(f"PRODUCTS AGED {watch_days}+ DAYS &nbsp;·&nbsp; GENERATED {today_date.strftime('%B %-d, %Y')}", ss)]
+
+    # Summary band
+    md = [[Paragraph(f"<b>Aging SKUs:</b> {summary['watch_count']}", cs),
+           Paragraph(f"<b>Units Stuck:</b> {summary['watch_units']}", cs),
+           Paragraph(f"<b>Expiring &lt;{exp_soon_days}d:</b> {summary['expiring']}", cs),
+           Paragraph(f"<b>Total SKUs:</b> {summary['total_skus']}", cs)]]
+    mt = Table(md, colWidths=[124, 124, 134, 124])
+    mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#F8FAFC')),
+                             ('BOX',(0,0),(-1,-1),1,colors.HexColor('#E5E7EB')),
+                             ('INNERGRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
+                             ('PADDING',(0,0),(-1,-1),10),('ALIGN',(0,0),(-1,-1),'CENTER')]))
+    story.append(mt)
+    story.append(Paragraph(
+        "Watch list to investigate — age is a proxy for stagnation, not proof of non-sales. "
+        "Review each item before discounting or pulling.", note))
+
+    # Group by category, ordered by oldest item
+    by_cat = defaultdict(list)
+    for v in watch_items:
+        by_cat[v["cat"]].append(v)
+    cat_order = sorted(by_cat.keys(), key=lambda c: -max(v["age"] for v in by_cat[c]))
+
+    for cat in cat_order:
+        items = sorted(by_cat[cat], key=lambda v: -v["age"])
+        oldest = items[0]["age"]
+        story.append(Paragraph(f"{cat or 'Uncategorized'} &nbsp;—&nbsp; {len(items)} item(s), oldest {oldest}d", cat_style))
+
+        header = [Paragraph("Age", hs), Paragraph("Product", hs),
+                  Paragraph("Brand", hs), Paragraph("Qty", hs),
+                  Paragraph("Rooms", hs), Paragraph("Flags", hs)]
+        tdata = [header]
+        row_colors = []
+        for v in items:
+            flags = []
+            if v["days_to_exp"] is not None and v["days_to_exp"] < exp_soon_days:
+                flags.append("EXPIRED" if v["days_to_exp"] < 0 else f"EXP {v['days_to_exp']}d")
+            if v["on_sale"]:
+                flags.append("ON SALE")
+            rooms = ", ".join(sorted(v["rooms"])) if v["rooms"] else "—"
+            tdata.append([
+                Paragraph(f'<b>{v["age"]}d</b>', cs_b),
+                Paragraph(v["product"], cs),
+                Paragraph(v["brand"] or "—", cs),
+                Paragraph(str(v["qty"]), cs),
+                Paragraph(rooms, cs),
+                Paragraph(", ".join(flags) if flags else "—", cs),
+            ])
+            row_colors.append(sev_color(v["age"]))
+
+        tbl = Table(tdata, colWidths=[34, 168, 96, 30, 120, 92], repeatRows=1)
+        style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1E293B')),
+                 ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
+                 ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+                 ('PADDING',(0,0),(-1,-1),5),
+                 ('ALIGN',(0,0),(0,-1),'CENTER'),
+                 ('ALIGN',(3,0),(3,-1),'CENTER')]
+        # Severity color bar on the Age cell of each data row
+        for i, c in enumerate(row_colors, start=1):
+            style.append(('TEXTCOLOR',(0,i),(0,i),c))
+            style.append(('LINEBEFORE',(0,i),(0,i),3,c))
+        tbl.setStyle(TableStyle(style))
+        story.append(tbl)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
 def fmt_ts(ts_str):
     """Format Supabase ISO timestamp → friendly local-ish time string."""
     try:
@@ -378,7 +474,7 @@ with col_hdr:
         <span class="hpill hp-g">🏷️ Hook Tags</span>
         <span class="hpill hp-a">✅ Checklist</span>
         <span class="hpill hp-b">📢 Comms</span>
-        <span class="hpill hp-r">⏳ Dead Stock</span>
+        <span class="hpill hp-r">⏳ Aging Stock</span>
       </div>
     </div></div>
     <div class="hub-quote">
@@ -388,11 +484,11 @@ with col_hdr:
 # ── TABS ──────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "⚡  STRAIN SNIFFER",
-    "📊  INVENTORY INTEL",
+    "📊  INVENTORY BALANCING",
     "🏷️  HOOK TAGS",
+    "⏳  AGING STOCK",
     "✅  DAILY CHECKLIST",
     "📢  COMMS BOARD",
-    "⏳  DEAD STOCK",
 ])
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -798,7 +894,7 @@ def render_checklist():
                         st.error(f"Remove error: {e}")
 
 
-with tab4:
+with tab5:
     render_checklist()
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -908,7 +1004,7 @@ def render_comms():
         </div>""", unsafe_allow_html=True)
 
 
-with tab5:
+with tab6:
     render_comms()
 
 
@@ -916,7 +1012,7 @@ with tab5:
 # TAB 6 — DEAD STOCK / AGING WATCH LIST
 # ════════════════════════════════════════════════════════════════════════════════
 def render_dead_stock():
-    st.markdown('<div class="sec-head"><div class="sec-head-text">⏳ Dead Stock & Aging Watch List</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-head"><div class="sec-head-text">⏳ Aging Stock Watch List</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
 
     st.markdown("""
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
@@ -1103,28 +1199,23 @@ def render_dead_stock():
         for v in items:
             render_row(v)
 
-    # ── Export the watch list ─────────────────────────────────────────────────
+    # ── Export the watch list as a print-ready PDF ────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
-    export_rows = []
-    for v in sorted(watch, key=lambda v: -v["age"]):
-        export_rows.append({
-            "Product": v["product"],
-            "Brand": v["brand"],
-            "Category": v["cat"],
-            "Age (days)": v["age"],
-            "Units in Stock": v["qty"],
-            "Rooms": ", ".join(sorted(v["rooms"])),
-            "Days to Expiry": v["days_to_exp"] if v["days_to_exp"] is not None else "",
-            "On Sale": "Yes" if v["on_sale"] else "No",
-        })
-    export_df = pd.DataFrame(export_rows)
+    summary = {
+        "watch_count": watch_count,
+        "watch_units": watch_units,
+        "expiring": len(expiring),
+        "total_skus": total_skus,
+    }
+    pdf_bytes = build_aging_pdf(watch, summary, today,
+                                watch_days=WATCH_DAYS, exp_soon_days=EXP_SOON_DAYS)
     st.download_button(
-        "📥  DOWNLOAD WATCH LIST (CSV)",
-        export_df.to_csv(index=False).encode("utf-8"),
-        f"DeadStock_Watchlist_{today.isoformat()}.csv",
-        "text/csv",
+        "📥  DOWNLOAD AGING STOCK PDF",
+        pdf_bytes,
+        f"AgingStock_Watchlist_{today.isoformat()}.pdf",
+        "application/pdf",
     )
 
 
-with tab6:
+with tab4:
     render_dead_stock()
