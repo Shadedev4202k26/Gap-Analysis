@@ -5,6 +5,9 @@ import os
 import json
 import requests
 import re
+import subprocess
+import tempfile
+import shutil
 from urllib.parse import quote_plus
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -128,7 +131,6 @@ with header_col1:
     st.video(video_bytes, loop=True, autoplay=True, muted=True) 
 
 with header_col2:
-    # Title Banner sits on top
     st.markdown(
         '<div class="brand-banner" style="padding: 25px; min-height: 140px;">'
         '<div class="brand-text">'
@@ -137,8 +139,6 @@ with header_col2:
         '</div></div>', 
         unsafe_allow_html=True
     )
-    
-    # Quote Banner stacked directly underneath it inside the same column
     st.markdown(
         '<div class="quote-banner">'
         '<p class="quote-text">"Your attitude, not your aptitude, will determine your altitude." &mdash; <span class="quote-author">Zig</span></p>'
@@ -201,190 +201,208 @@ with tab2:
             st.dataframe(final_df, use_container_width=True, hide_index=True)
             st.download_button("📥 DOWNLOAD MERCHANDISING PDF", build_pdf(final_df, min_threshold), "Ziggy_Report.pdf", "application/pdf")
 
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 3 — HOOK TAG GENERATOR
+# Uses pdftk to fill the AcroForm fields in master_template.pdf directly.
+# This preserves the embedded Paralucent-Heavy font and triggers true autosize
+# so every tag fills its box perfectly regardless of text length.
+#
+# DEPLOYMENT CHECKLIST:
+#   1. Add  pdftk  to packages.txt  (system dependency)
+#   2. Add  pypdf  to requirements.txt  (already imported above)
+#   3. Commit master_template.pdf to the root of your repo
+# ─────────────────────────────────────────────────────────────────────────────
 with tab3:
     st.markdown("### 🏷️ Automated Hook Tag Formatter")
-    
+
+    TEMPLATE_PATH = "master_template.pdf"
+
+    # ── Dependency checks ────────────────────────────────────────────────────
     if not PYPDF_AVAILABLE:
-        st.error("⚠️ The required library 'pypdf' is not installed yet. Please add 'pypdf' to your requirements.txt file in GitHub to activate this feature.")
-    else:
-        st.write("Upload your inventory CSV to instantly generate a multi-page print file using your GitHub template.")
+        st.error("⚠️ pypdf is not installed. Add `pypdf` to requirements.txt and redeploy.")
+        st.stop()
 
-        hook_file = st.file_uploader("Drop Hook Tag Inventory (CSV)", type=["csv"], key="hook_csv")
+    try:
+        subprocess.run(["pdftk", "--version"], capture_output=True, check=True)
+        pdftk_ok = True
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        pdftk_ok = False
 
-        if hook_file is not None:
-            template_path = "master_template.pdf"
-            
-            if not os.path.exists(template_path):
-                st.error("⚠️ 'master_template.pdf' is missing from your GitHub repository. Please upload it to your main folder to proceed.")
-            else:
-                df_hook = pd.read_csv(hook_file)
-                
-                df_hook.columns = [str(col).strip('="').strip() for col in df_hook.columns]
-                
-                if 'Product' in df_hook.columns:
-                    df_hook['Product'] = df_hook['Product'].apply(lambda x: str(x).strip('="').strip())
-                    df_hook = df_hook.groupby('Product', as_index=False).first().dropna(subset=['Product'])
-                
-                product_list = []
+    if not pdftk_ok:
+        st.error("⚠️ pdftk is not installed. Add `pdftk` to packages.txt and redeploy.")
+        st.stop()
 
-                for index, row in df_hook.iterrows():
-                    product_name = str(row.get('Product', ''))
-                    if not product_name.strip() or product_name.lower() == 'nan':
-                        continue
-                        
-                    parts = [p.strip() for p in product_name.split('|')]
-                    if len(parts) >= 3:
-                        brand = f"{parts[0]} | {parts[2]}"
-                        strain = parts[1]
-                    elif len(parts) == 2:
-                        brand = parts[0]
-                        strain = parts[1]
+    if not os.path.exists(TEMPLATE_PATH):
+        st.error("⚠️ `master_template.pdf` not found. Commit it to the root of your GitHub repo.")
+        st.stop()
+
+    # ── Auto-detect slot→field mapping from the template (runs once) ─────────
+    @st.cache_resource
+    def load_slot_map(template_path):
+        """Read the template's AcroForm placeholder values to build a
+        slot-number → {brand, strain, thc, price} field-name mapping."""
+        reader  = PdfReader(template_path)
+        fields  = reader.get_fields() or {}
+        slot_map = {}
+        for field_name, field in fields.items():
+            v = field.get("/V", "")
+            if not isinstance(v, str):
+                continue
+            vs = v.strip()
+            for prefix, key in [
+                ("BRAND_",  "brand"),
+                ("STRAIN_", "strain"),
+                ("THC_",    "thc"),
+                ("PRICE_",  "price"),
+            ]:
+                if vs.startswith(prefix):
+                    try:
+                        n = int(vs[len(prefix):].strip())
+                        slot_map.setdefault(n, {})[key] = field_name
+                    except ValueError:
+                        pass
+        return slot_map
+
+    slot_map = load_slot_map(TEMPLATE_PATH)
+
+    if not slot_map:
+        st.error(
+            "The template doesn't contain BRAND_N / STRAIN_N / THC_N / PRICE_N "
+            "placeholder values. Check that master_template.pdf is the correct file."
+        )
+        st.stop()
+
+    slots_per_page = max(slot_map.keys())   # e.g. 24
+
+    # ── UI ───────────────────────────────────────────────────────────────────
+    st.markdown(
+        f"Upload your inventory CSV — **each row produces one physical tag** "
+        f"(duplicates = multiple copies). Template fits **{slots_per_page} tags per sheet**."
+    )
+    hook_file = st.file_uploader(
+        "Drop Hook Tag Inventory (CSV)", type=["csv"], key="hook_csv"
+    )
+
+    if hook_file is None:
+        st.stop()
+
+    # ── Parse CSV ────────────────────────────────────────────────────────────
+    df_hook = pd.read_csv(hook_file)
+    df_hook.columns = [str(c).strip('="').strip() for c in df_hook.columns]
+
+    price_col = "Current price" if "Current price" in df_hook.columns else "Price"
+
+    rows = []
+    for _, row in df_hook.iterrows():
+        product = str(row.get("Product", "")).strip('="').strip()
+        if not product or product.lower() == "nan":
+            continue
+
+        # Split "Brand | Strain | Product Type" → brand / strain+type
+        parts  = [p.strip() for p in product.split("|")]
+        brand  = parts[0]               if len(parts) >= 1 else ""
+        strain = " | ".join(parts[1:])  if len(parts) >= 2 else product
+
+        # THC — keep the raw CSV value (e.g. "87.66 %")
+        thc = str(row.get("THC", "")).strip()
+
+        # Price — normalise to "$N" or "$N.NN"
+        raw_price  = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
+        price_digits = "".join(c for c in raw_price if c.isdigit() or c == ".")
+        try:
+            pv    = float(price_digits) if price_digits else 0.0
+            price = f"${int(pv)}" if pv == int(pv) else f"${pv:.2f}"
+        except ValueError:
+            price = "$0"
+
+        rows.append({"brand": brand, "strain": strain, "thc": thc, "price": price})
+
+    if not rows:
+        st.error("No valid product rows found in the CSV.")
+        st.stop()
+
+    st.info(f"**{len(rows)}** tags detected — will generate **{-(-len(rows) // slots_per_page)}** sheet(s).")
+
+    # ── FDF builder ──────────────────────────────────────────────────────────
+    def _esc(s):
+        """Escape a string for use inside a PDF literal string."""
+        return s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    def make_fdf(page_rows):
+        """Return an FDF byte string that fills one page of the template."""
+        entries = []
+        for slot in range(1, slots_per_page + 1):
+            d  = page_rows[slot - 1] if slot - 1 < len(page_rows) else {}
+            sf = slot_map.get(slot, {})
+            for key, val in [
+                ("brand",  d.get("brand",  "")),
+                ("strain", d.get("strain", "")),
+                ("thc",    d.get("thc",    "")),
+                ("price",  d.get("price",  "")),
+            ]:
+                fn = sf.get(key)
+                if fn:
+                    entries.append(f"<</T ({_esc(fn)})/V ({_esc(val)})>>")
+        return (
+            "%FDF-1.2\n1 0 obj\n<< /FDF << /Fields [\n"
+            + "\n".join(entries)
+            + "\n] >> >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
+        )
+
+    # ── Generate PDF on button press ─────────────────────────────────────────
+    if st.button("🖨️ GENERATE HOOK TAGS", type="primary"):
+        pages = [rows[i : i + slots_per_page] for i in range(0, len(rows), slots_per_page)]
+
+        with st.spinner(f"Filling {len(rows)} tags across {len(pages)} page(s)…"):
+            try:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    page_paths = []
+                    error_msg  = None
+
+                    for i, page_rows in enumerate(pages):
+                        fdf_path = os.path.join(tmpdir, f"p{i}.fdf")
+                        out_path  = os.path.join(tmpdir, f"p{i}.pdf")
+
+                        with open(fdf_path, "w", encoding="latin-1") as f:
+                            f.write(make_fdf(page_rows))
+
+                        r = subprocess.run(
+                            ["pdftk", TEMPLATE_PATH, "fill_form", fdf_path, "output", out_path],
+                            capture_output=True, text=True,
+                        )
+                        if r.returncode != 0:
+                            error_msg = f"pdftk error on page {i + 1}: {r.stderr.strip()}"
+                            break
+                        page_paths.append(out_path)
+
+                    if error_msg:
+                        st.error(error_msg)
+                        st.stop()
+
+                    # Merge pages (or single page pass-through)
+                    if len(page_paths) == 1:
+                        final_path = page_paths[0]
                     else:
-                        brand = "MUHA MEDS"
-                        strain = product_name
-                        
-                    raw_thc = str(row.get('THC', '0'))
-                    try:
-                        thc_str = ''.join(c for c in raw_thc if c.isdigit() or c == '.')
-                        if thc_str:
-                            thc = f"{round(float(thc_str))}%"
-                        else:
-                            thc = "88%"
-                    except ValueError:
-                        thc = "88%" 
-                        
-                    price_col = 'Current price' if 'Current price' in df_hook.columns else 'Price'
-                    raw_price = str(row.get(price_col, '0')).replace('$', '')
-                    try:
-                        price_str = ''.join(c for c in raw_price if c.isdigit() or c == '.')
-                        if price_str:
-                            price_val = float(price_str)
-                            price = f"${int(price_val)}" if price_val.is_integer() else f"${price_val:.2f}"
-                        else:
-                            price = "$0"
-                    except ValueError:
-                        price = "$0"
-                    
-                    product_list.append({
-                        "brand": brand.upper(),
-                        "strain": strain.upper(),
-                        "price": f"{thc} Smilez  {price}"
-                    })
+                        final_path = os.path.join(tmpdir, "merged.pdf")
+                        r = subprocess.run(
+                            ["pdftk"] + page_paths + ["cat", "output", final_path],
+                            capture_output=True, text=True,
+                        )
+                        if r.returncode != 0:
+                            st.error(f"pdftk merge error: {r.stderr.strip()}")
+                            st.stop()
 
-                if product_list:
-                    try:
-                        blueprint_reader = PdfReader(template_path)
-                        blueprint_page = blueprint_reader.pages[0]
-                        page_width = float(blueprint_page.mediabox.width)
-                        page_height = float(blueprint_page.mediabox.height)
-                        
-                        field_data = {}
-                        if "/Annots" in blueprint_page:
-                            for annot in blueprint_page.get("/Annots", []):
-                                annot_obj = annot.get_object()
-                                if annot_obj.get("/Subtype") == "/Widget" and annot_obj.get("/T"):
-                                    name = str(annot_obj.get("/T")).strip("()")
-                                    rect = annot_obj.get("/Rect")
-                                    if rect:
-                                        field_data[name] = [float(r) for r in rect]
-                        
-                        if field_data:
-                            tag_numbers = []
-                            for name in field_data.keys():
-                                match = re.search(r'\d+', name)
-                                if match:
-                                    tag_numbers.append(int(match.group()))
-                                    
-                            tags_per_page = max(tag_numbers) if tag_numbers else 1
-                            final_writer = PdfWriter()
-                            
-                            data_chunks = [product_list[i:i + tags_per_page] for i in range(0, len(product_list), tags_per_page)]
-                            
-                            for page_num, chunk in enumerate(data_chunks):
-                                packet = BytesIO()
-                                c = canvas.Canvas(packet, pagesize=(page_width, page_height))
-                                
-                                for field_name, rect in field_data.items():
-                                    
-                                    match = re.search(r'\d+', field_name)
-                                    tag_idx = (int(match.group()) - 1) if match else 0
-                                    
-                                    if tag_idx < len(chunk):
-                                        product = chunk[tag_idx]
-                                        name_lower = field_name.lower()
-                                        
-                                        text = ""
-                                        is_brand = False
-                                        max_size = 14
-                                        
-                                        if 'brand' in name_lower:
-                                            text = product['brand']
-                                            max_size = 28
-                                            is_brand = True
-                                        elif 'strain' in name_lower:
-                                            text = product['strain']
-                                            max_size = 16
-                                        elif 'price' in name_lower or 'thc' in name_lower:
-                                            text = product['price']
-                                            max_size = 14
-                                            
-                                        if text:
-                                            ll_x, ll_y, ur_x, ur_y = rect
-                                            box_width = ur_x - ll_x
-                                            box_height = ur_y - ll_y
-                                            center_x = ll_x + (box_width / 2)
-                                            
-                                            font_size = max_size
-                                            c.setFont("Helvetica-Bold", font_size)
-                                            
-                                            while c.stringWidth(text, "Helvetica-Bold", font_size) > (box_width - 8) and font_size > 6:
-                                                font_size -= 0.5
-                                                c.setFont("Helvetica-Bold", font_size)
-                                            
-                                            center_y = ll_y + (box_height / 2) - (font_size * 0.35)
-                                            
-                                            if is_brand:
-                                                c.setTextRenderMode(2) 
-                                                c.setLineWidth(0.4)    
-                                                c.setStrokeColorRGB(0, 0, 0)
-                                            else:
-                                                c.setTextRenderMode(0)
-                                                
-                                            c.setFillColorRGB(0, 0, 0)
-                                            c.drawCentredString(center_x, center_y, text)
+                    with open(final_path, "rb") as f:
+                        pdf_bytes = f.read()
 
-                                c.showPage()
-                                c.save()
-                                packet.seek(0)
-                                overlay = PdfReader(packet)
-                                
-                                fresh_reader = PdfReader(template_path)
-                                base_page = fresh_reader.pages[0]
-                                base_page.merge_page(overlay.pages[0])
-                                
-                                if "/Annots" in base_page:
-                                    del base_page[NameObject("/Annots")]
-                                    
-                                final_writer.add_page(base_page)
-                                
-                            if "/AcroForm" in final_writer.root_object:
-                                del final_writer.root_object[NameObject("/AcroForm")]
-                            
-                            pdf_output = BytesIO()
-                            final_writer.write(pdf_output)
-                            pdf_output.seek(0)
-                            
-                            total_tags = len(product_list)
-                            st.success(f"Successfully baked {total_tags} perfectly sized tags across {len(data_chunks)} pages!")
-                            
-                            st.download_button(
-                                label="📥 DOWNLOAD FLATTENED PRINT FILE",
-                                data=pdf_output,
-                                file_name="Print_Ready_Hook_Tabs.pdf",
-                                mime="application/pdf"
-                            )
-                        else:
-                            st.error("No invisible layout boxes detected in the master_template.pdf.")
-                        
-                    except Exception as e:
-                        st.error(f"Error processing the PDF: {e}")
+            except Exception as e:
+                st.error(f"Unexpected error: {e}")
+                st.stop()
+
+        st.success(f"✅ {len(rows)} tags across {len(pages)} sheet(s) — ready to print!")
+        st.download_button(
+            label="📥 DOWNLOAD PRINT-READY HOOK TAGS",
+            data=pdf_bytes,
+            file_name="HookTags_Ready.pdf",
+            mime="application/pdf",
+        )
