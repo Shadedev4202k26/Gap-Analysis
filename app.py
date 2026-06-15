@@ -504,8 +504,8 @@ with tab1:
         st.rerun()
     if "last_strain" in st.session_state and st.session_state.last_strain:
         strain = st.session_state.last_strain
-        google_url = f"https://www.google.com/search?q={quote_plus(strain + ' strain')}"
-        st.markdown(f'<a href="{google_url}" target="_blank" class="g-btn">🔎 More results for {strain}</a>', unsafe_allow_html=True)
+        google_url = f"https://www.google.com/search?q={quote_plus(strain + ' strain')}&udm=50"
+        st.markdown(f'<a href="{google_url}" target="_blank" class="g-btn">✨ Ask Google AI about {strain}</a>', unsafe_allow_html=True)
         data = generate_strain_profile(st.secrets["GROQ_API_KEY"], strain)
         if "error" not in data:
             clf  = str(data.get('classification', 'HYBRID')).upper()
