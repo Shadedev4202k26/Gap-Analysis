@@ -304,6 +304,58 @@ hr { border:none !important; height:1px !important; background:var(--border) !im
     color: var(--muted) !important;
     font-family: 'Inter', sans-serif !important;
 }
+/* Hide the native label that sits inside the dropzone graphic and causes overlap */
+[data-testid="stFileUploader"] label { display: none !important; }
+
+/* === INSTRUCTION CARD === */
+.instr-card {
+    background: rgba(22,27,42,.7);
+    border: 1px solid var(--b-purple);
+    border-left: 3px solid var(--purple);
+    border-radius: var(--r);
+    padding: 16px 20px;
+    margin-bottom: 14px;
+    animation: fade-up .4s ease;
+}
+.instr-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--purple-l);
+    letter-spacing: .3px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+}
+.instr-steps { display: flex; flex-direction: column; gap: 9px; }
+.instr-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--dim);
+    line-height: 1.5;
+}
+.instr-step strong { color: var(--text); }
+.instr-icon {
+    flex-shrink: 0;
+    width: 22px; height: 22px;
+    background: var(--purple-d);
+    border: 1px solid var(--b-purple);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 700;
+    color: var(--purple-l);
+    margin-top: 1px;
+}
+.instr-icon.fire {
+    background: rgba(245,158,11,.1);
+    border-color: rgba(245,158,11,.3);
+    color: var(--amber);
+    font-size: 12px;
+    width: 22px; height: 22px;
+}
 
 /* === ALERTS === */
 [data-testid="stAlert"] {
@@ -666,7 +718,23 @@ with tab1:
 with tab2:
     st.markdown('<div class="sec-head"><div class="sec-head-text">📊 Live Restock Gap Analyzer</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
 
-    uploaded_file = st.file_uploader("Dutchie CSV Export", type="csv", key="restock_csv")
+    st.markdown("""
+    <div class="instr-card">
+      <div class="instr-title">📋 How to Export from Dutchie</div>
+      <div class="instr-steps">
+        <div class="instr-step">
+          <span class="instr-icon">1</span>
+          <span>In Dutchie Backoffice, select <strong>any 2 rooms</strong> &amp; <strong>one category</strong></span>
+        </div>
+        <div class="instr-step">
+          <span class="instr-icon fire">🔥</span>
+          <span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Quantity</strong></span>
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    uploaded_file = st.file_uploader("Drop Dutchie CSV here", type="csv", key="restock_csv", label_visibility="collapsed")
     min_threshold = st.slider("Minimum stock threshold", 1, 50, 15)
 
     if uploaded_file:
@@ -748,13 +816,37 @@ with tab3:
       <div class="step-header">
         <div class="step-num">1</div>
         <div>
-          <div class="step-ttl">Upload Inventory CSV</div>
-          <div class="step-dsc">One tag per unique product · Duplicate THC values = separate tags · {slots_per_page} tags per sheet</div>
+          <div class="step-ttl">Export &amp; Upload Inventory CSV</div>
+          <div class="step-dsc">{slots_per_page} tags per sheet · duplicates auto-removed</div>
         </div>
       </div>
     </div>""", unsafe_allow_html=True)
 
-    hook_file = st.file_uploader("Inventory CSV", type=["csv"], key="hook_csv", label_visibility="collapsed")
+    st.markdown("""
+    <div class="instr-card">
+      <div class="instr-title">📋 How to Export from Dutchie</div>
+      <div class="instr-steps">
+        <div class="instr-step">
+          <span class="instr-icon">1</span>
+          <span>In Dutchie Backend, select any combination of <strong>product, room, category</strong>, etc.</span>
+        </div>
+        <div class="instr-step">
+          <span class="instr-icon fire">🔥</span>
+          <span>Export only <strong>Product</strong>, <strong>THC</strong>, &amp; <strong>Current Price</strong></span>
+        </div>
+        <div class="instr-step">
+          <span class="instr-icon fire">🔥</span>
+          <span>One tag per unique product — same strain with <strong>different THC %</strong> each gets its own tag</span>
+        </div>
+        <div class="instr-step">
+          <span class="instr-icon fire">🔥</span>
+          <span>Save additional tags for <strong>future use</strong> — re-upload anytime</span>
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    hook_file = st.file_uploader("Drop inventory CSV here", type=["csv"], key="hook_csv", label_visibility="collapsed")
 
     if hook_file is None:
         st.markdown("""
