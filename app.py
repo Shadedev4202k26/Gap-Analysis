@@ -231,6 +231,7 @@ hr{border:none!important;height:1px!important;background:var(--border)!important
 .hp-g{background:rgba(52,211,153,.09);border:1px solid rgba(52,211,153,.28);color:var(--green)}
 .hp-a{background:rgba(245,158,11,.09);border:1px solid rgba(245,158,11,.28);color:var(--amber)}
 .hp-b{background:rgba(96,165,250,.09);border:1px solid rgba(96,165,250,.28);color:var(--blue)}
+.hp-r{background:rgba(239,68,68,.09);border:1px solid rgba(239,68,68,.28);color:#FCA5A5}
 
 .hub-quote{background:rgba(13,17,23,.65);border-radius:var(--r);padding:16px 20px;margin-top:12px;border-left:3px solid var(--purple)}
 .hub-quote p{font-family:'Inter',sans-serif!important;font-size:13px!important;font-style:italic!important;color:var(--dim)!important;margin:0!important;line-height:1.7!important}
@@ -330,6 +331,30 @@ hr{border:none!important;height:1px!important;background:var(--border)!important
 .post-card{background:var(--s2);border:1px solid var(--b-purple);border-radius:var(--r);padding:22px 26px;margin-bottom:22px}
 .post-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--text);margin-bottom:16px}
 .stCheckbox label{color:var(--dim)!important;font-size:13px!important;font-family:'Inter',sans-serif!important}
+
+/* ═══════════════════════════════════════════════════
+   DEAD STOCK STYLES
+═══════════════════════════════════════════════════ */
+.ds-row{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;background:var(--s2);border:1px solid var(--border);border-radius:var(--rs);padding:14px 18px;margin-bottom:8px;animation:fade-up .3s ease}
+.ds-row-critical{border-left:3px solid #EF4444}
+.ds-row-high{border-left:3px solid var(--amber)}
+.ds-row-watch{border-left:3px solid var(--blue)}
+.ds-age{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;line-height:1;text-align:center;min-width:52px}
+.ds-age-num-critical{color:#FCA5A5}
+.ds-age-num-high{color:var(--amber)}
+.ds-age-num-watch{color:var(--blue)}
+.ds-age-unit{font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:3px}
+.ds-name{font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:var(--text);line-height:1.3}
+.ds-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:4px;letter-spacing:.3px}
+.ds-flags{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.ds-flag{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;padding:2px 8px;border-radius:50px;letter-spacing:.5px}
+.dsf-exp{background:rgba(239,68,68,.13);color:#FCA5A5;border:1px solid rgba(239,68,68,.3)}
+.dsf-sale{background:rgba(245,158,11,.13);color:var(--amber);border:1px solid rgba(245,158,11,.3)}
+.ds-qty{text-align:right}
+.ds-qty-num{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--text);line-height:1}
+.ds-qty-lbl{font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px}
+.ds-group-hdr{font-family:'Syne',sans-serif;font-size:13px;font-weight:800;color:var(--purple-l);letter-spacing:.3px;margin:22px 0 10px 0;padding-bottom:6px;border-bottom:1px solid var(--b-purple);display:flex;justify-content:space-between;align-items:center}
+.ds-group-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);font-weight:400}
 </style>
 """, unsafe_allow_html=True)
 
@@ -353,6 +378,7 @@ with col_hdr:
         <span class="hpill hp-g">🏷️ Hook Tags</span>
         <span class="hpill hp-a">✅ Checklist</span>
         <span class="hpill hp-b">📢 Comms</span>
+        <span class="hpill hp-r">⏳ Dead Stock</span>
       </div>
     </div></div>
     <div class="hub-quote">
@@ -360,12 +386,13 @@ with col_hdr:
     </div>""", unsafe_allow_html=True)
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "⚡  STRAIN SNIFFER",
     "📊  INVENTORY INTEL",
     "🏷️  HOOK TAGS",
     "✅  DAILY CHECKLIST",
     "📢  COMMS BOARD",
+    "⏳  DEAD STOCK",
 ])
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -883,3 +910,221 @@ def render_comms():
 
 with tab5:
     render_comms()
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 6 — DEAD STOCK / AGING WATCH LIST
+# ════════════════════════════════════════════════════════════════════════════════
+def render_dead_stock():
+    st.markdown('<div class="sec-head"><div class="sec-head-text">⏳ Dead Stock & Aging Watch List</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
+    <div class="instr-steps">
+      <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backend, export your <strong>full inventory</strong> (any rooms/categories)</span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Include at minimum: <strong>Product, Available, Inventory date, Expiration date</strong></span></div>
+      <div class="instr-step"><span class="instr-icon">i</span><span>This is a <strong>watch list to investigate</strong>, not a sales report — it flags old stock by age, not proven non-sales</span></div>
+    </div></div>""", unsafe_allow_html=True)
+
+    WATCH_DAYS = 45          # age threshold
+    EXP_SOON_DAYS = 60       # expiring-soon threshold
+
+    ds_file = st.file_uploader(" ", type=["csv"], key="deadstock_csv", label_visibility="collapsed")
+    if ds_file is None:
+        return
+
+    try:
+        df = pd.read_csv(ds_file, dtype=str)
+    except Exception as e:
+        st.error(f"Could not read CSV: {e}")
+        return
+
+    df.columns = [str(c).strip('="').strip() for c in df.columns]
+
+    def col(*names):
+        """Return the first matching column name present in the df."""
+        for n in names:
+            if n in df.columns:
+                return n
+        return None
+
+    c_product = col("Product", "Online title")
+    c_avail   = col("Available", "Quantity (including allocated)")
+    c_invdate = col("Inventory date", "Packaging date")
+    c_pkgdate = col("Packaging date")
+    c_expdate = col("Expiration date")
+    c_room    = col("Room")
+    c_cat     = col("Category", "Master category")
+    c_sale    = col("Is on sale")
+    c_brand   = col("Brand")
+    c_price   = col("Current price", "Price (Catalog)")
+
+    if not c_product or not c_invdate:
+        st.error("This CSV is missing required columns (Product and Inventory/Packaging date). Re-export with those fields included.")
+        return
+
+    def cln(v):
+        return str(v).strip('="').strip() if v is not None and str(v) != 'nan' else ""
+
+    def pdate(s):
+        s = cln(s)
+        if not s:
+            return None
+        for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m/%d/%y", "%m-%d-%Y"):
+            try:
+                return datetime.strptime(s, fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    def to_int(v):
+        v = cln(v)
+        digits = "".join(ch for ch in v if ch.isdigit())
+        return int(digits) if digits else 0
+
+    today = date.today()
+
+    # ── Aggregate by product (sum quantity across rooms, keep oldest date) ─────
+    agg = {}
+    for _, row in df.iterrows():
+        product = cln(row.get(c_product))
+        if not product or product.lower() == "nan":
+            continue
+
+        ref = pdate(row.get(c_pkgdate)) if c_pkgdate else None
+        ref = ref or pdate(row.get(c_invdate))
+        if ref is None:
+            continue
+        age = (today - ref).days
+
+        exp = pdate(row.get(c_expdate)) if c_expdate else None
+        days_to_exp = (exp - today).days if exp else None
+
+        qty   = to_int(row.get(c_avail)) if c_avail else 0
+        room  = cln(row.get(c_room)) if c_room else ""
+        cat   = cln(row.get(c_cat)) if c_cat else "Uncategorized"
+        brand = cln(row.get(c_brand)) if c_brand else ""
+        price = cln(row.get(c_price)) if c_price else ""
+        on_sale = cln(row.get(c_sale)).lower() in ("yes", "true", "1") if c_sale else False
+
+        if product not in agg:
+            agg[product] = {
+                "product": product, "age": age, "qty": qty,
+                "days_to_exp": days_to_exp, "cat": cat, "brand": brand,
+                "price": price, "on_sale": on_sale, "rooms": set()
+            }
+        else:
+            a = agg[product]
+            a["age"] = max(a["age"], age)               # oldest wins
+            a["qty"] += qty                             # sum across rooms
+            if days_to_exp is not None:
+                a["days_to_exp"] = days_to_exp if a["days_to_exp"] is None else min(a["days_to_exp"], days_to_exp)
+            a["on_sale"] = a["on_sale"] or on_sale
+        if room:
+            agg[product]["rooms"].add(room)
+
+    # ── Filter to watch candidates (45+ days) ─────────────────────────────────
+    watch = [v for v in agg.values() if v["age"] >= WATCH_DAYS]
+
+    total_skus = len(agg)
+    watch_count = len(watch)
+    expiring = [v for v in watch if v["days_to_exp"] is not None and v["days_to_exp"] < EXP_SOON_DAYS]
+    watch_units = sum(v["qty"] for v in watch)
+
+    # ── Summary tiles ─────────────────────────────────────────────────────────
+    st.markdown(f"""
+    <div class="checklist-summary">
+      <div class="cs-tile cs-tile-total"><div class="cs-num">{total_skus}</div><div class="cs-lbl">Total SKUs</div></div>
+      <div class="cs-tile cs-tile-afternoon"><div class="cs-num">{watch_count}</div><div class="cs-lbl">⏳ Aging 45+d</div></div>
+      <div class="cs-tile cs-tile-handover"><div class="cs-num">{watch_units}</div><div class="cs-lbl">Units Stuck</div></div>
+      <div class="cs-tile cs-tile-morning" style="border:none"><div class="cs-num" style="color:#FCA5A5">{len(expiring)}</div><div class="cs-lbl">🔴 Exp &lt;60d</div></div>
+    </div>""", unsafe_allow_html=True)
+
+    if not watch:
+        st.success(f"✅ No products aged {WATCH_DAYS}+ days. Inventory is fresh!")
+        return
+
+    # ── Severity tiering by age ───────────────────────────────────────────────
+    def severity(age):
+        if age >= 90:  return "critical"
+        if age >= 60:  return "high"
+        return "watch"
+
+    def render_row(v):
+        sev = severity(v["age"])
+        flags = ""
+        if v["days_to_exp"] is not None and v["days_to_exp"] < EXP_SOON_DAYS:
+            if v["days_to_exp"] < 0:
+                flags += '<span class="ds-flag dsf-exp">⚠️ EXPIRED</span>'
+            else:
+                flags += f'<span class="ds-flag dsf-exp">⏰ EXP {v["days_to_exp"]}d</span>'
+        if v["on_sale"]:
+            flags += '<span class="ds-flag dsf-sale">🏷️ ON SALE</span>'
+        flags_html = f'<div class="ds-flags">{flags}</div>' if flags else ''
+
+        rooms = ", ".join(sorted(v["rooms"])) if v["rooms"] else "—"
+        brand = f'{v["brand"]} · ' if v["brand"] else ''
+        price = f' · ${v["price"]}' if v["price"] else ''
+        name = v["product"].replace('<', '&lt;').replace('>', '&gt;')
+
+        st.markdown(f"""
+        <div class="ds-row ds-row-{sev}">
+          <div class="ds-age">
+            <div class="ds-age-num-{sev}">{v["age"]}</div>
+            <div class="ds-age-unit">Days</div>
+          </div>
+          <div>
+            <div class="ds-name">{name}</div>
+            <div class="ds-meta">{brand}{rooms}{price}</div>
+            {flags_html}
+          </div>
+          <div class="ds-qty">
+            <div class="ds-qty-num">{v["qty"]}</div>
+            <div class="ds-qty-lbl">In Stock</div>
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── Group by Category, sort each group age-first (oldest first) ────────────
+    by_cat = defaultdict(list)
+    for v in watch:
+        by_cat[v["cat"]].append(v)
+
+    # Order categories by their oldest item
+    cat_order = sorted(by_cat.keys(), key=lambda c: -max(v["age"] for v in by_cat[c]))
+
+    for cat in cat_order:
+        items = sorted(by_cat[cat], key=lambda v: -v["age"])  # age-first
+        oldest = items[0]["age"]
+        st.markdown(f"""
+        <div class="ds-group-hdr">
+          <span>{cat or 'Uncategorized'}</span>
+          <span class="ds-group-count">{len(items)} item(s) · oldest {oldest}d</span>
+        </div>""", unsafe_allow_html=True)
+        for v in items:
+            render_row(v)
+
+    # ── Export the watch list ─────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    export_rows = []
+    for v in sorted(watch, key=lambda v: -v["age"]):
+        export_rows.append({
+            "Product": v["product"],
+            "Brand": v["brand"],
+            "Category": v["cat"],
+            "Age (days)": v["age"],
+            "Units in Stock": v["qty"],
+            "Rooms": ", ".join(sorted(v["rooms"])),
+            "Days to Expiry": v["days_to_exp"] if v["days_to_exp"] is not None else "",
+            "On Sale": "Yes" if v["on_sale"] else "No",
+        })
+    export_df = pd.DataFrame(export_rows)
+    st.download_button(
+        "📥  DOWNLOAD WATCH LIST (CSV)",
+        export_df.to_csv(index=False).encode("utf-8"),
+        f"DeadStock_Watchlist_{today.isoformat()}.csv",
+        "text/csv",
+    )
+
+
+with tab6:
+    render_dead_stock()
