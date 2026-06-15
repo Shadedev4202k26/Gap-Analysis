@@ -820,19 +820,19 @@ with tab3:
       <div class="instr-title">📋 How to Export from Dutchie</div>
       <div class="instr-steps">
         <div class="instr-step">
-          <span class="instr-icon fire">🔥</span>
+          <span class="instr-icon">1</span>
           <span>In Dutchie Backend, select any combination of <strong>product, room, category</strong>, etc.</span>
         </div>
         <div class="instr-step">
-          <span class="instr-icon fire">🔥</span>
+          <span class="instr-icon">2</span>
           <span>Export only <strong>Product</strong>, <strong>THC</strong>, &amp; <strong>Current Price</strong></span>
         </div>
         <div class="instr-step">
-          <span class="instr-icon fire">🔥</span>
+          <span class="instr-icon">3</span>
           <span>One tag per unique product — same strain with <strong>different THC %</strong> each gets its own tag</span>
         </div>
         <div class="instr-step">
-          <span class="instr-icon fire">🔥</span>
+          <span class="instr-icon">4</span>
           <span>Save additional tags for <strong>future use</strong> — re-upload anytime</span>
         </div>
       </div>
