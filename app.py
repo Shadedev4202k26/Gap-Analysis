@@ -1,6 +1,7 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
-import os, json, requests, re, subprocess, tempfile, shutil
+import os, json, requests, re, subprocess, tempfile, shutil, random
 from urllib.parse import quote_plus
 from datetime import date, datetime, timezone
 from reportlab.lib.pagesizes import letter
@@ -23,6 +24,13 @@ try:
     SUPABASE_AVAILABLE = True
 except ImportError:
     SUPABASE_AVAILABLE = False
+
+try:
+    from crossword_data import get_flat_word_list
+    from crossword_gen import generate_crossword
+    CROSSWORD_AVAILABLE = True
+except ImportError:
+    CROSSWORD_AVAILABLE = False
 
 st.set_page_config(page_title="ZiggyBot", page_icon="⚡", layout="wide")
 
@@ -475,6 +483,7 @@ with col_hdr:
         <span class="hpill hp-a">✅ Checklist</span>
         <span class="hpill hp-b">📢 Comms</span>
         <span class="hpill hp-r">⏳ Aging Stock</span>
+        <span class="hpill hp-g">🧩 Crossword</span>
       </div>
     </div></div>
     <div class="hub-quote">
@@ -482,13 +491,14 @@ with col_hdr:
     </div>""", unsafe_allow_html=True)
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "⚡  STRAIN SNIFFER",
     "📊  INVENTORY BALANCING",
     "🏷️  HOOK TAGS",
     "⏳  AGING STOCK",
     "✅  DAILY CHECKLIST",
     "📢  COMMS BOARD",
+    "🧩  CROSSWORD",
 ])
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -1219,3 +1229,303 @@ def render_dead_stock():
 
 with tab4:
     render_dead_stock()
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 7 — CROSSWORD
+# ════════════════════════════════════════════════════════════════════════════════
+def _crossword_html(puzzle):
+    """Build the interactive crossword as a self-contained HTML/JS component."""
+    data_json = json.dumps(puzzle)
+    # Approx component height: grid + clue panel. Grid drawn with CSS, scrollable.
+    return """
+<div id="xw-root">
+  <style>
+    #xw-root { font-family: 'Inter', -apple-system, sans-serif; color: #E2E8F0; }
+    .xw-wrap { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+    .xw-grid-panel { flex: 1 1 420px; min-width: 300px; }
+    .xw-clue-panel { flex: 1 1 320px; min-width: 260px; max-height: 620px; overflow-y: auto; }
+    .xw-grid-scroll { overflow: auto; max-width: 100%; border-radius: 10px;
+                      background: #0D1117; padding: 10px; border: 1px solid rgba(139,92,246,.25); }
+    table.xw { border-collapse: collapse; margin: 0 auto; }
+    table.xw td { width: 26px; height: 26px; padding: 0; position: relative;
+                  border: 1px solid #2A3344; text-align: center; vertical-align: middle; }
+    td.blk { background: #0D1117; border-color: #0D1117; }
+    td.cell { background: #F8FAFC; cursor: pointer; }
+    td.cell input { width: 100%; height: 100%; border: none; background: transparent;
+                    text-align: center; font-size: 15px; font-weight: 700; color: #0F172A;
+                    text-transform: uppercase; padding: 0; margin: 0; outline: none;
+                    caret-color: transparent; cursor: pointer; }
+    td.cell.hl input { background: rgba(167,139,250,.35); }
+    td.cell.active input { background: rgba(245,200,66,.75); }
+    td.cell.correct input { color: #059669; }
+    td.cell.wrong input { color: #DC2626; }
+    .xw-num { position: absolute; top: 0px; left: 1px; font-size: 7px;
+              font-weight: 700; color: #475569; line-height: 1; pointer-events: none; }
+    .xw-bar { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px 0; }
+    .xw-btn { background: linear-gradient(135deg,#8B5CF6,#5B21B6); color: #fff; border: none;
+              border-radius: 8px; font-weight: 700; font-size: 10px; letter-spacing: .8px;
+              text-transform: uppercase; padding: 9px 13px; cursor: pointer;
+              font-family: inherit; transition: transform .15s; }
+    .xw-btn:hover { transform: translateY(-1px); }
+    .xw-btn.alt { background: #1E293B; border: 1px solid rgba(139,92,246,.3); }
+    .xw-active-clue { background: #161B2A; border-left: 3px solid #A78BFA; border-radius: 8px;
+                      padding: 12px 14px; margin-bottom: 12px; font-size: 14px; min-height: 20px;
+                      color: #E2E8F0; }
+    .xw-active-clue b { color: #A78BFA; }
+    .xw-clue-head { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 800;
+                    color: #A78BFA; letter-spacing: .5px; text-transform: uppercase;
+                    margin: 14px 0 8px 0; border-bottom: 1px solid rgba(139,92,246,.2);
+                    padding-bottom: 5px; }
+    .xw-clue { font-size: 12.5px; color: #94A3B8; padding: 5px 8px; border-radius: 6px;
+               cursor: pointer; line-height: 1.4; display: flex; gap: 7px; }
+    .xw-clue:hover { background: rgba(139,92,246,.1); color: #E2E8F0; }
+    .xw-clue.sel { background: rgba(167,139,250,.18); color: #fff; }
+    .xw-clue .cn { font-weight: 700; color: #64748B; min-width: 20px; }
+    .xw-clue.done .cn { color: #34D399; }
+    .xw-win { background: rgba(52,211,153,.12); border: 1px solid rgba(52,211,153,.4);
+              color: #6EE7B7; border-radius: 10px; padding: 14px; margin-bottom: 12px;
+              font-weight: 700; text-align: center; display: none; }
+  </style>
+
+  <div class="xw-win" id="xw-win">🎉 Solved it! Nice work.</div>
+  <div class="xw-bar">
+    <button class="xw-btn" onclick="xwCheck()">✓ Check</button>
+    <button class="xw-btn alt" onclick="xwRevealLetter()">Reveal Letter</button>
+    <button class="xw-btn alt" onclick="xwRevealWord()">Reveal Word</button>
+    <button class="xw-btn alt" onclick="xwClear()">Clear</button>
+  </div>
+
+  <div class="xw-wrap">
+    <div class="xw-grid-panel">
+      <div class="xw-active-clue" id="xw-active-clue">Click a square to begin.</div>
+      <div class="xw-grid-scroll"><table class="xw" id="xw-table"></table></div>
+    </div>
+    <div class="xw-clue-panel">
+      <div class="xw-clue-head">Across</div>
+      <div id="xw-across"></div>
+      <div class="xw-clue-head">Down</div>
+      <div id="xw-down"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PUZ = __DATA__;
+const H = PUZ.height, W = PUZ.width, SOL = PUZ.solution, NUMS = PUZ.numbers;
+const ACROSS = PUZ.across, DOWN = PUZ.down;
+
+let dir = "across";      // current direction
+let cur = null;          // {r,c}
+const inputs = {};       // "r,c" -> input element
+
+function key(r,c){ return r+","+c; }
+function isCell(r,c){ return r>=0 && r<H && c>=0 && c<W && SOL[r][c] !== null; }
+
+// Build grid
+const tbl = document.getElementById("xw-table");
+for (let r=0; r<H; r++){
+  const tr = document.createElement("tr");
+  for (let c=0; c<W; c++){
+    const td = document.createElement("td");
+    if (SOL[r][c] === null){ td.className = "blk"; }
+    else {
+      td.className = "cell";
+      const n = NUMS[key(r,c)];
+      if (n){ const s=document.createElement("span"); s.className="xw-num"; s.textContent=n; td.appendChild(s); }
+      const inp = document.createElement("input");
+      inp.maxLength = 1;
+      inp.dataset.r = r; inp.dataset.c = c;
+      inp.addEventListener("focus", ()=>onFocus(r,c));
+      inp.addEventListener("mousedown", (e)=>{ if (cur && cur.r===r && cur.c===c){ toggleDir(); }});
+      inp.addEventListener("keydown", (e)=>onKey(e,r,c));
+      inp.addEventListener("input", (e)=>onInput(e,r,c));
+      td.appendChild(inp);
+      inputs[key(r,c)] = inp;
+    }
+    tr.appendChild(td);
+  }
+  tbl.appendChild(tr);
+}
+
+function clearHL(){ document.querySelectorAll("td.cell").forEach(td=>td.classList.remove("hl","active")); }
+
+function wordCells(r,c,d){
+  const cells = [];
+  let sr=r, sc=c;
+  const dr = d==="down"?1:0, dc = d==="across"?1:0;
+  while (isCell(sr-dr, sc-dc)){ sr-=dr; sc-=dc; }
+  while (isCell(sr,sc)){ cells.push({r:sr,c:sc}); sr+=dr; sc+=dc; }
+  return cells;
+}
+
+function findEntry(r,c,d){
+  const cells = wordCells(r,c,d);
+  if (cells.length<2) return null;
+  const start = cells[0];
+  const list = d==="across"?ACROSS:DOWN;
+  return list.find(e=>e.row===start.r && e.col===start.c) || null;
+}
+
+function onFocus(r,c){
+  cur = {r,c};
+  // if current dir not valid here, switch
+  if (wordCells(r,c,dir).length<2) dir = (dir==="across")?"down":"across";
+  highlight();
+}
+function toggleDir(){
+  const other = dir==="across"?"down":"across";
+  if (cur && wordCells(cur.r,cur.c,other).length>=2){ dir=other; highlight(); }
+}
+
+function highlight(){
+  clearHL();
+  if (!cur) return;
+  const cells = wordCells(cur.r,cur.c,dir);
+  cells.forEach(({r,c})=>{ const td=inputs[key(r,c)].parentElement; td.classList.add("hl"); });
+  const td = inputs[key(cur.r,cur.c)].parentElement; td.classList.add("active");
+  const e = findEntry(cur.r,cur.c,dir);
+  const box = document.getElementById("xw-active-clue");
+  if (e){ box.innerHTML = "<b>"+e.num+" "+dir.toUpperCase()+"</b> &nbsp; "+e.clue+" &nbsp;("+e.len+")"; }
+  // select in clue list
+  document.querySelectorAll(".xw-clue").forEach(el=>el.classList.remove("sel"));
+  if (e){ const el=document.getElementById("clue-"+dir+"-"+e.num); if(el) el.classList.add("sel"); }
+}
+
+function step(r,c,fwd=true){
+  const dr = dir==="down"?1:0, dc = dir==="across"?1:0;
+  let nr=r+(fwd?dr:-dr), nc=c+(fwd?dc:-dc);
+  if (isCell(nr,nc)){ inputs[key(nr,nc)].focus(); }
+}
+
+function onInput(e,r,c){
+  const v = e.target.value.toUpperCase().replace(/[^A-Z]/g,"");
+  e.target.value = v;
+  e.target.parentElement.classList.remove("correct","wrong");
+  if (v){ step(r,c,true); }
+  checkWin();
+}
+function onKey(e,r,c){
+  const k = e.key;
+  if (k==="Backspace"){
+    if (!e.target.value){ e.preventDefault(); step(r,c,false);
+      const dr=dir==="down"?1:0,dc=dir==="across"?1:0;
+      const pr=r-dr,pc=c-dc; if(isCell(pr,pc)){inputs[key(pr,pc)].value="";}
+    } else { e.target.parentElement.classList.remove("correct","wrong"); }
+  } else if (k==="ArrowRight"){ e.preventDefault(); dir="across"; if(isCell(r,c+1))inputs[key(r,c+1)].focus(); else highlight(); }
+  else if (k==="ArrowLeft"){ e.preventDefault(); dir="across"; if(isCell(r,c-1))inputs[key(r,c-1)].focus(); else highlight(); }
+  else if (k==="ArrowDown"){ e.preventDefault(); dir="down"; if(isCell(r+1,c))inputs[key(r+1,c)].focus(); else highlight(); }
+  else if (k==="ArrowUp"){ e.preventDefault(); dir="down"; if(isCell(r-1,c))inputs[key(r-1,c)].focus(); else highlight(); }
+  else if (k===" "){ e.preventDefault(); toggleDir(); }
+}
+
+// Clue lists
+function buildClues(list, dirName, container){
+  list.forEach(e=>{
+    const div = document.createElement("div");
+    div.className = "xw-clue";
+    div.id = "clue-"+dirName+"-"+e.num;
+    div.innerHTML = "<span class='cn'>"+e.num+"</span><span>"+e.clue+"</span>";
+    div.addEventListener("click", ()=>{ dir=dirName; inputs[key(e.row,e.col)].focus(); });
+    container.appendChild(div);
+  });
+}
+buildClues(ACROSS,"across",document.getElementById("xw-across"));
+buildClues(DOWN,"down",document.getElementById("xw-down"));
+
+function xwCheck(){
+  for (let r=0;r<H;r++) for(let c=0;c<W;c++){
+    if (SOL[r][c]===null) continue;
+    const inp=inputs[key(r,c)]; const td=inp.parentElement;
+    td.classList.remove("correct","wrong");
+    if (inp.value){ td.classList.add(inp.value===SOL[r][c]?"correct":"wrong"); }
+  }
+}
+function xwRevealLetter(){
+  if(!cur) return;
+  const inp=inputs[key(cur.r,cur.c)];
+  inp.value=SOL[cur.r][cur.c];
+  inp.parentElement.classList.add("correct");
+  checkWin();
+}
+function xwRevealWord(){
+  if(!cur) return;
+  wordCells(cur.r,cur.c,dir).forEach(({r,c})=>{
+    const inp=inputs[key(r,c)]; inp.value=SOL[r][c]; inp.parentElement.classList.add("correct");
+  });
+  checkWin();
+}
+function xwClear(){
+  for(let r=0;r<H;r++)for(let c=0;c<W;c++){
+    if(SOL[r][c]===null)continue;
+    const inp=inputs[key(r,c)]; inp.value=""; inp.parentElement.classList.remove("correct","wrong");
+  }
+  document.getElementById("xw-win").style.display="none";
+  markDoneClues();
+}
+function isEntryDone(e){
+  const dr=e.dir==="down"?1:0,dc=e.dir==="across"?1:0;
+  for(let i=0;i<e.len;i++){ const inp=inputs[key(e.row+dr*i,e.col+dc*i)]; if(!inp||inp.value!==SOL[e.row+dr*i][e.col+dc*i])return false; }
+  return true;
+}
+function markDoneClues(){
+  [["across",ACROSS],["down",DOWN]].forEach(([dn,list])=>{
+    list.forEach(e=>{ const el=document.getElementById("clue-"+dn+"-"+e.num);
+      if(el){ el.classList.toggle("done", isEntryDone(e)); } });
+  });
+}
+function checkWin(){
+  markDoneClues();
+  for(let r=0;r<H;r++)for(let c=0;c<W;c++){
+    if(SOL[r][c]===null)continue;
+    if(inputs[key(r,c)].value!==SOL[r][c])return;
+  }
+  document.getElementById("xw-win").style.display="block";
+}
+</script>
+""".replace("__DATA__", data_json)
+
+
+def render_crossword():
+    st.markdown('<div class="sec-head"><div class="sec-head-text">🧩 Daily Crossword</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+
+    if not CROSSWORD_AVAILABLE:
+        st.error("Crossword engine files missing — make sure `crossword_data.py` and `crossword_gen.py` are committed to your repo root.")
+        return
+
+    st.markdown("""
+    <div class="instr-card"><div class="instr-title">🧩 How to Play</div>
+    <div class="instr-steps">
+      <div class="instr-step"><span class="instr-icon">1</span><span>Click a square and type. <strong>Click again</strong> (or press Space) to switch Across/Down</span></div>
+      <div class="instr-step"><span class="instr-icon">2</span><span>Click any clue to jump to it. Arrow keys move around the grid</span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>50 words, fresh topics every puzzle — hit <strong>New Puzzle</strong> for a new board</span></div>
+    </div></div>""", unsafe_allow_html=True)
+
+    # Generate + cache the puzzle in session state
+    if "xw_puzzle" not in st.session_state:
+        with st.spinner("Building a fresh 50-word puzzle…"):
+            st.session_state.xw_puzzle = generate_crossword(get_flat_word_list(), target=50)
+
+    col_new, col_info = st.columns([1, 3])
+    with col_new:
+        if st.button("🔀  NEW PUZZLE", type="primary"):
+            with st.spinner("Building a fresh puzzle…"):
+                st.session_state.xw_puzzle = generate_crossword(
+                    get_flat_word_list(), target=50, seed=random.randint(1, 10_000_000))
+            st.rerun()
+
+    puzzle = st.session_state.xw_puzzle
+    with col_info:
+        st.markdown(
+            f'<div style="padding-top:10px;font-family:JetBrains Mono,monospace;font-size:12px;color:#94A3B8;">'
+            f'{puzzle["word_count"]} words · {len(puzzle["across"])} across · {len(puzzle["down"])} down · '
+            f'{puzzle["height"]}×{puzzle["width"]} grid</div>',
+            unsafe_allow_html=True)
+
+    # Estimate height: grid pixels + clue panel; allow generous space.
+    grid_px = puzzle["height"] * 27 + 220
+    components.html(_crossword_html(puzzle), height=max(640, grid_px), scrolling=True)
+
+
+with tab7:
+    render_crossword()
