@@ -863,8 +863,8 @@ with tab3:
         if not product or product.lower() == "nan":
             continue
         parts  = [p.strip() for p in product.split("|")]
-        brand  = parts[0]              if len(parts) >= 1 else ""
-        strain = " | ".join(parts[1:]) if len(parts) >= 2 else product
+        brand  = parts[0].upper()  if len(parts) >= 1 else ""
+        strain = parts[1].upper()  if len(parts) >= 2 else product.upper()
         thc    = str(row.get("THC", "")).strip()
         rp     = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
         pd_    = "".join(c for c in rp if c.isdigit() or c == ".")
