@@ -195,7 +195,7 @@ with tab2:
         df['Room'] = df['Room'].apply(lambda x: str(x).strip('="').strip())
         df['Qty'] = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
         pivot = df.groupby(['Product', 'Room'])['Qty'].sum().unstack(fill_value=0)
-        results = [{"Product Name": product, "Location": r, "Available Qty": int(row[r])} for product, row in pivot.iterrows() for r in row[row >= min_threshold].index if row[row > 0].index.size > 0]
+        results = [{"Product Name": product, "Location": r, "Available Qty": int(row[r])} for product, row in pivot.iterrows() if (row == 0).any() for r in row[row >= min_threshold].index]
         final_df = pd.DataFrame(results)
         if not final_df.empty:
             st.dataframe(final_df, use_container_width=True, hide_index=True)
