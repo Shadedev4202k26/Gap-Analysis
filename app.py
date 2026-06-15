@@ -299,13 +299,6 @@ hr { border:none !important; height:1px !important; background:var(--border) !im
     background: rgba(139,92,246,.05) !important;
     box-shadow: var(--gp) !important;
 }
-[data-testid="stFileUploaderDropzone"] p,
-[data-testid="stFileUploaderDropzone"] span {
-    color: var(--muted) !important;
-    font-family: 'Inter', sans-serif !important;
-}
-/* Hide the native label that sits inside the dropzone graphic and causes overlap */
-[data-testid="stFileUploader"] label { display: none !important; }
 
 /* === INSTRUCTION CARD === */
 .instr-card {
@@ -734,7 +727,7 @@ with tab2:
     </div>
     """, unsafe_allow_html=True)
 
-    uploaded_file = st.file_uploader("Drop Dutchie CSV here", type="csv", key="restock_csv", label_visibility="collapsed")
+    uploaded_file = st.file_uploader(" ", type="csv", key="restock_csv", label_visibility="collapsed")
     min_threshold = st.slider("Minimum stock threshold", 1, 50, 15)
 
     if uploaded_file:
@@ -846,7 +839,7 @@ with tab3:
     </div>
     """, unsafe_allow_html=True)
 
-    hook_file = st.file_uploader("Drop inventory CSV here", type=["csv"], key="hook_csv", label_visibility="collapsed")
+    hook_file = st.file_uploader(" ", type=["csv"], key="hook_csv", label_visibility="collapsed")
 
     if hook_file is None:
         st.markdown("""
