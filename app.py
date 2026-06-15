@@ -185,7 +185,7 @@ with tab1:
 
 with tab2:
     st.markdown("### 📥 Live Restock Gap Analyzer")
-    uploaded_file = st.file_uploader("Drop Dutchie CSV Export Here", type="csv", key="restock_csv")
+    uploaded_file = st.file_uploader("In Dutchie Backoffice select any 2 rooms & one category🔥Export only product, room, & quantity", type="csv", key="restock_csv")
     min_threshold = st.slider("Min Threshold:", 1, 50, 15)
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
@@ -276,10 +276,8 @@ with tab3:
 
     # ── UI ───────────────────────────────────────────────────────────────────
     st.markdown(
-        f"In Dutchie Backend Inventory select any combination of product, room, category, ect."
-        f"Export Only Product, THC, & Current Price"
-        f"Upload your inventory CSV. One tag per unique product — if the same strain "
-        f"appears with different THC percentages, each variation gets its own tag. Save addtional tag for future use."
+        f"In Dutchie Backend select any combination of product, room, category, ect.🔥Export Only Product, THC, & Current Price🔥One tag per unique product — if the same strain "
+        f"appears with different THC percentages, each variation gets its own tag🔥Save addtional tag for future use."
         f"Template fits **{slots_per_page} tags per sheet**."
     )
     hook_file = st.file_uploader(
