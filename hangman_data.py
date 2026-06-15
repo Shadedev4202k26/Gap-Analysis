@@ -1,0 +1,157 @@
+# hangman_data.py
+# Word & phrase bank for the ZiggyBot "Burn Down" hangman game.
+# Each entry: (ANSWER, CATEGORY, HINT). Answers are A-Z and spaces only.
+
+HANGMAN_BANK = [
+    # ── Strains ──────────────────────────────────────────────────────────────
+    ("BLUE DREAM", "Strain", "Berry-sweet daytime favorite"),
+    ("SOUR DIESEL", "Strain", "Pungent, fuel-forward sativa"),
+    ("GIRL SCOUT COOKIES", "Strain", "Dessert-named GSC classic"),
+    ("OG KUSH", "Strain", "Foundational West Coast strain"),
+    ("GRANDDADDY PURPLE", "Strain", "Grape-hued heavy indica"),
+    ("NORTHERN LIGHTS", "Strain", "Legendary resinous indica"),
+    ("PINEAPPLE EXPRESS", "Strain", "Tropical strain and a movie"),
+    ("JACK HERER", "Strain", "Named for an activist author"),
+    ("WHITE WIDOW", "Strain", "Frosty Dutch coffeeshop staple"),
+    ("GREEN CRACK", "Strain", "Sharp energizing sativa"),
+    ("WEDDING CAKE", "Strain", "Sweet, tangy dessert hybrid"),
+    ("GELATO", "Strain", "Italian-dessert-named hybrid"),
+    ("PURPLE HAZE", "Strain", "Hendrix-evoking psychedelic sativa"),
+    ("DURBAN POISON", "Strain", "Pure South African sativa"),
+    ("BUBBA KUSH", "Strain", "Coffee-and-chocolate indica"),
+    ("MAUI WOWIE", "Strain", "Classic Hawaiian sativa"),
+    ("TRAINWRECK", "Strain", "Potent, fast-hitting hybrid"),
+    ("SUPER LEMON HAZE", "Strain", "Zesty award-winning sativa"),
+    ("GORILLA GLUE", "Strain", "Super-sticky high-resin strain"),
+    ("ZKITTLEZ", "Strain", "Candy-flavored indica"),
+    ("RUNTZ", "Strain", "Fruity-candy hyped hybrid"),
+    ("DO SI DOS", "Strain", "Cookie-descended indica"),
+    ("CHERRY PIE", "Strain", "Sweet-and-sour fruity hybrid"),
+    ("FOREST FRUITS", "Strain", "Mixed-berry flavored strain"),
+    ("STRAWBERRY COUGH", "Strain", "Sweet sativa known for the name"),
+    ("GASOLINA", "Strain", "Diesel-leaning gassy strain"),
+    ("APPLE FRITTER", "Strain", "Pastry-named potent hybrid"),
+    ("BISCOTTI", "Strain", "Cookie-and-coffee dessert strain"),
+
+    # ── Cannabis Terms ───────────────────────────────────────────────────────
+    ("TERPENE", "Cannabis Term", "Aromatic flavor compound"),
+    ("CANNABINOID", "Cannabis Term", "THC or CBD, broadly"),
+    ("TRICHOME", "Cannabis Term", "Frosty resin gland"),
+    ("INDICA", "Cannabis Term", "Relaxing subspecies"),
+    ("SATIVA", "Cannabis Term", "Energizing subspecies"),
+    ("HYBRID", "Cannabis Term", "Blend of two types"),
+    ("FLOWER", "Cannabis Term", "Smokable bud"),
+    ("CONCENTRATE", "Cannabis Term", "Extracted potent product"),
+    ("TINCTURE", "Cannabis Term", "Liquid drops under the tongue"),
+    ("DISTILLATE", "Cannabis Term", "Refined cannabinoid oil"),
+    ("LIVE RESIN", "Cannabis Term", "Fresh-frozen flavorful extract"),
+    ("FULL SPECTRUM", "Cannabis Term", "Whole-plant compound profile"),
+    ("ENTOURAGE EFFECT", "Cannabis Term", "Compounds working together"),
+    ("DECARBOXYLATION", "Cannabis Term", "Heating to activate THC"),
+    ("CURING", "Cannabis Term", "Slow drying for quality"),
+    ("PHENOTYPE", "Cannabis Term", "Plant's expressed traits"),
+    ("POTENCY", "Cannabis Term", "Strength of effect"),
+    ("MICRODOSE", "Cannabis Term", "Tiny measured amount"),
+
+    # ── Products & Gear ──────────────────────────────────────────────────────
+    ("PRE ROLL", "Product", "Ready-made joint"),
+    ("VAPE CARTRIDGE", "Product", "Oil-filled pen attachment"),
+    ("GUMMY", "Product", "Chewy infused candy"),
+    ("EDIBLE", "Product", "Eat it, don't smoke it"),
+    ("SHATTER", "Product", "Glassy brittle concentrate"),
+    ("ROSIN", "Product", "Solventless pressed extract"),
+    ("HASH", "Product", "Compressed resin"),
+    ("KIEF", "Product", "Sifted trichome powder"),
+    ("BLUNT", "Product", "Rolled in tobacco leaf wrap"),
+    ("GRINDER", "Product", "Tool to break up flower"),
+    ("ROLLING PAPERS", "Product", "Thin sheets for joints"),
+    ("DAB RIG", "Product", "Rig for vaporizing concentrate"),
+    ("BUBBLER", "Product", "Water pipe, handheld"),
+    ("ONE HITTER", "Product", "Single-pull tiny pipe"),
+    ("TOPICAL", "Product", "Infused lotion or balm"),
+    ("MOON ROCK", "Product", "Bud dipped and dusted"),
+    ("BADDER", "Product", "Whipped cake-like concentrate"),
+    ("INFUSED PRE ROLL", "Product", "Joint boosted with concentrate"),
+
+    # ── Culture & Sayings ────────────────────────────────────────────────────
+    ("PUFF PUFF PASS", "Saying", "Sharing etiquette rule"),
+    ("WAKE AND BAKE", "Saying", "Morning session ritual"),
+    ("HIGH AS A KITE", "Saying", "Very elevated"),
+    ("PASS THE DUTCHIE", "Saying", "Classic reggae instruction"),
+    ("GOOD VIBES ONLY", "Saying", "Positive-energy motto"),
+    ("STICKY ICKY", "Saying", "Dank resinous bud"),
+    ("COUCH LOCK", "Saying", "Too relaxed to move"),
+    ("DANK NUGS", "Saying", "High-quality buds"),
+    ("THE GIGGLES", "Saying", "Uncontrollable laughter"),
+    ("STAY ELEVATED", "Saying", "Keep it lifted"),
+    ("BLAZE IT", "Saying", "Light it up"),
+    ("FOUR TWENTY", "Saying", "The famous time and date"),
+    ("ROLL ONE UP", "Saying", "Prep a joint"),
+    ("GREEN OUT", "Saying", "Overdid it, feeling rough"),
+    ("HOTBOX", "Saying", "Smoke-filled small space"),
+    ("MUNCHIES", "Saying", "Post-session hunger"),
+    ("CALI SOBER", "Saying", "Cannabis but no alcohol"),
+    ("TERP TOWN", "Saying", "Flavor-packed paradise"),
+
+    # ── Munchies ─────────────────────────────────────────────────────────────
+    ("PIZZA", "Munchies", "Cheesy round favorite"),
+    ("NACHOS", "Munchies", "Loaded tortilla chips"),
+    ("ICE CREAM", "Munchies", "Cold creamy treat"),
+    ("GUMMY BEARS", "Munchies", "Chewy fruit candies"),
+    ("MAC AND CHEESE", "Munchies", "Comfort pasta classic"),
+    ("CHEESEBURGER", "Munchies", "Stacked grill staple"),
+    ("BROWNIES", "Munchies", "Chocolate squares, sometimes special"),
+    ("POPCORN", "Munchies", "Movie-night snack"),
+    ("DONUTS", "Munchies", "Glazed ring treats"),
+    ("BURRITO", "Munchies", "Wrapped and stuffed"),
+    ("COOKIES", "Munchies", "Sweet baked discs"),
+    ("FRENCH FRIES", "Munchies", "Salty golden sticks"),
+    ("CHOCOLATE", "Munchies", "Cocoa indulgence"),
+    ("CEREAL", "Munchies", "Bowl-and-milk breakfast"),
+    ("HOT WINGS", "Munchies", "Spicy finger food"),
+    ("QUESADILLA", "Munchies", "Folded cheesy tortilla"),
+
+    # ── General Words ────────────────────────────────────────────────────────
+    ("SUNSHINE", "General", "Bright sky delivery"),
+    ("MOUNTAIN", "General", "Tall natural peak"),
+    ("ADVENTURE", "General", "Exciting journey"),
+    ("HARMONY", "General", "Peaceful agreement"),
+    ("VELVET", "General", "Soft plush fabric"),
+    ("JOURNEY", "General", "Trip from here to there"),
+    ("RHYTHM", "General", "Musical beat"),
+    ("GALAXY", "General", "Star system"),
+    ("WHISPER", "General", "Quiet speech"),
+    ("PARADISE", "General", "Ideal place"),
+    ("LANTERN", "General", "Portable light"),
+    ("CRYSTAL", "General", "Clear cut gem"),
+    ("MEADOW", "General", "Grassy open field"),
+    ("BREEZE", "General", "Gentle wind"),
+    ("HORIZON", "General", "Where sky meets land"),
+    ("WIZARD", "General", "Magic wielder"),
+    ("VOLCANO", "General", "Erupting mountain"),
+    ("CARNIVAL", "General", "Fair with rides"),
+    ("TREASURE", "General", "Hidden riches"),
+    ("ECLIPSE", "General", "Sun or moon blocked"),
+    ("FESTIVAL", "General", "Big celebration"),
+    ("MARSHMALLOW", "General", "Campfire roasting treat"),
+    ("KANGAROO", "General", "Hopping Aussie marsupial"),
+    ("SAXOPHONE", "General", "Jazzy brass-reed instrument"),
+    ("CHAMELEON", "General", "Color-changing lizard"),
+    ("AVALANCHE", "General", "Tumbling mountain snow"),
+    ("LIGHTHOUSE", "General", "Coastal guiding beacon"),
+    ("BUTTERFLY", "General", "Winged metamorphosis insect"),
+]
+
+
+def get_hangman_entries():
+    """Return cleaned list of (ANSWER, CATEGORY, HINT). Answers uppercased,
+    letters and single spaces only."""
+    out, seen = [], set()
+    for ans, cat, hint in HANGMAN_BANK:
+        a = " ".join(ans.upper().split())
+        if a in seen:
+            continue
+        if all(ch.isalpha() or ch == " " for ch in a) and any(ch.isalpha() for ch in a):
+            seen.add(a)
+            out.append((a, cat, hint))
+    return out
