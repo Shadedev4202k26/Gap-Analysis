@@ -716,7 +716,7 @@ with tab2:
       <div class="instr-title">📋 How to Export from Dutchie</div>
       <div class="instr-steps">
         <div class="instr-step">
-          <span class="instr-icon">1</span>
+          <span class="instr-icon fire">🔥</span>
           <span>In Dutchie Backoffice, select <strong>any 2 rooms</strong> &amp; <strong>one category</strong></span>
         </div>
         <div class="instr-step">
@@ -820,7 +820,7 @@ with tab3:
       <div class="instr-title">📋 How to Export from Dutchie</div>
       <div class="instr-steps">
         <div class="instr-step">
-          <span class="instr-icon">1</span>
+          <span class="instr-icon fire">🔥</span>
           <span>In Dutchie Backend, select any combination of <strong>product, room, category</strong>, etc.</span>
         </div>
         <div class="instr-step">
