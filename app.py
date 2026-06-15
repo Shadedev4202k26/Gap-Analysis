@@ -223,7 +223,7 @@ with tab3:
                 
                 if 'Product' in df_hook.columns:
                     df_hook['Product'] = df_hook['Product'].apply(lambda x: str(x).strip('="').strip())
-                    df_hook = df_hook.drop_duplicates(subset=['Product']).dropna(subset=['Product'])
+                    df_hook = df_hook.groupby('Product', as_index=False).first().dropna(subset=['Product'])
                 
                 product_list = []
 
