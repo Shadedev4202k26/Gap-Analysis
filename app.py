@@ -29,7 +29,17 @@ st.set_page_config(page_title="ZiggyBot", page_icon="⚡", layout="wide")
 # ── Supabase client ───────────────────────────────────────────────────────────
 @st.cache_resource
 def init_supabase():
-    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    if not SUPABASE_AVAILABLE:
+        return None
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+    except (KeyError, FileNotFoundError):
+        return None
+    try:
+        return create_client(url, key)
+    except Exception:
+        return None
 
 # ── AI helpers ────────────────────────────────────────────────────────────────
 def generate_strain_profile(groq_key, strain_name):
@@ -406,7 +416,7 @@ with tab2:
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backoffice, select <strong>any 2 rooms</strong> &amp; <strong>one category</strong></span></div>
-      <div class="instr-step"><span class="instr-icon">2</span><span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Quantity</strong></span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Quantity</strong></span></div>
     </div></div>""", unsafe_allow_html=True)
     uploaded_file = st.file_uploader(" ", type="csv", key="restock_csv", label_visibility="collapsed")
     min_threshold = st.slider("Minimum stock threshold", 1, 50, 15)
@@ -438,12 +448,12 @@ with tab2:
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 3 — HOOK TAG GENERATOR
 # ════════════════════════════════════════════════════════════════════════════════
-with tab3:
+def render_hook_tags():
     st.markdown('<div class="sec-head"><div class="sec-head-text">🏷️ Automated Hook Tag Formatter</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     TEMPLATE_PATH = "master_template.pdf"
     if not PYPDF_AVAILABLE:
         st.error("pypdf not installed — add `pypdf` to requirements.txt and redeploy.")
-        st.stop()
+        return
     try:
         subprocess.run(["pdftk", "--version"], capture_output=True, check=True)
         pdftk_ok = True
@@ -451,10 +461,10 @@ with tab3:
         pdftk_ok = False
     if not pdftk_ok:
         st.error("pdftk not found — add `pdftk` to packages.txt and redeploy.")
-        st.stop()
+        return
     if not os.path.exists(TEMPLATE_PATH):
         st.error("`master_template.pdf` not found — commit it to the root of your repo.")
-        st.stop()
+        return
 
     @st.cache_resource
     def load_slot_map(path):
@@ -474,7 +484,7 @@ with tab3:
     slot_map = load_slot_map(TEMPLATE_PATH)
     if not slot_map:
         st.error("Template doesn't contain BRAND_N/STRAIN_N/THC_N/PRICE_N placeholders.")
-        st.stop()
+        return
     slots_per_page = max(slot_map.keys())
 
     st.markdown(f"""
@@ -487,9 +497,9 @@ with tab3:
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backend, select any combination of <strong>product, room, category</strong>, etc.</span></div>
-      <div class="instr-step"><span class="instr-icon">2</span><span>Export only <strong>Product</strong>, <strong>THC</strong>, &amp; <strong>Current Price</strong></span></div>
-      <div class="instr-step"><span class="instr-icon">3</span><span>One tag per unique product — same strain with <strong>different THC %</strong> gets its own tag</span></div>
-      <div class="instr-step"><span class="instr-icon">4</span><span>Save additional tags for <strong>future use</strong> — re-upload anytime</span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>THC</strong>, &amp; <strong>Current Price</strong></span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>One tag per unique product — same strain with <strong>different THC %</strong> gets its own tag</span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Save additional tags for <strong>future use</strong> — re-upload anytime</span></div>
     </div></div>""", unsafe_allow_html=True)
 
     hook_file = st.file_uploader(" ", type=["csv"], key="hook_csv", label_visibility="collapsed")
@@ -499,7 +509,7 @@ with tab3:
           <div><div class="step-ttl">Review &amp; Generate</div>
           <div class="step-dsc">Upload a CSV above to continue</div></div>
         </div></div>""", unsafe_allow_html=True)
-        st.stop()
+        return
 
     df_hook = pd.read_csv(hook_file)
     df_hook.columns = [str(c).strip('="').strip() for c in df_hook.columns]
@@ -523,7 +533,7 @@ with tab3:
 
     if not raw_rows:
         st.error("No valid product rows found in the CSV.")
-        st.stop()
+        return
 
     seen, rows = set(), []
     for r in raw_rows:
@@ -576,7 +586,7 @@ with tab3:
                         if r.returncode != 0:
                             err = f"pdftk error on sheet {i+1}: {r.stderr.strip()}"; break
                         page_paths.append(op)
-                    if err: st.error(err); st.stop()
+                    if err: st.error(err); return
                     if len(page_paths) == 1:
                         final = page_paths[0]
                     else:
@@ -584,26 +594,40 @@ with tab3:
                         r = subprocess.run(["pdftk"]+page_paths+["cat","output",final],
                                            capture_output=True, text=True)
                         if r.returncode != 0:
-                            st.error(f"Merge error: {r.stderr.strip()}"); st.stop()
+                            st.error(f"Merge error: {r.stderr.strip()}"); return
                     with open(final, "rb") as f: pdf_bytes = f.read()
             except FileNotFoundError:
-                st.error("pdftk not found — add `pdftk` to packages.txt."); st.stop()
+                st.error("pdftk not found — add `pdftk` to packages.txt."); return
             except Exception as e:
-                st.error(f"Unexpected error: {e}"); st.stop()
+                st.error(f"Unexpected error: {e}"); return
         st.success(f"✅ {len(rows)} tags across {len(pages)} sheet(s) — ready to print!")
         st.download_button("📥  DOWNLOAD HOOK TAGS PDF", pdf_bytes, "HookTags_Ready.pdf", "application/pdf")
+
+
+
+with tab3:
+    render_hook_tags()
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 4 — DAILY CHECKLIST
 # ════════════════════════════════════════════════════════════════════════════════
-with tab4:
+def render_checklist():
     st.markdown('<div class="sec-head"><div class="sec-head-text">✅ Daily Operations Checklist</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
 
     if not SUPABASE_AVAILABLE:
-        st.error("supabase library not installed — add `supabase` to requirements.txt.")
-        st.stop()
+        st.error("The `supabase` library isn't installed yet. Add `supabase` to requirements.txt and redeploy.")
+        return
 
     db = init_supabase()
+    if db is None:
+        st.error("⚠️ Could not connect to Supabase. Check that SUPABASE_URL and SUPABASE_KEY are set correctly in your Streamlit Secrets.")
+        st.markdown("""<div class="instr-card"><div class="instr-title">🔧 Fix in Streamlit Secrets</div>
+        <div class="instr-steps">
+          <div class="instr-step"><span class="instr-icon">1</span><span>App dashboard → <strong>Settings → Secrets</strong></span></div>
+          <div class="instr-step"><span class="instr-icon">2</span><span>Add <strong>SUPABASE_URL</strong> and <strong>SUPABASE_KEY</strong> (anon public key)</span></div>
+          <div class="instr-step"><span class="instr-icon">3</span><span>Save — the app reboots automatically</span></div>
+        </div></div>""", unsafe_allow_html=True)
+        return
 
     # ── Staff name ────────────────────────────────────────────────────────────
     if "staff_name" not in st.session_state:
@@ -624,19 +648,23 @@ with tab4:
             <span class="instr-icon">i</span>
             <span>Your name will be recorded alongside each completed item. The board resets automatically at midnight.</span>
           </div></div></div>""", unsafe_allow_html=True)
-        st.stop()
+        return
 
     # ── Load data ─────────────────────────────────────────────────────────────
     try:
-        tasks      = db.table('checklist_tasks').select('*').eq('is_active', True).order('sort_order').execute().data
-        today_str  = date.today().isoformat()
+        tasks       = db.table('checklist_tasks').select('*').eq('is_active', True).order('sort_order').execute().data
+        today_str   = date.today().isoformat()
         completions = db.table('checklist_completions').select('*').eq('shift_date', today_str).execute().data
     except Exception as e:
-        st.error(f"Database error: {e}")
-        st.stop()
+        st.error(f"Database error while loading checklist: {e}")
+        return
 
-    completed_ids  = {c['task_id'] for c in completions}
-    comp_by_task   = {c['task_id']: c for c in completions}
+    if not tasks:
+        st.warning("No tasks found in the database. Did the seed SQL run successfully?")
+        return
+
+    completed_ids = {c['task_id'] for c in completions}
+    comp_by_task  = {c['task_id']: c for c in completions}
 
     # ── Summary tiles ─────────────────────────────────────────────────────────
     def shift_count(shift_key):
@@ -644,11 +672,10 @@ with tab4:
         d = sum(1 for x in t if x['id'] in completed_ids)
         return d, len(t)
 
-    m_d, m_t   = shift_count('morning')
-    h_d, h_t   = shift_count('handover')
-    a_d, a_t   = shift_count('afternoon')
-    all_d      = m_d + h_d + a_d
-    all_t      = m_t + h_t + a_t
+    m_d, m_t = shift_count('morning')
+    h_d, h_t = shift_count('handover')
+    a_d, a_t = shift_count('afternoon')
+    all_d, all_t = m_d + h_d + a_d, m_t + h_t + a_t
 
     st.markdown(f"""
     <div class="checklist-summary">
@@ -664,9 +691,9 @@ with tab4:
         by_shift[task['shift']][task['category']].append(task)
 
     SHIFT_CONFIG = [
-        ('morning',   '🟢 Morning Shift',          '7:45 AM – 2:30 PM', 'morning'),
-        ('handover',  '🟡 Shift Change Handover',  '2:30 PM',           'handover'),
-        ('afternoon', '🔵 Afternoon Shift',         '2:30 PM – Close',   'afternoon'),
+        ('morning',   '🟢 Morning Shift',         '7:45 AM – 2:30 PM', 'morning'),
+        ('handover',  '🟡 Shift Change Handover', '2:30 PM',           'handover'),
+        ('afternoon', '🔵 Afternoon Shift',        '2:30 PM – Close',   'afternoon'),
     ]
 
     for shift_key, shift_label, shift_time, css_key in SHIFT_CONFIG:
@@ -694,7 +721,8 @@ with tab4:
                 col_chk, col_txt = st.columns([0.04, 0.96])
 
                 with col_chk:
-                    new_val = st.checkbox(" ", value=is_done, key=f"task_{task['id']}")
+                    new_val = st.checkbox(" ", value=is_done, key=f"task_{task['id']}",
+                                          label_visibility="collapsed")
 
                 with col_txt:
                     if is_done:
@@ -711,7 +739,6 @@ with tab4:
                             st.markdown(f'<div class="task-desc">{task["description"]}</div>',
                                         unsafe_allow_html=True)
 
-                # Handle DB updates
                 if new_val and not is_done:
                     try:
                         db.table('checklist_completions').insert({
@@ -722,7 +749,6 @@ with tab4:
                         st.rerun()
                     except Exception as e:
                         st.error(f"Sign-off error: {e}")
-
                 elif not new_val and is_done:
                     try:
                         db.table('checklist_completions').delete()\
@@ -732,28 +758,35 @@ with tab4:
                     except Exception as e:
                         st.error(f"Remove error: {e}")
 
+
+with tab4:
+    render_checklist()
+
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 5 — COMMS BOARD
 # ════════════════════════════════════════════════════════════════════════════════
-with tab5:
+def render_comms():
     st.markdown('<div class="sec-head"><div class="sec-head-text">📢 Team Communications Board</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
 
     if not SUPABASE_AVAILABLE:
-        st.error("supabase library not installed — add `supabase` to requirements.txt.")
-        st.stop()
+        st.error("The `supabase` library isn't installed yet. Add `supabase` to requirements.txt and redeploy.")
+        return
 
     db = init_supabase()
+    if db is None:
+        st.error("⚠️ Could not connect to Supabase. Check that SUPABASE_URL and SUPABASE_KEY are set correctly in your Streamlit Secrets.")
+        return
 
     # ── Post new message ──────────────────────────────────────────────────────
     st.markdown('<div class="post-card"><div class="post-title">✏️ Post a Message</div>', unsafe_allow_html=True)
     with st.form("new_msg_form", clear_on_submit=True):
         p_author  = st.text_input("Your Name", placeholder="Enter your name…")
         p_content = st.text_area("Message", placeholder="Type your message here…", height=100)
-        flag_col1, flag_col2, btn_col = st.columns([1, 1, 2])
-        with flag_col1:
+        fc1, fc2, _ = st.columns([1, 1, 2])
+        with fc1:
             p_urgent = st.checkbox("🔥 Mark Urgent")
-        with flag_col2:
-            p_pin    = st.checkbox("📌 Pin to Top")
+        with fc2:
+            p_pin = st.checkbox("📌 Pin to Top")
         post_btn = st.form_submit_button("📤  POST MESSAGE")
 
         if post_btn:
@@ -764,10 +797,10 @@ with tab5:
             else:
                 try:
                     db.table('messages').insert({
-                        'author':     p_author.strip(),
-                        'content':    p_content.strip(),
-                        'is_urgent':  p_urgent,
-                        'is_pinned':  p_pin,
+                        'author':    p_author.strip(),
+                        'content':   p_content.strip(),
+                        'is_urgent': p_urgent,
+                        'is_pinned': p_pin,
                     }).execute()
                     st.rerun()
                 except Exception as e:
@@ -780,35 +813,33 @@ with tab5:
                  .eq('is_archived', False)\
                  .order('created_at', desc=True).execute().data
     except Exception as e:
-        st.error(f"Database error: {e}")
-        st.stop()
+        st.error(f"Database error while loading messages: {e}")
+        return
 
     pinned  = [m for m in msgs if m.get('is_pinned')]
     regular = [m for m in msgs if not m.get('is_pinned')]
 
-    def render_message(msg, db_client):
+    def render_message(msg):
         card_cls = "msg-card"
-        if msg.get('is_urgent'):  card_cls += " msg-urgent"
-        if msg.get('is_pinned'):  card_cls += " msg-pinned"
+        if msg.get('is_urgent'): card_cls += " msg-urgent"
+        if msg.get('is_pinned'): card_cls += " msg-pinned"
 
         flags = ""
         if msg.get('is_pinned'): flags += '<span class="msg-flag mf-pin">📌 PINNED</span>'
         if msg.get('is_urgent'): flags += '<span class="msg-flag mf-urg">🔥 URGENT</span>'
         flags_html = f'<div class="msg-flags">{flags}</div>' if flags else ''
 
-        content  = msg.get('content','').replace('<','&lt;').replace('>','&gt;')
-        author   = msg.get('author','Unknown')
-        ts       = fmt_ts(msg.get('created_at',''))
-        msg_id   = msg.get('id')
+        content = msg.get('content', '').replace('<', '&lt;').replace('>', '&gt;')
+        author  = msg.get('author', 'Unknown')
+        ts      = fmt_ts(msg.get('created_at', ''))
+        msg_id  = msg.get('id')
 
         st.markdown(f"""
         <div class="{card_cls}">
           {flags_html}
           <div class="msg-body">{content}</div>
           <div class="msg-meta">
-            <span class="msg-author">{author}</span>
-            <span>·</span>
-            <span>{ts}</span>
+            <span class="msg-author">{author}</span><span>·</span><span>{ts}</span>
           </div>
         </div>""", unsafe_allow_html=True)
 
@@ -816,8 +847,7 @@ with tab5:
         with arc_col:
             if st.button("Archive", key=f"arc_{msg_id}", help="Remove from board"):
                 try:
-                    db_client.table('messages').update({'is_archived': True})\
-                              .eq('id', msg_id).execute()
+                    db.table('messages').update({'is_archived': True}).eq('id', msg_id).execute()
                     st.rerun()
                 except Exception as e:
                     st.error(f"Archive error: {e}")
@@ -825,15 +855,19 @@ with tab5:
     if pinned:
         st.markdown('<div class="sec-head"><div class="sec-head-text">📌 Pinned</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
         for m in pinned:
-            render_message(m, db)
+            render_message(m)
 
     if regular:
         st.markdown('<div class="sec-head"><div class="sec-head-text">💬 All Messages</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
         for m in regular:
-            render_message(m, db)
+            render_message(m)
 
     if not msgs:
         st.markdown("""<div class="instr-card" style="text-align:center;padding:30px;">
           <div class="instr-title">No messages yet</div>
           <div class="instr-step" style="justify-content:center;">Post the first message above to kick things off.</div>
         </div>""", unsafe_allow_html=True)
+
+
+with tab5:
+    render_comms()
