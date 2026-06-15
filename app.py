@@ -36,6 +36,18 @@ def init_supabase():
         key = st.secrets["SUPABASE_KEY"]
     except (KeyError, FileNotFoundError):
         return None
+    # Normalise the URL: the client appends /rest/v1/... itself, so the secret
+    # must be the bare project origin. Strip whitespace, trailing slashes, and any
+    # accidentally-included path (e.g. a pasted /rest/v1) that would corrupt the
+    # request path and trigger PostgREST PGRST125 "Invalid path" errors.
+    url = (url or "").strip()
+    for suffix in ("/rest/v1", "/rest"):
+        if url.rstrip("/").endswith(suffix):
+            url = url.rstrip("/")[: -len(suffix)]
+    url = url.rstrip("/")
+    key = (key or "").strip()
+    if not url or not key:
+        return None
     try:
         return create_client(url, key)
     except Exception:
