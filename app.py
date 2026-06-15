@@ -276,8 +276,9 @@ with tab3:
 
     # ── UI ───────────────────────────────────────────────────────────────────
     st.markdown(
-        f"Upload your inventory CSV — **each row produces one physical tag** "
-        f"(duplicates = multiple copies). Template fits **{slots_per_page} tags per sheet**."
+        f"Upload your inventory CSV. One tag per unique product — if the same strain "
+        f"appears with different THC percentages, each variation gets its own tag. "
+        f"Template fits **{slots_per_page} tags per sheet**."
     )
     hook_file = st.file_uploader(
         "Drop Hook Tag Inventory (CSV)", type=["csv"], key="hook_csv"
@@ -321,7 +322,18 @@ with tab3:
         st.error("No valid product rows found in the CSV.")
         st.stop()
 
-    st.info(f"**{len(rows)}** tags detected — will generate **{-(-len(rows) // slots_per_page)}** sheet(s).")
+    # ── Deduplicate: one tag per unique (brand, strain, thc) combo ───────────
+    # Same product + same THC → single tag. Different THC → separate tag each.
+    seen    = set()
+    deduped = []
+    for r in rows:
+        key = (r["brand"].strip().lower(), r["strain"].strip().lower(), r["thc"].strip().lower())
+        if key not in seen:
+            seen.add(key)
+            deduped.append(r)
+    rows = deduped
+
+    st.info(f"**{len(rows)}** unique tags — will generate **{-(-len(rows) // slots_per_page)}** sheet(s).")
 
     # ── FDF builder ──────────────────────────────────────────────────────────
     def _esc(s):
