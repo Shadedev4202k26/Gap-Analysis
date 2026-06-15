@@ -276,8 +276,10 @@ with tab3:
 
     # ── UI ───────────────────────────────────────────────────────────────────
     st.markdown(
+        f"In Dutchie Backend Inventory select any combination of product, room, category, ect."
+        f"Export Only Product, THC, & Current Price"
         f"Upload your inventory CSV. One tag per unique product — if the same strain "
-        f"appears with different THC percentages, each variation gets its own tag. "
+        f"appears with different THC percentages, each variation gets its own tag. Save addtional tag for future use."
         f"Template fits **{slots_per_page} tags per sheet**."
     )
     hook_file = st.file_uploader(
