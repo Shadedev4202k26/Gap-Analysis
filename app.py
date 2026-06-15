@@ -604,7 +604,7 @@ with col_hdr:
           <div class="hub-live"><span class="status-dot"></span>System Online</div>
           <span class="hub-build">ZIGGYBOT · v2.0</span>
         </div>
-        <div class="hub-title">ZIGGY'S<em>BOT</em></div>
+        <div class="hub-title">ZIGGY<em>BOT</em></div>
         <div class="hub-sub">Dispensary Intelligence Platform</div>
         <div class="hub-pills">
           <span class="hpill hp-p">⚡ Strain AI</span>
@@ -716,11 +716,11 @@ with tab2:
       <div class="instr-title">📋 How to Export from Dutchie</div>
       <div class="instr-steps">
         <div class="instr-step">
-          <span class="instr-icon fire">🔥</span>
+          <span class="instr-icon">1</span>
           <span>In Dutchie Backoffice, select <strong>any 2 rooms</strong> &amp; <strong>one category</strong></span>
         </div>
         <div class="instr-step">
-          <span class="instr-icon fire">🔥</span>
+          <span class="instr-icon">2</span>
           <span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Quantity</strong></span>
         </div>
       </div>
