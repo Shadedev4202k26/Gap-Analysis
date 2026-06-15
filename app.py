@@ -406,7 +406,7 @@ with tab2:
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backoffice, select <strong>any 2 rooms</strong> &amp; <strong>one category</strong></span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Quantity</strong></span></div>
+      <div class="instr-step"><span class="instr-icon">2</span><span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Quantity</strong></span></div>
     </div></div>""", unsafe_allow_html=True)
     uploaded_file = st.file_uploader(" ", type="csv", key="restock_csv", label_visibility="collapsed")
     min_threshold = st.slider("Minimum stock threshold", 1, 50, 15)
@@ -487,9 +487,9 @@ with tab3:
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backend, select any combination of <strong>product, room, category</strong>, etc.</span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>THC</strong>, &amp; <strong>Current Price</strong></span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>One tag per unique product — same strain with <strong>different THC %</strong> gets its own tag</span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Save additional tags for <strong>future use</strong> — re-upload anytime</span></div>
+      <div class="instr-step"><span class="instr-icon">2</span><span>Export only <strong>Product</strong>, <strong>THC</strong>, &amp; <strong>Current Price</strong></span></div>
+      <div class="instr-step"><span class="instr-icon">3</span><span>One tag per unique product — same strain with <strong>different THC %</strong> gets its own tag</span></div>
+      <div class="instr-step"><span class="instr-icon">4</span><span>Save additional tags for <strong>future use</strong> — re-upload anytime</span></div>
     </div></div>""", unsafe_allow_html=True)
 
     hook_file = st.file_uploader(" ", type=["csv"], key="hook_csv", label_visibility="collapsed")
