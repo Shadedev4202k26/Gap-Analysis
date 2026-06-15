@@ -4,3 +4,4 @@ beautifulsoup4
 reportlab
 pypdf
 streamlit
+supabase
