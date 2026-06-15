@@ -32,6 +32,12 @@ try:
 except ImportError:
     CROSSWORD_AVAILABLE = False
 
+try:
+    from hangman_data import get_hangman_entries
+    HANGMAN_AVAILABLE = True
+except ImportError:
+    HANGMAN_AVAILABLE = False
+
 st.set_page_config(page_title="ZiggyBot", page_icon="⚡", layout="wide")
 
 # ── Supabase client ───────────────────────────────────────────────────────────
@@ -484,6 +490,7 @@ with col_hdr:
         <span class="hpill hp-b">📢 Comms</span>
         <span class="hpill hp-r">⏳ Aging Stock</span>
         <span class="hpill hp-g">🧩 Crossword</span>
+        <span class="hpill hp-a">🔥 Burn Down</span>
       </div>
     </div></div>
     <div class="hub-quote">
@@ -491,7 +498,7 @@ with col_hdr:
     </div>""", unsafe_allow_html=True)
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "⚡  STRAIN SNIFFER",
     "📊  INVENTORY BALANCING",
     "🏷️  HOOK TAGS",
@@ -499,6 +506,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "✅  DAILY CHECKLIST",
     "📢  COMMS BOARD",
     "🧩  CROSSWORD",
+    "🔥  BURN DOWN",
 ])
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -1529,3 +1537,221 @@ def render_crossword():
 
 with tab7:
     render_crossword()
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 8 — BURN DOWN (cannabis hangman)
+# ════════════════════════════════════════════════════════════════════════════════
+def _hangman_html(entries):
+    """Self-contained HTML/JS hangman with a burning-joint graphic."""
+    data_json = json.dumps(entries)
+    return r"""
+<div id="hm-root">
+  <style>
+    #hm-root { font-family: 'Inter', -apple-system, sans-serif; color: #E2E8F0;
+               max-width: 720px; margin: 0 auto; }
+    .hm-stage { background: #0D1117; border: 1px solid rgba(245,158,11,.25);
+                border-radius: 14px; padding: 10px; margin-bottom: 14px; text-align: center; }
+    .hm-score { display: flex; justify-content: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+    .hm-pill { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+               padding: 6px 14px; border-radius: 50px; letter-spacing: .5px; }
+    .hm-pill.cat { background: rgba(139,92,246,.13); border: 1px solid rgba(139,92,246,.3); color: #A78BFA; }
+    .hm-pill.win { background: rgba(52,211,153,.13); border: 1px solid rgba(52,211,153,.3); color: #34D399; }
+    .hm-pill.loss { background: rgba(239,68,68,.13); border: 1px solid rgba(239,68,68,.3); color: #FCA5A5; }
+    .hm-pill.left { background: rgba(245,158,11,.13); border: 1px solid rgba(245,158,11,.3); color: #F59E0B; }
+    .hm-word { text-align: center; font-family: 'JetBrains Mono', monospace; font-weight: 700;
+               font-size: 26px; letter-spacing: 6px; color: #fff; margin: 6px 0 4px 0;
+               line-height: 1.5; word-break: break-word; }
+    .hm-word .sp { display: inline-block; width: 18px; }
+    .hm-msg { text-align: center; min-height: 22px; font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+    .hm-msg.good { color: #34D399; } .hm-msg.bad { color: #FCA5A5; }
+    .hm-keys { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; max-width: 560px; margin: 0 auto 14px; }
+    .hm-key { aspect-ratio: 1/1; border: none; border-radius: 8px; background: #1E293B;
+              color: #E2E8F0; font-family: inherit; font-weight: 700; font-size: 15px;
+              cursor: pointer; transition: transform .12s, background .12s; }
+    .hm-key:hover:not(:disabled) { transform: translateY(-2px); background: #2A3344; }
+    .hm-key.hit { background: linear-gradient(135deg,#10B981,#065F46); color: #fff; }
+    .hm-key.miss { background: linear-gradient(135deg,#7F1D1D,#450a0a); color: #FCA5A5; }
+    .hm-key:disabled { cursor: default; }
+    .hm-bar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .hm-btn { background: linear-gradient(135deg,#8B5CF6,#5B21B6); color: #fff; border: none;
+              border-radius: 8px; font-weight: 700; font-size: 11px; letter-spacing: .8px;
+              text-transform: uppercase; padding: 11px 22px; cursor: pointer; font-family: inherit;
+              transition: transform .15s; }
+    .hm-btn:hover { transform: translateY(-1px); }
+    .hm-btn.alt { background: #1E293B; border: 1px solid rgba(139,92,246,.3); }
+    @media (max-width: 480px){ .hm-keys{ grid-template-columns: repeat(7,1fr);} .hm-word{font-size:21px;letter-spacing:4px;} }
+  </style>
+
+  <div class="hm-score">
+    <span class="hm-pill cat" id="hm-cat">—</span>
+    <span class="hm-pill left" id="hm-left">6 puffs left</span>
+    <span class="hm-pill win" id="hm-wins">Wins 0</span>
+    <span class="hm-pill loss" id="hm-losses">Cashed 0</span>
+  </div>
+
+  <div class="hm-stage"><div id="hm-svg"></div></div>
+
+  <div class="hm-word" id="hm-word"></div>
+  <div class="hm-msg" id="hm-msg"></div>
+  <div class="hm-keys" id="hm-keys"></div>
+
+  <div class="hm-bar">
+    <button class="hm-btn alt" id="hm-hint" onclick="hmHint()">💡 Hint</button>
+    <button class="hm-btn" onclick="hmNew()">🔀 New Word</button>
+  </div>
+</div>
+
+<script>
+const BANK = __DATA__;
+const MAXW = 6;
+let answer = "", category = "", hint = "";
+let guessed = new Set(), wrong = 0, over = false, wins = 0, losses = 0, hintUsed = false;
+
+function pick(){
+  const e = BANK[Math.floor(Math.random()*BANK.length)];
+  answer = e[0]; category = e[1]; hint = e[2];
+}
+
+// ── Burning joint SVG ───────────────────────────────────────────────────────
+function jointSVG(w){
+  const frac = w / MAXW;
+  const fullLeft = 70, filterX = 290, bodyLen = filterX - fullLeft;
+  const burnX = fullLeft + bodyLen * frac;
+  const cy = 110, th = 22, top = cy - th/2, bot = cy + th/2;
+  let s = '<svg viewBox="0 0 360 200" width="100%" style="max-width:420px">';
+  // filter
+  s += `<rect x="${filterX}" y="${top}" width="26" height="${th}" rx="5" fill="#C49A6C"/>`;
+  if (w < MAXW){
+    // paper body
+    s += `<rect x="${burnX}" y="${top}" width="${filterX-burnX+2}" height="${th}" rx="6" fill="#F5F3EB"/>`;
+    s += `<line x1="${burnX+6}" y1="${cy}" x2="${filterX}" y2="${cy}" stroke="#DCD8CD" stroke-width="1"/>`;
+    if (w > 0){
+      // ember (layered glow)
+      s += `<circle cx="${burnX}" cy="${cy}" r="15" fill="#4a1c00"/>`;
+      s += `<circle cx="${burnX}" cy="${cy}" r="11" fill="#b43c0a"/>`;
+      s += `<circle cx="${burnX}" cy="${cy}" r="7" fill="#ff8c1e"/>`;
+      s += `<circle cx="${burnX}" cy="${cy}" r="3.5" fill="#ffdc78"/>`;
+      // ash bits
+      for (let i=0;i<w;i++){
+        const ax = burnX - 14 - i*9, ay = cy + 6 + (i%2)*6;
+        s += `<ellipse cx="${ax}" cy="${ay}" rx="3" ry="2" fill="#6e6e6e"/>`;
+      }
+      // smoke
+      for (let i=0;i<3;i++){
+        let path = `M ${burnX+i*3} ${cy-14}`;
+        for (let t=1;t<6;t++){ path += ` Q ${burnX+i*3+(t%2?9:-9)} ${cy-14-t*9+4} ${burnX+i*3} ${cy-14-t*9}`; }
+        s += `<path d="${path}" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-linecap="round" opacity="${0.5 - i*0.12}"/>`;
+      }
+    }
+  } else {
+    // cashed: ash pile + filter only
+    for (let i=0;i<8;i++){
+      const ax = filterX - 12 - i*12, ay = cy + 8, r = 4 + (i%3);
+      s += `<ellipse cx="${ax}" cy="${ay}" rx="${r}" ry="${r/2+1}" fill="#${(90+i*4).toString(16)}${(90+i*4).toString(16)}60"/>`;
+    }
+  }
+  s += '</svg>';
+  return s;
+}
+
+function renderWord(){
+  const html = answer.split("").map(ch=>{
+    if (ch === " ") return '<span class="sp"></span>';
+    const show = guessed.has(ch) || over;
+    return show ? ch : "_";
+  }).join("");
+  document.getElementById("hm-word").innerHTML = html;
+}
+
+function renderKeys(){
+  const box = document.getElementById("hm-keys");
+  box.innerHTML = "";
+  for (let i=65;i<=90;i++){
+    const ch = String.fromCharCode(i);
+    const b = document.createElement("button");
+    b.className = "hm-key"; b.textContent = ch;
+    if (guessed.has(ch)){
+      b.disabled = true;
+      b.classList.add(answer.includes(ch) ? "hit" : "miss");
+    }
+    if (over) b.disabled = true;
+    b.onclick = ()=>guess(ch);
+    box.appendChild(b);
+  }
+}
+
+function refresh(){
+  document.getElementById("hm-svg").innerHTML = jointSVG(wrong);
+  document.getElementById("hm-cat").textContent = category;
+  document.getElementById("hm-left").textContent = (MAXW-wrong)+" puff"+((MAXW-wrong)===1?"":"s")+" left";
+  document.getElementById("hm-wins").textContent = "Wins "+wins;
+  document.getElementById("hm-losses").textContent = "Cashed "+losses;
+  renderWord(); renderKeys();
+}
+
+function guess(ch){
+  if (over || guessed.has(ch)) return;
+  guessed.add(ch);
+  const msg = document.getElementById("hm-msg");
+  if (answer.includes(ch)){
+    msg.className = "hm-msg good"; msg.textContent = "Nice — keep going!";
+    // win?
+    const done = answer.split("").every(c=>c===" "||guessed.has(c));
+    if (done){ over=true; wins++; msg.textContent = "🎉 Solved it! Well played."; }
+  } else {
+    wrong++;
+    if (wrong >= MAXW){ over=true; losses++;
+      msg.className="hm-msg bad"; msg.innerHTML = "🔥 Cashed! It was <b>"+answer+"</b>"; }
+    else { msg.className="hm-msg bad"; msg.textContent = "Puff burned — "+(MAXW-wrong)+" left."; }
+  }
+  refresh();
+}
+
+function hmHint(){
+  if (over || hintUsed) return;
+  hintUsed = true;
+  const msg = document.getElementById("hm-msg");
+  msg.className = "hm-msg"; msg.style.color = "#A78BFA";
+  msg.textContent = "💡 " + hint;
+  document.getElementById("hm-hint").disabled = true;
+}
+
+function hmNew(){
+  pick(); guessed = new Set(); wrong = 0; over = false; hintUsed = false;
+  const msg = document.getElementById("hm-msg"); msg.className="hm-msg"; msg.textContent="";
+  document.getElementById("hm-hint").disabled = false;
+  refresh();
+}
+
+document.addEventListener("keydown", (e)=>{
+  const k = e.key.toUpperCase();
+  if (k.length===1 && k>="A" && k<="Z") guess(k);
+});
+
+hmNew();
+</script>
+""".replace("__DATA__", data_json)
+
+
+def render_hangman():
+    st.markdown('<div class="sec-head"><div class="sec-head-text">🔥 Burn Down</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+
+    if not HANGMAN_AVAILABLE:
+        st.error("Game word bank missing — make sure `hangman_data.py` is committed to your repo root.")
+        return
+
+    st.markdown("""
+    <div class="instr-card"><div class="instr-title">🔥 How to Play</div>
+    <div class="instr-steps">
+      <div class="instr-step"><span class="instr-icon">1</span><span>Guess the hidden word or phrase one letter at a time — tap a key or use your keyboard</span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Every wrong letter <strong>burns the joint down</strong>. Six misses and it's <strong>Cashed</strong></span></div>
+      <div class="instr-step"><span class="instr-icon">💡</span><span>Stuck? The category is always shown, and you get one <strong>Hint</strong> per word</span></div>
+    </div></div>""", unsafe_allow_html=True)
+
+    entries = get_hangman_entries()
+    components.html(_hangman_html(entries), height=560, scrolling=True)
+
+
+with tab8:
+    render_hangman()
