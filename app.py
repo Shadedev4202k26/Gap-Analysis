@@ -743,6 +743,14 @@ def render_hook_tags():
         parts  = [p.strip() for p in product.split("|")]
         brand  = parts[0].upper() if len(parts) >= 1 else ""
         strain = parts[1].upper() if len(parts) >= 2 else product.upper()
+        # Pull a gram weight from the product name (e.g. 7G, 28G, 3.5G) and append
+        # it to the brand line. The 'm' in "mg" prevents matching edible doses.
+        wt_match = re.search(r'(\d+(?:\.\d+)?)\s*g\b', product, re.IGNORECASE)
+        if wt_match:
+            wt_val = wt_match.group(1)
+            if wt_val.endswith(".0"):
+                wt_val = wt_val[:-2]
+            brand = f"{brand} {wt_val}G".strip()
         # If the product name contains a mg dose (edibles/drinks), show that in
         # the THC field instead of the back-office THC %. e.g. "200MG Tarts" → 200MG
         mg_match = re.search(r'(\d+(?:\.\d+)?)\s*mg\b', product, re.IGNORECASE)
