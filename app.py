@@ -38,6 +38,12 @@ try:
 except ImportError:
     HANGMAN_AVAILABLE = False
 
+try:
+    import preroll_tags
+    PREROLL_AVAILABLE = True
+except ImportError:
+    PREROLL_AVAILABLE = False
+
 st.set_page_config(page_title="ZiggyBot", page_icon="⚡", layout="wide")
 
 # ── Supabase client ───────────────────────────────────────────────────────────
@@ -525,6 +531,7 @@ with col_hdr:
         <span class="hpill hp-p">⚡ Strain AI</span>
         <span class="hpill hp-c">📊 Inventory</span>
         <span class="hpill hp-g">🏷️ Hook Tags</span>
+        <span class="hpill hp-g">🌿 Preroll Tags</span>
         <span class="hpill hp-a">✅ Checklist</span>
         <span class="hpill hp-b">📢 Comms</span>
         <span class="hpill hp-r">⏳ Aging Stock</span>
@@ -537,10 +544,11 @@ with col_hdr:
     </div>""", unsafe_allow_html=True)
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab9, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "⚡  STRAIN SNIFFER",
     "📊  INVENTORY BALANCING",
-    "🏷️  HOOK TAGS",
+    "🏷️  SMALL HOOK TAGS",
+    "🌿  PREROLL TAGS",
     "⏳  AGING STOCK",
     "✅  DAILY CHECKLIST",
     "📢  COMMS BOARD",
@@ -1845,3 +1853,123 @@ def render_hangman():
 
 with tab8:
     render_hangman()
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 9 — PREROLL TAGS (color-coded by strain type)
+# ════════════════════════════════════════════════════════════════════════════════
+def render_preroll_tags():
+    st.markdown('<div class="sec-head"><div class="sec-head-text">🌿 Preroll Hook Tags</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+
+    if not PREROLL_AVAILABLE:
+        st.error("Preroll engine missing — commit `preroll_tags.py` to your repo root.")
+        return
+
+    TEMPLATES = {
+        "sativa": "Sativa_Prerolls_Updated.pdf",
+        "hybrid": "Hybrid_Prerolls_Updated_-_Copy.pdf",
+        "indica": "Indica_Prerolls_Updated.pdf",
+    }
+    missing = [f for f in TEMPLATES.values() if not os.path.exists(f)]
+    if missing:
+        st.error("Missing template file(s) in repo root: " + ", ".join(missing))
+        return
+
+    st.markdown("""
+    <div class="instr-card"><div class="instr-title">📋 How it Works</div>
+    <div class="instr-steps">
+      <div class="instr-step"><span class="instr-icon">1</span><span>Export prerolls with <strong>Product, Strain, THC, Current price</strong></span></div>
+      <div class="instr-step"><span class="instr-icon">🔴</span><span><strong>Sativa</strong> → red/orange border &nbsp;·&nbsp; <span style="color:#A78BFA"><strong>Indica</strong></span> → purple &nbsp;·&nbsp; <span style="color:#34D399"><strong>Hybrid / No&nbsp;Strain</strong></span> → blue/green</span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span><strong>Mixed</strong> mode puts all colors on shared sheets — no need to split by type</span></div>
+    </div></div>""", unsafe_allow_html=True)
+
+    pr_file = st.file_uploader(" ", type=["csv"], key="preroll_csv", label_visibility="collapsed")
+    if pr_file is None:
+        return
+
+    df = pd.read_csv(pr_file)
+    df.columns = [str(c).strip('="').strip() for c in df.columns]
+    if "Product" not in df.columns or "Strain" not in df.columns:
+        st.error("CSV must include at least `Product` and `Strain` columns.")
+        return
+    price_col = "Current price" if "Current price" in df.columns else "Price"
+
+    raw_rows = []
+    for _, row in df.iterrows():
+        product = str(row.get("Product", "")).strip('="').strip()
+        if not product or product.lower() == "nan":
+            continue
+        parts  = [p.strip() for p in product.split("|")]
+        brand  = parts[0].upper() if len(parts) >= 1 else ""
+        strain = parts[1].upper() if len(parts) >= 2 else product.upper()
+        # weight onto brand line
+        wt = re.search(r'(\d+(?:\.\d+)?)\s*g\b', product, re.IGNORECASE)
+        if wt:
+            v = wt.group(1)
+            if v.endswith(".0"): v = v[:-2]
+            brand = f"{brand} {v}G".strip()
+        thc = str(row.get("THC", "")).strip('="').strip()
+        rp  = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
+        pdg = "".join(c for c in rp if c.isdigit() or c == ".")
+        try:
+            pv = float(pdg) if pdg else 0.0
+            price = f"${int(pv)}" if pv == int(pv) else f"${pv:.2f}"
+        except ValueError:
+            price = "$0"
+        stype = preroll_tags.classify_type(str(row.get("Strain", "")))
+        raw_rows.append({"brand": brand, "strain": strain, "thc": thc,
+                         "price": price, "type": stype, "product": product})
+
+    if not raw_rows:
+        st.error("No valid product rows found in the CSV.")
+        return
+
+    # Dedup on full product + THC (keeps weight/potency variants separate)
+    seen, rows = set(), []
+    for r in raw_rows:
+        key = (r["product"].strip().lower(), r["thc"].strip().lower())
+        if key not in seen:
+            seen.add(key); rows.append(r)
+
+    from collections import Counter
+    counts = Counter(r["type"] for r in rows)
+    st.markdown(f"""
+    <div class="metric-row">
+      <div class="m-tile"><div class="m-num">{counts.get('sativa',0)}</div><div class="m-lbl">🔴 Sativa</div></div>
+      <div class="m-tile"><div class="m-num">{counts.get('hybrid',0)}</div><div class="m-lbl">🟢 Hybrid</div></div>
+      <div class="m-tile"><div class="m-num">{counts.get('indica',0)}</div><div class="m-lbl">🟣 Indica</div></div>
+    </div>""", unsafe_allow_html=True)
+
+    preview = pd.DataFrame(rows)[["brand", "strain", "thc", "price", "type"]]
+    preview.columns = ["Brand", "Strain", "THC", "Price", "Type"]
+    st.dataframe(preview, use_container_width=True, hide_index=True)
+
+    mode = st.radio(
+        "Layout", ["Mixed colors on shared sheets", "Separate pages per color"],
+        horizontal=True, key="preroll_mode")
+
+    if st.button("🖨️  GENERATE PREROLL TAGS", type="primary"):
+        grouped = {}
+        for r in rows:
+            grouped.setdefault(r["type"], []).append(r)
+        with st.spinner(f"Building tags for {len(rows)} prerolls…"):
+            try:
+                with tempfile.TemporaryDirectory() as tmp:
+                    if mode.startswith("Mixed"):
+                        pdf_bytes = preroll_tags.build_mixed(TEMPLATES, rows, tmp)
+                    else:
+                        pdf_bytes = preroll_tags.build_separate(TEMPLATES, grouped, tmp)
+            except FileNotFoundError:
+                st.error("pdftk or poppler not found — add `pdftk` and `poppler-utils` to packages.txt.")
+                return
+            except Exception as e:
+                st.error(f"Error building tags: {e}")
+                return
+        st.success(f"✅ {len(rows)} preroll tags ready "
+                   f"({counts.get('sativa',0)} sativa · {counts.get('hybrid',0)} hybrid · {counts.get('indica',0)} indica)")
+        st.download_button("📥  DOWNLOAD PREROLL TAGS PDF", pdf_bytes,
+                           "Preroll_Tags.pdf", "application/pdf")
+
+
+with tab9:
+    render_preroll_tags()
