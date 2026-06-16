@@ -110,37 +110,76 @@ def get_compound_profile(api_key, compound_name):
     except Exception as e:
         return {"error": str(e)}
 
-def build_pdf(dataframe, threshold_value):
+def build_pdf(dataframe, threshold_value, rooms):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter,
-                            rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+                            rightMargin=36, leftMargin=36, topMargin=40, bottomMargin=40)
     styles = getSampleStyleSheet()
     ts = ParagraphStyle('T', parent=styles['Heading1'], fontSize=22,
                         textColor=colors.HexColor('#0F172A'), spaceAfter=4)
     ss = ParagraphStyle('S', parent=styles['Normal'], fontSize=11,
-                        textColor=colors.HexColor('#4B5563'), fontName='Helvetica-Bold', spaceAfter=20)
-    cs = ParagraphStyle('C', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#374151'))
-    hs = ParagraphStyle('H', parent=styles['Normal'], fontSize=10,
-                        fontName='Helvetica-Bold', textColor=colors.HexColor('#0F172A'))
-    story = [Paragraph("Ziggyz Merchandise Gap Report", ts),
-             Paragraph("HIGH-IMPACT FLOOR RESTOCK & DISCREPANCY MANIFEST", ss)]
-    md = [[Paragraph(f"<b>High-Impact Gaps:</b> {len(dataframe)}", cs),
-           Paragraph(f"<b>Units to Move:</b> {dataframe['Available Qty'].sum()}", cs),
-           Paragraph(f"<b>Min Threshold:</b> {threshold_value}+", cs)]]
-    mt = Table(md, colWidths=[180, 180, 172])
+                        textColor=colors.HexColor('#4B5563'), fontName='Helvetica-Bold', spaceAfter=18)
+    cs = ParagraphStyle('C', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#374151'), leading=11)
+    hs = ParagraphStyle('H', parent=styles['Normal'], fontSize=9,
+                        fontName='Helvetica-Bold', textColor=colors.HexColor('#FFFFFF'))
+
+    n_rebal   = int(dataframe["Status"].str.contains("Rebalance").sum())
+    n_restock = int(dataframe["Status"].str.contains("Restock").sum())
+
+    story = [Paragraph("Ziggyz Room Balance Report", ts),
+             Paragraph("STOCK MIX &amp; LOW-STOCK MANIFEST", ss)]
+    md = [[Paragraph(f"<b>Flagged SKUs:</b> {len(dataframe)}", cs),
+           Paragraph(f"<b>Rebalance:</b> {n_rebal}", cs),
+           Paragraph(f"<b>Restock Both:</b> {n_restock}", cs),
+           Paragraph(f"<b>Low Threshold:</b> &lt;{threshold_value}", cs)]]
+    mt = Table(md, colWidths=[128, 124, 134, 130])
     mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#F8FAFC')),
                              ('BOX',(0,0),(-1,-1),1,colors.HexColor('#E5E7EB')),
-                             ('PADDING',(0,0),(-1,-1),12),('ALIGN',(0,0),(-1,-1),'CENTER')]))
+                             ('INNERGRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
+                             ('PADDING',(0,0),(-1,-1),10),('ALIGN',(0,0),(-1,-1),'CENTER')]))
     story.append(mt)
-    tc = [[Paragraph("Product Name", hs), Paragraph("Location", hs), Paragraph("Available Qty", hs)]]
+    story.append(Paragraph("<br/>", cs))
+
+    # Header: Product | [each room qty] | Total | Mix % | Status
+    header = [Paragraph("Product", hs)]
+    for r in rooms:
+        header.append(Paragraph(r, hs))
+    header += [Paragraph("Total", hs), Paragraph("Mix %", hs), Paragraph("Status", hs)]
+    tdata = [header]
+
     for _, row in dataframe.iterrows():
-        tc.append([Paragraph(str(row['Product Name']), cs),
-                   Paragraph(str(row['Location']), cs),
-                   Paragraph(str(row['Available Qty']), cs)])
-    dt = Table(tc, colWidths=[312, 110, 110])
-    dt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#F3F4F6')),
-                             ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
-                             ('PADDING',(0,0),(-1,-1),8)]))
+        cells = [Paragraph(str(row['Product Name']), cs)]
+        for r in rooms:
+            cells.append(Paragraph(str(row[r]), cs))
+        cells.append(Paragraph(str(row['Total']), cs))
+        cells.append(Paragraph(str(row['Mix %']), cs))
+        # strip emoji for clean print
+        status_txt = str(row['Status']).replace("🔴", "").replace("🔄", "").strip()
+        cells.append(Paragraph(status_txt, cs))
+        tdata.append(cells)
+
+    # Column widths: product wide, rooms/total/status moderate
+    n_rooms = len(rooms)
+    room_w = min(70, 150 / max(1, n_rooms))
+    prod_w = 150
+    total_w, mix_w, status_w = 40, 110, 78
+    col_widths = [prod_w] + [room_w]*n_rooms + [total_w, mix_w, status_w]
+
+    dt = Table(tdata, colWidths=col_widths, repeatRows=1)
+    style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1E293B')),
+             ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
+             ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+             ('PADDING',(0,0),(-1,-1),5),
+             ('ALIGN',(1,0),(-1,-1),'CENTER'),
+             ('ALIGN',(0,0),(0,-1),'LEFT')]
+    # Tint Restock-Both rows red, Rebalance rows amber
+    for i, (_, row) in enumerate(dataframe.iterrows(), start=1):
+        if "Restock" in str(row['Status']):
+            style.append(('BACKGROUND',(0,i),(-1,i),colors.HexColor('#FEF2F2')))
+            style.append(('LINEBEFORE',(0,i),(0,i),3,colors.HexColor('#DC2626')))
+        else:
+            style.append(('LINEBEFORE',(0,i),(0,i),3,colors.HexColor('#D97706')))
+    dt.setStyle(TableStyle(style))
     story.append(dt)
     doc.build(story)
     buffer.seek(0)
@@ -570,9 +609,11 @@ with tab2:
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backoffice, select <strong>any 2 rooms</strong> &amp; <strong>one category</strong></span></div>
       <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Quantity</strong></span></div>
+      <div class="instr-step"><span class="instr-icon">🔄</span><span><strong>Rebalance</strong> = low in one room, stock in the other — move it over</span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔴</span><span><strong>Restock Both</strong> = low in every room — pull from the vault</span></div>
     </div></div>""", unsafe_allow_html=True)
     uploaded_file = st.file_uploader(" ", type="csv", key="restock_csv", label_visibility="collapsed")
-    min_threshold = st.slider("Minimum stock threshold", 1, 50, 15)
+    min_threshold = st.slider("Low-stock threshold (per room)", 1, 50, 15)
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
         df.columns = [str(col).strip('="').strip() for col in df.columns]
@@ -580,23 +621,51 @@ with tab2:
         df['Product'] = df['Product'].apply(lambda x: str(x).strip('="').strip())
         df['Room']    = df['Room'].apply(lambda x: str(x).strip('="').strip())
         df['Qty']     = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
-        pivot   = df.groupby(['Product', 'Room'])['Qty'].sum().unstack(fill_value=0)
-        results = [{"Product Name": p, "Location": r, "Available Qty": int(row[r])}
-                   for p, row in pivot.iterrows() if (row == 0).any()
-                   for r in row[row >= min_threshold].index]
-        final_df = pd.DataFrame(results)
+        pivot = df.groupby(['Product', 'Room'])['Qty'].sum().unstack(fill_value=0)
+        rooms = list(pivot.columns)
+
+        rows = []
+        for product, prow in pivot.iterrows():
+            qtys = {r: int(prow[r]) for r in rooms}
+            total = sum(qtys.values())
+            low_rooms = [r for r in rooms if qtys[r] < min_threshold]
+            if not low_rooms:
+                continue  # healthy everywhere — skip
+            # Mix %: each room's share of this product's total stock
+            if total > 0:
+                mix = " / ".join(f"{r.split()[0]} {round(qtys[r]/total*100)}%" for r in rooms)
+            else:
+                mix = " / ".join(f"{r.split()[0]} 0%" for r in rooms)
+            # Status: low in ALL rooms → restock from vault; low in some → rebalance
+            status = "🔴 Restock Both" if len(low_rooms) == len(rooms) else "🔄 Rebalance"
+            entry = {"Product Name": product}
+            for r in rooms:
+                entry[r] = qtys[r]
+            entry["Total"] = total
+            entry["Mix %"] = mix
+            entry["Status"] = status
+            rows.append(entry)
+
+        final_df = pd.DataFrame(rows)
         if not final_df.empty:
-            total_gaps  = len(final_df)
-            total_units = int(final_df['Available Qty'].sum())
-            locations   = final_df['Location'].nunique()
+            n_flagged  = len(final_df)
+            n_rebal    = int((final_df["Status"].str.contains("Rebalance")).sum())
+            n_restock  = int((final_df["Status"].str.contains("Restock")).sum())
             st.markdown(f"""
             <div class="metric-row">
-              <div class="m-tile"><div class="m-num">{total_gaps}</div><div class="m-lbl">Gap Lines</div></div>
-              <div class="m-tile"><div class="m-num">{total_units}</div><div class="m-lbl">Units to Move</div></div>
-              <div class="m-tile"><div class="m-num">{locations}</div><div class="m-lbl">Locations</div></div>
+              <div class="m-tile"><div class="m-num">{n_flagged}</div><div class="m-lbl">Flagged SKUs</div></div>
+              <div class="m-tile"><div class="m-num">{n_rebal}</div><div class="m-lbl">🔄 Rebalance</div></div>
+              <div class="m-tile"><div class="m-num">{n_restock}</div><div class="m-lbl">🔴 Restock Both</div></div>
             </div>""", unsafe_allow_html=True)
+            # Sort: restock-both first (most urgent), then rebalance, then by total
+            final_df = final_df.sort_values(
+                by=["Status", "Total"], ascending=[True, True]).reset_index(drop=True)
             st.dataframe(final_df, use_container_width=True, hide_index=True)
-            st.download_button("📥  Download Restock PDF", build_pdf(final_df, min_threshold), "Ziggy_Report.pdf", "application/pdf")
+            st.download_button("📥  Download Balance Report PDF",
+                               build_pdf(final_df, min_threshold, rooms),
+                               "Ziggy_Balance_Report.pdf", "application/pdf")
+        else:
+            st.success(f"✅ No products below {min_threshold} in any room. Stock is balanced!")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 3 — HOOK TAG GENERATOR
@@ -674,7 +743,17 @@ def render_hook_tags():
         parts  = [p.strip() for p in product.split("|")]
         brand  = parts[0].upper() if len(parts) >= 1 else ""
         strain = parts[1].upper() if len(parts) >= 2 else product.upper()
-        thc    = str(row.get("THC", "")).strip()
+        # If the product name contains a mg dose (edibles/drinks), show that in
+        # the THC field instead of the back-office THC %. e.g. "200MG Tarts" → 200MG
+        mg_match = re.search(r'(\d+(?:\.\d+)?)\s*mg\b', product, re.IGNORECASE)
+        if mg_match:
+            mg_val = mg_match.group(1)
+            if mg_val.endswith(".0"):
+                mg_val = mg_val[:-2]
+            thc = f"{mg_val}MG"
+        else:
+            # Preserve the exact THC value from back office — never round.
+            thc = str(row.get("THC", "")).strip('="').strip()
         rp     = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
         pd_    = "".join(c for c in rp if c.isdigit() or c == ".")
         try:
@@ -682,15 +761,18 @@ def render_hook_tags():
             price = f"${int(pv)}" if pv == int(pv) else f"${pv:.2f}"
         except ValueError:
             price = "$0"
-        raw_rows.append({"brand": brand, "strain": strain, "thc": thc, "price": price})
+        raw_rows.append({"brand": brand, "strain": strain, "thc": thc,
+                         "price": price, "product": product})
 
     if not raw_rows:
         st.error("No valid product rows found in the CSV.")
         return
 
+    # Dedup on the FULL product description (not just strain name) so the same
+    # strain in different packaged weights each gets its own tag.
     seen, rows = set(), []
     for r in raw_rows:
-        key = (r["brand"].strip().lower(), r["strain"].strip().lower(), r["thc"].strip().lower())
+        key = (r["product"].strip().lower(), r["thc"].strip().lower())
         if key not in seen:
             seen.add(key); rows.append(r)
 
