@@ -1880,7 +1880,7 @@ def render_preroll_tags():
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>Export prerolls with <strong>Product, Strain, THC, Current price</strong></span></div>
       <div class="instr-step"><span class="instr-icon">🔴</span><span><strong>Sativa</strong> → red/orange border &nbsp;·&nbsp; <span style="color:#A78BFA"><strong>Indica</strong></span> → purple &nbsp;·&nbsp; <span style="color:#34D399"><strong>Hybrid / No&nbsp;Strain</strong></span> → blue/green</span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span><strong>Mixed</strong> mode puts all colors on shared sheets — no need to split by type</span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Tags are grouped into <strong>color-coded pages by strain type</strong> in one PDF</span></div>
     </div></div>""", unsafe_allow_html=True)
 
     pr_file = st.file_uploader(" ", type=["csv"], key="preroll_csv", label_visibility="collapsed")
@@ -1944,10 +1944,6 @@ def render_preroll_tags():
     preview.columns = ["Brand", "Strain", "THC", "Price", "Type"]
     st.dataframe(preview, use_container_width=True, hide_index=True)
 
-    mode = st.radio(
-        "Layout", ["Mixed colors on shared sheets", "Separate pages per color"],
-        horizontal=True, key="preroll_mode")
-
     if st.button("🖨️  GENERATE PREROLL TAGS", type="primary"):
         grouped = {}
         for r in rows:
@@ -1955,12 +1951,9 @@ def render_preroll_tags():
         with st.spinner(f"Building tags for {len(rows)} prerolls…"):
             try:
                 with tempfile.TemporaryDirectory() as tmp:
-                    if mode.startswith("Mixed"):
-                        pdf_bytes = preroll_tags.build_mixed(TEMPLATES, rows, tmp)
-                    else:
-                        pdf_bytes = preroll_tags.build_separate(TEMPLATES, grouped, tmp)
+                    pdf_bytes = preroll_tags.build_separate(TEMPLATES, grouped, tmp)
             except FileNotFoundError:
-                st.error("pdftk or poppler not found — add `pdftk` and `poppler-utils` to packages.txt.")
+                st.error("pdftk not found — add `pdftk` to packages.txt.")
                 return
             except Exception as e:
                 st.error(f"Error building tags: {e}")
