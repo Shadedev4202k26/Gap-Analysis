@@ -1,7 +1,7 @@
+streamlit
 pandas
 requests
-beautifulsoup4
 reportlab
 pypdf
-streamlit
 supabase
+Pillow
