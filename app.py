@@ -116,7 +116,7 @@ def get_compound_profile(api_key, compound_name):
     except Exception as e:
         return {"error": str(e)}
 
-def build_pdf(dataframe, threshold_value, rooms):
+def build_pdf(dataframe, threshold_value, rooms, min_stock=None):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter,
                             rightMargin=36, leftMargin=36, topMargin=40, bottomMargin=40)
@@ -134,11 +134,14 @@ def build_pdf(dataframe, threshold_value, rooms):
 
     story = [Paragraph("Ziggyz Room Balance Report", ts),
              Paragraph("STOCK MIX &amp; ROOM BALANCE MANIFEST", ss)]
+    rule_txt = f"<b>Imbalance:</b> &gt;{threshold_value}%"
+    if min_stock is not None:
+        rule_txt += f" &nbsp;·&nbsp; <b>Min stock:</b> &le;{min_stock}"
     md = [[Paragraph(f"<b>Products:</b> {len(dataframe)}", cs),
            Paragraph(f"<b>Rebalance:</b> {n_rebal}", cs),
            Paragraph(f"<b>Balanced:</b> {n_bal}", cs),
-           Paragraph(f"<b>Imbalance Flag:</b> &gt;{threshold_value}%", cs)]]
-    mt = Table(md, colWidths=[128, 124, 130, 134])
+           Paragraph(rule_txt, cs)]]
+    mt = Table(md, colWidths=[110, 110, 110, 186])
     mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#F8FAFC')),
                              ('BOX',(0,0),(-1,-1),1,colors.HexColor('#E5E7EB')),
                              ('INNERGRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
@@ -614,7 +617,7 @@ with tab2:
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backoffice, select your rooms &amp; <strong>one category</strong></span></div>
       <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Quantity</strong></span></div>
-      <div class="instr-step"><span class="instr-icon">🔄</span><span><strong>Rebalance</strong> = stock is lopsided between rooms — move some over to even it out</span></div>
+      <div class="instr-step"><span class="instr-icon">🔄</span><span><strong>Rebalance</strong> = stock is lopsided <em>or</em> a room is running low while the other has plenty — move some over</span></div>
     </div></div>""", unsafe_allow_html=True)
     uploaded_file = st.file_uploader(" ", type="csv", key="restock_csv", label_visibility="collapsed")
     if uploaded_file:
@@ -627,11 +630,15 @@ with tab2:
 
         all_rooms = sorted(df['Room'].dropna().unique().tolist())
 
-        # ── Controls: room filter + imbalance threshold ──────────────────────
+        # ── Controls: room filter + minimum stock + imbalance threshold ──────
+        rooms = st.multiselect("Rooms to include", all_rooms, default=all_rooms,
+                               key="balance_rooms")
         ctrl_l, ctrl_r = st.columns([1, 1])
         with ctrl_l:
-            rooms = st.multiselect("Rooms to include", all_rooms, default=all_rooms,
-                                   key="balance_rooms")
+            min_stock = st.slider(
+                "Minimum stock per room", 0, 25, 5,
+                help="A room at or below this many units (while another room has "
+                     "more) is flagged 🔄 Rebalance so you can move stock over.")
         with ctrl_r:
             imbalance_pct = st.slider(
                 "Flag when a room holds more than this % of stock", 50, 95, 70,
@@ -657,9 +664,13 @@ with tab2:
                     continue  # nothing in the selected rooms — skip
                 shares = {r: qtys[r] / total for r in rooms}
                 top_share = max(shares.values())
-                # Flag only when more lopsided than the chosen threshold (and >1 room)
+                # Trigger 1: lopsided split beyond the imbalance threshold
                 imbalanced = len(rooms) > 1 and (top_share * 100) > imbalance_pct
-                status = "🔄 Rebalance" if imbalanced else "✅ Balanced"
+                # Trigger 2: a room is at/below minimum while another has stock to move
+                low_room    = any(qtys[r] <= min_stock for r in rooms)
+                source_room = any(qtys[r] > min_stock for r in rooms)
+                low_flag = len(rooms) > 1 and low_room and source_room
+                status = "🔄 Rebalance" if (imbalanced or low_flag) else "✅ Balanced"
                 mix = " / ".join(f"{r.split()[0]} {round(shares[r]*100)}%" for r in rooms)
                 entry = {"Product Name": product}
                 for r in rooms:
@@ -690,8 +701,8 @@ with tab2:
                 </div>""", unsafe_allow_html=True)
 
                 if view_df.empty:
-                    st.success(f"✅ No products exceed a {imbalance_pct}% split across "
-                               f"{', '.join(rooms)}. Rooms are balanced!")
+                    st.success(f"✅ Nothing to rebalance across {', '.join(rooms)} "
+                               f"at these settings. Rooms are balanced!")
                 else:
                     # most lopsided first
                     view_df = view_df.sort_values(by=["Status", "_skew"],
@@ -699,7 +710,7 @@ with tab2:
                     display_df = view_df.drop(columns=["_skew"])
                     st.dataframe(display_df, use_container_width=True, hide_index=True)
                     st.download_button("📥  Download Balance Report PDF",
-                                       build_pdf(display_df, imbalance_pct, rooms),
+                                       build_pdf(display_df, imbalance_pct, rooms, min_stock),
                                        "Ziggy_Balance_Report.pdf", "application/pdf")
             else:
                 st.success("✅ No stock found in the selected rooms.")
