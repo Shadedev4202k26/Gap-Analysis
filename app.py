@@ -129,22 +129,22 @@ def build_pdf(dataframe, threshold_value, rooms):
     hs = ParagraphStyle('H', parent=styles['Normal'], fontSize=9,
                         fontName='Helvetica-Bold', textColor=colors.HexColor('#FFFFFF'))
 
-    n_rebal   = int(dataframe["Status"].str.contains("Rebalance").sum())
-    n_restock = int(dataframe["Status"].str.contains("Restock").sum())
+    n_rebal = int(dataframe["Status"].str.contains("Rebalance").sum())
+    n_bal   = len(dataframe) - n_rebal
 
     story = [Paragraph("Ziggyz Room Balance Report", ts),
-             Paragraph("STOCK MIX &amp; LOW-STOCK MANIFEST", ss)]
-    md = [[Paragraph(f"<b>Flagged SKUs:</b> {len(dataframe)}", cs),
+             Paragraph("STOCK MIX &amp; ROOM BALANCE MANIFEST", ss)]
+    md = [[Paragraph(f"<b>Products:</b> {len(dataframe)}", cs),
            Paragraph(f"<b>Rebalance:</b> {n_rebal}", cs),
-           Paragraph(f"<b>Restock Both:</b> {n_restock}", cs),
-           Paragraph(f"<b>Low Threshold:</b> &lt;{threshold_value}", cs)]]
-    mt = Table(md, colWidths=[128, 124, 134, 130])
+           Paragraph(f"<b>Balanced:</b> {n_bal}", cs),
+           Paragraph(f"<b>Imbalance Flag:</b> &gt;{threshold_value}%", cs)]]
+    mt = Table(md, colWidths=[128, 124, 130, 134])
     mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#F8FAFC')),
                              ('BOX',(0,0),(-1,-1),1,colors.HexColor('#E5E7EB')),
                              ('INNERGRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
                              ('PADDING',(0,0),(-1,-1),10),('ALIGN',(0,0),(-1,-1),'CENTER')]))
     story.append(mt)
-    story.append(Paragraph("<br/>", cs))
+    story.append(Paragraph("Rooms: " + ", ".join(rooms), ss))
 
     # Header: Product | [each room qty] | Total | Mix % | Status
     header = [Paragraph("Product", hs)]
@@ -159,12 +159,10 @@ def build_pdf(dataframe, threshold_value, rooms):
             cells.append(Paragraph(str(row[r]), cs))
         cells.append(Paragraph(str(row['Total']), cs))
         cells.append(Paragraph(str(row['Mix %']), cs))
-        # strip emoji for clean print
-        status_txt = str(row['Status']).replace("🔴", "").replace("🔄", "").strip()
+        status_txt = str(row['Status']).replace("🔄", "").replace("✅", "").strip()
         cells.append(Paragraph(status_txt, cs))
         tdata.append(cells)
 
-    # Column widths: product wide, rooms/total/status moderate
     n_rooms = len(rooms)
     room_w = min(70, 150 / max(1, n_rooms))
     prod_w = 150
@@ -178,13 +176,12 @@ def build_pdf(dataframe, threshold_value, rooms):
              ('PADDING',(0,0),(-1,-1),5),
              ('ALIGN',(1,0),(-1,-1),'CENTER'),
              ('ALIGN',(0,0),(0,-1),'LEFT')]
-    # Tint Restock-Both rows red, Rebalance rows amber
+    # Amber bar on rows needing a rebalance; faint green bar on balanced ones
     for i, (_, row) in enumerate(dataframe.iterrows(), start=1):
-        if "Restock" in str(row['Status']):
-            style.append(('BACKGROUND',(0,i),(-1,i),colors.HexColor('#FEF2F2')))
-            style.append(('LINEBEFORE',(0,i),(0,i),3,colors.HexColor('#DC2626')))
-        else:
+        if "Rebalance" in str(row['Status']):
             style.append(('LINEBEFORE',(0,i),(0,i),3,colors.HexColor('#D97706')))
+        else:
+            style.append(('LINEBEFORE',(0,i),(0,i),3,colors.HexColor('#34D399')))
     dt.setStyle(TableStyle(style))
     story.append(dt)
     doc.build(story)
@@ -611,17 +608,15 @@ with tab1:
 # TAB 2 — INVENTORY INTEL
 # ════════════════════════════════════════════════════════════════════════════════
 with tab2:
-    st.markdown('<div class="sec-head"><div class="sec-head-text">📊 Live Restock Gap Analyzer</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-head"><div class="sec-head-text">📊 Live Room Balance Analyzer</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
     <div class="instr-steps">
-      <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backoffice, select <strong>any 2 rooms</strong> &amp; <strong>one category</strong></span></div>
+      <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backoffice, select your rooms &amp; <strong>one category</strong></span></div>
       <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Quantity</strong></span></div>
-      <div class="instr-step"><span class="instr-icon">🔄</span><span><strong>Rebalance</strong> = low in one room, stock in the other — move it over</span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔴</span><span><strong>Restock Both</strong> = low in every room — pull from the vault</span></div>
+      <div class="instr-step"><span class="instr-icon">🔄</span><span><strong>Rebalance</strong> = stock is lopsided between rooms — move some over to even it out</span></div>
     </div></div>""", unsafe_allow_html=True)
     uploaded_file = st.file_uploader(" ", type="csv", key="restock_csv", label_visibility="collapsed")
-    min_threshold = st.slider("Low-stock threshold (per room)", 1, 50, 15)
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
         df.columns = [str(col).strip('="').strip() for col in df.columns]
@@ -629,51 +624,85 @@ with tab2:
         df['Product'] = df['Product'].apply(lambda x: str(x).strip('="').strip())
         df['Room']    = df['Room'].apply(lambda x: str(x).strip('="').strip())
         df['Qty']     = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
-        pivot = df.groupby(['Product', 'Room'])['Qty'].sum().unstack(fill_value=0)
-        rooms = list(pivot.columns)
 
-        rows = []
-        for product, prow in pivot.iterrows():
-            qtys = {r: int(prow[r]) for r in rooms}
-            total = sum(qtys.values())
-            low_rooms = [r for r in rooms if qtys[r] < min_threshold]
-            if not low_rooms:
-                continue  # healthy everywhere — skip
-            # Mix %: each room's share of this product's total stock
-            if total > 0:
-                mix = " / ".join(f"{r.split()[0]} {round(qtys[r]/total*100)}%" for r in rooms)
-            else:
-                mix = " / ".join(f"{r.split()[0]} 0%" for r in rooms)
-            # Status: low in ALL rooms → restock from vault; low in some → rebalance
-            status = "🔴 Restock Both" if len(low_rooms) == len(rooms) else "🔄 Rebalance"
-            entry = {"Product Name": product}
-            for r in rooms:
-                entry[r] = qtys[r]
-            entry["Total"] = total
-            entry["Mix %"] = mix
-            entry["Status"] = status
-            rows.append(entry)
+        all_rooms = sorted(df['Room'].dropna().unique().tolist())
 
-        final_df = pd.DataFrame(rows)
-        if not final_df.empty:
-            n_flagged  = len(final_df)
-            n_rebal    = int((final_df["Status"].str.contains("Rebalance")).sum())
-            n_restock  = int((final_df["Status"].str.contains("Restock")).sum())
-            st.markdown(f"""
-            <div class="metric-row">
-              <div class="m-tile"><div class="m-num">{n_flagged}</div><div class="m-lbl">Flagged SKUs</div></div>
-              <div class="m-tile"><div class="m-num">{n_rebal}</div><div class="m-lbl">🔄 Rebalance</div></div>
-              <div class="m-tile"><div class="m-num">{n_restock}</div><div class="m-lbl">🔴 Restock Both</div></div>
-            </div>""", unsafe_allow_html=True)
-            # Sort: restock-both first (most urgent), then rebalance, then by total
-            final_df = final_df.sort_values(
-                by=["Status", "Total"], ascending=[True, True]).reset_index(drop=True)
-            st.dataframe(final_df, use_container_width=True, hide_index=True)
-            st.download_button("📥  Download Balance Report PDF",
-                               build_pdf(final_df, min_threshold, rooms),
-                               "Ziggy_Balance_Report.pdf", "application/pdf")
+        # ── Controls: room filter + imbalance threshold ──────────────────────
+        ctrl_l, ctrl_r = st.columns([1, 1])
+        with ctrl_l:
+            rooms = st.multiselect("Rooms to include", all_rooms, default=all_rooms,
+                                   key="balance_rooms")
+        with ctrl_r:
+            imbalance_pct = st.slider(
+                "Flag when a room holds more than this % of stock", 50, 95, 70,
+                help="A product is flagged 🔄 Rebalance when one room holds more "
+                     "than this share of its total. Lower = stricter.")
+
+        if len(rooms) < 1:
+            st.info("Select at least one room to analyze.")
         else:
-            st.success(f"✅ No products below {min_threshold} in any room. Stock is balanced!")
+            sub = df[df['Room'].isin(rooms)]
+            pivot = sub.groupby(['Product', 'Room'])['Qty'].sum().unstack(fill_value=0)
+            # ensure all selected rooms are columns even if absent in data
+            for r in rooms:
+                if r not in pivot.columns:
+                    pivot[r] = 0
+            pivot = pivot[rooms]
+
+            rows = []
+            for product, prow in pivot.iterrows():
+                qtys = {r: int(prow[r]) for r in rooms}
+                total = sum(qtys.values())
+                if total <= 0:
+                    continue  # nothing in the selected rooms — skip
+                shares = {r: qtys[r] / total for r in rooms}
+                top_share = max(shares.values())
+                # Flag only when more lopsided than the chosen threshold (and >1 room)
+                imbalanced = len(rooms) > 1 and (top_share * 100) > imbalance_pct
+                status = "🔄 Rebalance" if imbalanced else "✅ Balanced"
+                mix = " / ".join(f"{r.split()[0]} {round(shares[r]*100)}%" for r in rooms)
+                entry = {"Product Name": product}
+                for r in rooms:
+                    entry[r] = qtys[r]
+                entry["Total"] = total
+                entry["Mix %"] = mix
+                entry["Status"] = status
+                entry["_skew"] = top_share  # for sorting
+                rows.append(entry)
+
+            final_df = pd.DataFrame(rows)
+            # Default to showing only the ones needing action, with a toggle
+            show_all = st.checkbox("Show balanced products too", value=False)
+            if not final_df.empty and not show_all:
+                view_df = final_df[final_df["Status"].str.contains("Rebalance")].copy()
+            else:
+                view_df = final_df.copy()
+
+            if not final_df.empty:
+                n_total   = len(final_df)
+                n_rebal   = int((final_df["Status"].str.contains("Rebalance")).sum())
+                n_bal     = n_total - n_rebal
+                st.markdown(f"""
+                <div class="metric-row">
+                  <div class="m-tile"><div class="m-num">{n_total}</div><div class="m-lbl">Products</div></div>
+                  <div class="m-tile"><div class="m-num">{n_rebal}</div><div class="m-lbl">🔄 Rebalance</div></div>
+                  <div class="m-tile"><div class="m-num">{n_bal}</div><div class="m-lbl">✅ Balanced</div></div>
+                </div>""", unsafe_allow_html=True)
+
+                if view_df.empty:
+                    st.success(f"✅ No products exceed a {imbalance_pct}% split across "
+                               f"{', '.join(rooms)}. Rooms are balanced!")
+                else:
+                    # most lopsided first
+                    view_df = view_df.sort_values(by=["Status", "_skew"],
+                                                  ascending=[True, False]).reset_index(drop=True)
+                    display_df = view_df.drop(columns=["_skew"])
+                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+                    st.download_button("📥  Download Balance Report PDF",
+                                       build_pdf(display_df, imbalance_pct, rooms),
+                                       "Ziggy_Balance_Report.pdf", "application/pdf")
+            else:
+                st.success("✅ No stock found in the selected rooms.")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 3 — HOOK TAG GENERATOR
