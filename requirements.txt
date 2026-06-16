@@ -4,4 +4,4 @@ requests
 reportlab
 pypdf
 supabase
-Pillow
+
