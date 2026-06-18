@@ -1942,13 +1942,15 @@ def render_preroll_tags():
         parts  = [p.strip() for p in product.split("|")]
         brand  = parts[0].upper() if len(parts) >= 1 else ""
         strain = parts[1].upper() if len(parts) >= 2 else product.upper()
-        # weight onto brand line (handles 1G, 3.5G, and leading-decimal like .5G/.7G)
+        # Build the brand line as Brand | Weight | Pack, omitting any missing piece.
+        brand_bits = [brand] if brand else []
+        # weight (handles 1G, 3.5G, and leading-decimal like .5G/.7G)
         wt = re.search(r'(\d*\.?\d+)\s*g\b', product, re.IGNORECASE)
         if wt:
             v = wt.group(1)
             if v.endswith(".0"): v = v[:-2]
-            brand = f"{brand} {v}G".strip()
-        # multi-pack count onto brand line, normalized to PK (e.g. 5PK, 14PK, 28PK)
+            brand_bits.append(f"{v}G")
+        # multi-pack count, normalized to PK (e.g. 5PK, 14PK, 28PK)
         pack = None
         mx = re.search(r'\b(\d+)\s*[xX]\s*[\d.]', product)  # "5 x 1G", "28 x 1G"
         if mx:
@@ -1959,7 +1961,8 @@ def render_preroll_tags():
             if mc:
                 pack = f"{int(mc.group(1))}PK"
         if pack:
-            brand = f"{brand} {pack}".strip()
+            brand_bits.append(pack)
+        brand = " | ".join(brand_bits)
         thc = str(row.get("THC", "")).strip('="').strip()
         rp  = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
         pdg = "".join(c for c in rp if c.isdigit() or c == ".")
