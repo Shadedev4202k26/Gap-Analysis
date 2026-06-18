@@ -791,9 +791,9 @@ def render_hook_tags():
         parts  = [p.strip() for p in product.split("|")]
         brand  = parts[0].upper() if len(parts) >= 1 else ""
         strain = parts[1].upper() if len(parts) >= 2 else product.upper()
-        # Pull a gram weight from the product name (e.g. 7G, 28G, 3.5G) and append
-        # it to the brand line. The 'm' in "mg" prevents matching edible doses.
-        wt_match = re.search(r'(\d+(?:\.\d+)?)\s*g\b', product, re.IGNORECASE)
+        # Pull a gram weight from the product name (e.g. 7G, 28G, 3.5G, .5G) and
+        # append it to the brand line. The 'm' in "mg" prevents matching edible doses.
+        wt_match = re.search(r'(\d*\.?\d+)\s*g\b', product, re.IGNORECASE)
         if wt_match:
             wt_val = wt_match.group(1)
             if wt_val.endswith(".0"):
@@ -1942,12 +1942,24 @@ def render_preroll_tags():
         parts  = [p.strip() for p in product.split("|")]
         brand  = parts[0].upper() if len(parts) >= 1 else ""
         strain = parts[1].upper() if len(parts) >= 2 else product.upper()
-        # weight onto brand line
-        wt = re.search(r'(\d+(?:\.\d+)?)\s*g\b', product, re.IGNORECASE)
+        # weight onto brand line (handles 1G, 3.5G, and leading-decimal like .5G/.7G)
+        wt = re.search(r'(\d*\.?\d+)\s*g\b', product, re.IGNORECASE)
         if wt:
             v = wt.group(1)
             if v.endswith(".0"): v = v[:-2]
             brand = f"{brand} {v}G".strip()
+        # multi-pack count onto brand line, normalized to PK (e.g. 5PK, 14PK, 28PK)
+        pack = None
+        mx = re.search(r'\b(\d+)\s*[xX]\s*[\d.]', product)  # "5 x 1G", "28 x 1G"
+        if mx:
+            pack = f"{int(mx.group(1))}PK"
+        else:
+            mc = re.search(r'(\d+)\s*(?:ct|pk|pks|pcs?|count|counts|pack|packs|pieces?|cnt)\b',
+                           product, re.IGNORECASE)
+            if mc:
+                pack = f"{int(mc.group(1))}PK"
+        if pack:
+            brand = f"{brand} {pack}".strip()
         thc = str(row.get("THC", "")).strip('="').strip()
         rp  = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
         pdg = "".join(c for c in rp if c.isdigit() or c == ".")
