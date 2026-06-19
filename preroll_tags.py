@@ -111,8 +111,23 @@ def _optimal_size(text, field_w, field_h, fontinfo):
     units = _text_width_units(text, fontinfo)
     usable_w = max(1.0, field_w - 8)            # padding each side
     size_w = usable_w * 1000.0 / units          # exact width-fit
-    size_h = field_h * 0.70                      # height cap (room for ascenders)
+    size_h = field_h * 0.62                      # height cap (keeps baselines tidy)
     return max(6.0, min(size_w, size_h))
+
+
+def _field_rect(writer, fieldname):
+    """Return (width, height) of the named field's widget rectangle."""
+    for page in writer.pages:
+        for a in page.get("/Annots", []):
+            o = a.get_object()
+            nm = o.get("/T")
+            parent = o.get("/Parent")
+            if nm is None and parent:
+                nm = parent.get_object().get("/T")
+            if str(nm) == fieldname and o.get("/Rect"):
+                r = o["/Rect"]
+                return (abs(float(r[2]) - float(r[0])), abs(float(r[3]) - float(r[1])))
+    return None
 
 
 def _apply_optimal_sizes(template_path, page_rows, tmpdir, tag):
@@ -139,6 +154,27 @@ def _apply_optimal_sizes(template_path, page_rows, tmpdir, tag):
     # Load the real font metrics once so text is measured exactly (no clipping).
     fontinfo = _load_font_widths(template_path)
 
+    # THC and PRICE sit on the same visual row and share field height. Compute a
+    # single matched size per slot for that pair so their baselines line up
+    # (otherwise a short price gets a much bigger font and prints lower than THC).
+    name_to_size = {}
+    for slot in range(1, max_slots + 1):
+        sf = sm.get(slot, {})
+        thc_fn, price_fn = sf.get("thc"), sf.get("price")
+        pair = []
+        for fn in (thc_fn, price_fn):
+            if not fn:
+                continue
+            rect = _field_rect(writer, fn)
+            if not rect:
+                continue
+            fw, fh = rect
+            pair.append((fn, _optimal_size(name_to_text.get(fn, ""), fw, fh, fontinfo)))
+        if pair:
+            shared = min(s for _, s in pair)   # smaller of the two keeps both fitting
+            for fn, _ in pair:
+                name_to_size[fn] = shared
+
     for page in writer.pages:
         for a in page.get("/Annots", []):
             o = a.get_object()
@@ -155,7 +191,8 @@ def _apply_optimal_sizes(template_path, page_rows, tmpdir, tag):
             fw = abs(float(rect[2]) - float(rect[0]))
             fh = abs(float(rect[3]) - float(rect[1]))
             text = name_to_text[fieldname]
-            size = _optimal_size(text, fw, fh, fontinfo)
+            # use the matched THC/price size when available, else per-field optimal
+            size = name_to_size.get(fieldname) or _optimal_size(text, fw, fh, fontinfo)
             da   = f"/Paralucent-Heavy {size:.2f} Tf 0 g"
             target = o if o.get("/T") else (parent.get_object() if parent else o)
             target[NameObject("/DA")] = TextStringObject(da)
