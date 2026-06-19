@@ -71,23 +71,48 @@ def _make_fdf(slot_map, page_rows, max_slots):
             + "\n] >> >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n")
 
 
-def _optimal_size(text, field_w, field_h, ratio=0.52):
-    """Compute a font size that fills the field well — bounded by width (so long
-    text still fits) and height (so short text grows to fill vertical space).
-    ratio calibrates avg glyph advance per font-size unit for this field type."""
-    text = text or ""
-    n = max(1, len(text))
-    usable_w = max(1.0, field_w - 6)
-    size_w = usable_w / (n * ratio)
-    size_h = field_h * 0.72
-    return max(6.0, min(size_w, size_h))
+def _load_font_widths(template_path):
+    """Extract the real Paralucent-Heavy glyph widths (1/1000 em) from the
+    template's AcroForm resources so text can be measured exactly."""
+    try:
+        reader = PdfReader(template_path)
+        acro = reader.trailer["/Root"].get("/AcroForm", {})
+        fonts = acro.get("/DR", {}).get("/Font", {}) if acro else {}
+        para = None
+        for k, v in (fonts.items() if hasattr(fonts, "items") else []):
+            fo = v.get_object()
+            if "Paralucent" in str(fo.get("/BaseFont", "")) and "/Widths" in fo:
+                para = fo
+                break
+        if para is None:
+            return None
+        widths = [int(x) for x in para.get("/Widths")]
+        first = int(para.get("/FirstChar", 0))
+        return {"widths": widths, "first": first}
+    except Exception:
+        return None
 
-# Calibrated character-width ratios per field type for Paralucent-Heavy:
-# brand  — pipes + digits + letters: ~0.46 (narrow avg due to | and numbers)
-# strain — all-caps wide letters:    ~0.62 (widest avg)
-# thc    — digits + % + spaces:      ~0.55
-# price  — $ + digits + . :          ~0.60
-_FIELD_RATIOS = {"brand": 0.46, "strain": 0.62, "thc": 0.55, "price": 0.60}
+
+def _text_width_units(text, fontinfo):
+    """Total advance width of text in 1/1000 em units."""
+    if not fontinfo:
+        return len(text or "") * 500
+    widths, first = fontinfo["widths"], fontinfo["first"]
+    total = 0
+    for ch in (text or ""):
+        idx = ord(ch) - first
+        total += widths[idx] if 0 <= idx < len(widths) else 500
+    return max(1, total)
+
+
+def _optimal_size(text, field_w, field_h, fontinfo):
+    """Largest font size that fits the text within the field, measured with the
+    real font metrics so it never clips. Bounded by width AND height."""
+    units = _text_width_units(text, fontinfo)
+    usable_w = max(1.0, field_w - 8)            # padding each side
+    size_w = usable_w * 1000.0 / units          # exact width-fit
+    size_h = field_h * 0.70                      # height cap (room for ascenders)
+    return max(6.0, min(size_w, size_h))
 
 
 def _apply_optimal_sizes(template_path, page_rows, tmpdir, tag):
@@ -111,11 +136,8 @@ def _apply_optimal_sizes(template_path, page_rows, tmpdir, tag):
     writer = PdfWriter()
     writer.append(reader)
 
-    # Build reverse map: field-name → field-type (brand/strain/thc/price)
-    name_to_type = {}
-    for slot, keys in sm.items():
-        for ftype, fname in keys.items():
-            name_to_type[fname] = ftype
+    # Load the real font metrics once so text is measured exactly (no clipping).
+    fontinfo = _load_font_widths(template_path)
 
     for page in writer.pages:
         for a in page.get("/Annots", []):
@@ -132,11 +154,9 @@ def _apply_optimal_sizes(template_path, page_rows, tmpdir, tag):
                 continue
             fw = abs(float(rect[2]) - float(rect[0]))
             fh = abs(float(rect[3]) - float(rect[1]))
-            text  = name_to_text[fieldname]
-            ftype = name_to_type.get(fieldname, "brand")
-            ratio = _FIELD_RATIOS.get(ftype, 0.52)
-            size  = _optimal_size(text, fw, fh, ratio)
-            da    = f"/Paralucent-Heavy {size:.2f} Tf 0 g"
+            text = name_to_text[fieldname]
+            size = _optimal_size(text, fw, fh, fontinfo)
+            da   = f"/Paralucent-Heavy {size:.2f} Tf 0 g"
             target = o if o.get("/T") else (parent.get_object() if parent else o)
             target[NameObject("/DA")] = TextStringObject(da)
 
