@@ -105,13 +105,13 @@ def _text_width_units(text, fontinfo):
     return max(1, total)
 
 
-def _optimal_size(text, field_w, field_h, fontinfo):
+def _optimal_size(text, field_w, field_h, fontinfo, height_factor=0.62):
     """Largest font size that fits the text within the field, measured with the
     real font metrics so it never clips. Bounded by width AND height."""
     units = _text_width_units(text, fontinfo)
     usable_w = max(1.0, field_w - 8)            # padding each side
     size_w = usable_w * 1000.0 / units          # exact width-fit
-    size_h = field_h * 0.62                      # height cap (keeps baselines tidy)
+    size_h = field_h * height_factor             # height cap
     return max(6.0, min(size_w, size_h))
 
 
@@ -169,7 +169,10 @@ def _apply_optimal_sizes(template_path, page_rows, tmpdir, tag):
             if not rect:
                 continue
             fw, fh = rect
-            pair.append((fn, _optimal_size(name_to_text.get(fn, ""), fw, fh, fontinfo)))
+            # Taller height factor here so the THC/price line is big and readable
+            # from the counter (matched pairing keeps the baselines aligned).
+            pair.append((fn, _optimal_size(name_to_text.get(fn, ""), fw, fh,
+                                           fontinfo, height_factor=0.80)))
         if pair:
             shared = min(s for _, s in pair)   # smaller of the two keeps both fitting
             for fn, _ in pair:
