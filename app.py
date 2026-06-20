@@ -1963,7 +1963,14 @@ def render_preroll_tags():
         if pack:
             brand_bits.append(pack)
         brand = " | ".join(brand_bits)
-        thc = str(row.get("THC", "")).strip('="').strip()
+        # THC: drop decimals without rounding (e.g. "40.70 %" -> "40 %") so the
+        # THC/price line can render larger and stay readable from the counter.
+        thc_raw = str(row.get("THC", "")).strip('="').strip()
+        tm = re.search(r'(\d+)(?:\.\d+)?', thc_raw)
+        if tm:
+            thc = f"{tm.group(1)} %" if "%" in thc_raw else tm.group(1)
+        else:
+            thc = thc_raw
         rp  = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
         pdg = "".join(c for c in rp if c.isdigit() or c == ".")
         try:
