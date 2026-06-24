@@ -738,181 +738,200 @@ with tab2:
 # TAB 3 — HOOK TAG GENERATOR
 # ════════════════════════════════════════════════════════════════════════════════
 def render_hook_tags():
-    st.markdown('<div class="sec-head"><div class="sec-head-text">🏷️ Automated Hook Tag Formatter</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
-    TEMPLATE_PATH = "master_template.pdf"
-    if not PYPDF_AVAILABLE:
-        st.error("pypdf not installed — add `pypdf` to requirements.txt and redeploy.")
-        return
-    try:
-        subprocess.run(["pdftk", "--version"], capture_output=True, check=True)
-        pdftk_ok = True
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        pdftk_ok = False
-    if not pdftk_ok:
-        st.error("pdftk not found — add `pdftk` to packages.txt and redeploy.")
-        return
-    if not os.path.exists(TEMPLATE_PATH):
-        st.error("`master_template.pdf` not found — commit it to the root of your repo.")
+    st.markdown('<div class="sec-head"><div class="sec-head-text">🏷️ Small Hook Tags</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    if not PREROLL_AVAILABLE:
+        st.error("Hook tag engine missing — commit `preroll_tags.py` to your repo root.")
         return
 
-    @st.cache_resource
-    def load_slot_map(path):
-        reader, slot_map = PdfReader(path), {}
-        for fname, field in (reader.get_fields() or {}).items():
-            v = field.get("/V", "")
-            if not isinstance(v, str): continue
-            vs = v.strip()
-            for prefix, key in [("BRAND_","brand"),("STRAIN_","strain"),("THC_","thc"),("PRICE_","price")]:
-                if vs.startswith(prefix):
-                    try:
-                        slot_map.setdefault(int(vs[len(prefix):].strip()), {})[key] = fname
-                    except ValueError:
-                        pass
-        return slot_map
-
-    slot_map = load_slot_map(TEMPLATE_PATH)
-    if not slot_map:
-        st.error("Template doesn't contain BRAND_N/STRAIN_N/THC_N/PRICE_N placeholders.")
+    HOOK_TEMPLATES = {
+        "sativa": "Sativa_Hook.pdf",
+        "hybrid": "Hybrid_Hook.pdf",
+        "indica": "Indica_Hook.pdf",
+    }
+    missing = [f for f in HOOK_TEMPLATES.values() if not os.path.exists(f)]
+    if missing:
+        st.error("Missing hook template file(s) in repo root: " + ", ".join(missing))
         return
-    slots_per_page = max(slot_map.keys())
 
-    st.markdown(f"""
-    <div class="step-card"><div class="step-header">
-      <div class="step-num">1</div>
-      <div><div class="step-ttl">Export &amp; Upload Inventory CSV</div>
-      <div class="step-dsc">{slots_per_page} tags per sheet · duplicates auto-removed</div></div>
-    </div></div>""", unsafe_allow_html=True)
     st.markdown("""
-    <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
+    <div class="instr-card"><div class="instr-title">📋 How it Works</div>
     <div class="instr-steps">
-      <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backend, select any combination of <strong>product, room, category</strong>, etc.</span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>THC</strong>, &amp; <strong>Current Price</strong></span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>One tag per unique product — same strain with <strong>different THC %</strong> gets its own tag</span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Save additional tags for <strong>future use</strong> — re-upload anytime</span></div>
+      <div class="instr-step"><span class="instr-icon">1</span><span>Export a category with <strong>Product, THC, Current price</strong> — 24 tags per sheet</span></div>
+      <div class="instr-step"><span class="instr-icon">🔴</span><span><strong>Sativa</strong> → orange stripe &nbsp;·&nbsp; <span style="color:#A78BFA"><strong>Indica</strong></span> → purple &nbsp;·&nbsp; <span style="color:#34D399"><strong>Hybrid / No&nbsp;Strain</strong></span> → teal</span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Pick a product for each tag and fix its type if needed; tags are color-coded by strain type</span></div>
     </div></div>""", unsafe_allow_html=True)
 
     hook_file = st.file_uploader(" ", type=["csv"], key="hook_csv", label_visibility="collapsed")
     if hook_file is None:
-        st.markdown("""<div class="step-card" style="opacity:.4;"><div class="step-header">
-          <div class="step-num">2</div>
-          <div><div class="step-ttl">Review &amp; Generate</div>
-          <div class="step-dsc">Upload a CSV above to continue</div></div>
-        </div></div>""", unsafe_allow_html=True)
         return
 
-    df_hook = pd.read_csv(hook_file)
-    df_hook.columns = [str(c).strip('="').strip() for c in df_hook.columns]
-    price_col = "Current price" if "Current price" in df_hook.columns else "Price"
+    df = pd.read_csv(hook_file)
+    df.columns = [str(c).strip('="').strip() for c in df.columns]
+    if "Product" not in df.columns:
+        st.error("CSV must include a `Product` column.")
+        return
+    price_col = "Current price" if "Current price" in df.columns else "Price"
+
     raw_rows = []
-    for _, row in df_hook.iterrows():
+    for _, row in df.iterrows():
         product = str(row.get("Product", "")).strip('="').strip()
-        if not product or product.lower() == "nan": continue
+        if not product or product.lower() == "nan":
+            continue
         parts  = [p.strip() for p in product.split("|")]
-        brand  = parts[0].upper() if len(parts) >= 1 else ""
+        brand  = parts[0].upper() if parts else ""
         strain = parts[1].upper() if len(parts) >= 2 else product.upper()
-        # Pull a gram weight from the product name (e.g. 7G, 28G, 3.5G, .5G) and
-        # append it to the brand line. The 'm' in "mg" prevents matching edible doses.
-        wt_match = re.search(r'(\d*\.?\d+)\s*g\b', product, re.IGNORECASE)
-        if wt_match:
-            wt_val = wt_match.group(1)
-            if wt_val.endswith(".0"):
-                wt_val = wt_val[:-2]
-            brand = f"{brand} {wt_val}G".strip()
-        # If the product name contains a mg dose (edibles/drinks), show that in
-        # the THC field instead of the back-office THC %. e.g. "200MG Tarts" → 200MG
-        mg_match = re.search(r'(\d+(?:\.\d+)?)\s*mg\b', product, re.IGNORECASE)
-        if mg_match:
-            mg_val = mg_match.group(1)
-            if mg_val.endswith(".0"):
-                mg_val = mg_val[:-2]
-            thc = f"{mg_val}MG"
+        bits = [brand] if brand else []
+        wt = re.search(r'(\d*\.?\d+)\s*g\b', product, re.IGNORECASE)
+        if wt:
+            v = wt.group(1)
+            if v.endswith(".0"): v = v[:-2]
+            bits.append(f"{v}G")
+        pack = None
+        mx = re.search(r'\b(\d+)\s*[xX]\s*[\d.]', product)
+        if mx:
+            pack = f"{int(mx.group(1))}PK"
         else:
-            # Preserve the exact THC value from back office — never round.
-            thc = str(row.get("THC", "")).strip('="').strip()
-        rp     = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
-        pd_    = "".join(c for c in rp if c.isdigit() or c == ".")
+            mc = re.search(r'(\d+)\s*(?:ct|pk|pks|pcs?|count|counts|pack|packs|pieces?|cnt)\b',
+                           product, re.IGNORECASE)
+            if mc:
+                pack = f"{int(mc.group(1))}PK"
+        if pack:
+            bits.append(pack)
+        brand = " | ".join(bits)
+        # THC: a mg dose (edibles/drinks) shows in the THC field; else the % (decimals dropped)
+        mg = re.search(r'(\d+(?:\.\d+)?)\s*mg\b', product, re.IGNORECASE)
+        if mg:
+            mv = mg.group(1)
+            if mv.endswith(".0"): mv = mv[:-2]
+            thc = f"{mv}MG"
+        else:
+            thc_raw = str(row.get("THC", "")).strip('="').strip()
+            tm = re.search(r'(\d+)(?:\.\d+)?', thc_raw)
+            thc = (f"{tm.group(1)} %" if "%" in thc_raw else tm.group(1)) if tm else thc_raw
+        rp  = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
+        pdg = "".join(c for c in rp if c.isdigit() or c == ".")
         try:
-            pv    = float(pd_) if pd_ else 0.0
+            pv = float(pdg) if pdg else 0.0
             price = f"${int(pv)}" if pv == int(pv) else f"${pv:.2f}"
         except ValueError:
             price = "$0"
+        stype = preroll_tags.classify_type(strain)
         raw_rows.append({"brand": brand, "strain": strain, "thc": thc,
-                         "price": price, "product": product})
+                         "price": price, "type": stype, "product": product})
 
     if not raw_rows:
         st.error("No valid product rows found in the CSV.")
         return
 
-    # Dedup on the FULL product description (not just strain name) so the same
-    # strain in different packaged weights each gets its own tag.
     seen, rows = set(), []
     for r in raw_rows:
         key = (r["product"].strip().lower(), r["thc"].strip().lower())
         if key not in seen:
             seen.add(key); rows.append(r)
 
-    n_pages = -(-len(rows) // slots_per_page)
+    from collections import Counter
+    counts = Counter(r["type"] for r in rows)
     st.markdown(f"""
-    <div class="step-card"><div class="step-header">
-      <div class="step-num">2</div>
-      <div><div class="step-ttl">Review Tag Summary</div>
-      <div class="step-dsc">{len(rows)} unique tags · {n_pages} sheet(s) · {len(raw_rows)-len(rows)} duplicates removed</div></div>
-    </div></div>""", unsafe_allow_html=True)
+    <div class="metric-row">
+      <div class="m-tile"><div class="m-num">{counts.get('sativa',0)}</div><div class="m-lbl">🔴 Sativa</div></div>
+      <div class="m-tile"><div class="m-num">{counts.get('hybrid',0)}</div><div class="m-lbl">🟢 Hybrid</div></div>
+      <div class="m-tile"><div class="m-num">{counts.get('indica',0)}</div><div class="m-lbl">🟣 Indica</div></div>
+    </div>""", unsafe_allow_html=True)
 
-    preview = pd.DataFrame(rows)[["brand","strain","thc","price"]]
-    preview.columns = ["Brand","Strain","THC","Price"]
+    preview = pd.DataFrame(rows)[["brand", "strain", "thc", "price", "type"]]
+    preview.columns = ["Brand", "Strain", "THC", "Price", "Type"]
     st.dataframe(preview, use_container_width=True, hide_index=True)
 
-    st.markdown("""<div class="step-card"><div class="step-header">
-      <div class="step-num">3</div>
-      <div><div class="step-ttl">Generate &amp; Download</div>
-      <div class="step-dsc">Fills template using embedded Paralucent-Heavy font with true autosize</div></div>
-    </div></div>""", unsafe_allow_html=True)
+    # ── Choose what goes on the tags ──────────────────────────────────────────
+    st.markdown('<div class="sec-head"><div class="sec-head-text">🎯 Choose items for the tags</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    mode_pick = st.radio("Selection mode", ["Pick items per tag", "Tag every imported item"],
+                         horizontal=True, label_visibility="collapsed", key="hook_mode")
 
-    def _esc(s): return s.replace("\\","\\\\").replace("(","\\(").replace(")","\\)")
-    def make_fdf(page_rows):
-        entries = []
-        for slot in range(1, slots_per_page + 1):
-            d  = page_rows[slot-1] if slot-1 < len(page_rows) else {}
-            sf = slot_map.get(slot, {})
-            for key, val in [("brand",d.get("brand","")),("strain",d.get("strain","")),
-                              ("thc",d.get("thc","")),("price",d.get("price",""))]:
-                fn = sf.get(key)
-                if fn: entries.append(f"<</T ({_esc(fn)})/V ({_esc(val)})>>")
-        return "%FDF-1.2\n1 0 obj\n<< /FDF << /Fields [\n" + "\n".join(entries) + "\n] >> >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
+    def _opt_label(r):
+        extra = " · ".join(x for x in [r.get("brand", ""), r.get("thc", ""), r.get("price", "")] if x)
+        return f'{r["strain"]}  —  {extra}' if extra else r["strain"]
 
-    if st.button("🖨️  GENERATE PRINT-READY TAGS", type="primary"):
-        pages = [rows[i:i+slots_per_page] for i in range(0, len(rows), slots_per_page)]
-        with st.spinner(f"Filling {len(rows)} tags across {len(pages)} sheet(s)…"):
+    labels, lab2row, _seen = [], {}, {}
+    for r in rows:
+        base = _opt_label(r)
+        if base in _seen:
+            _seen[base] += 1; lab = f"{base}  (#{_seen[base]})"
+        else:
+            _seen[base] = 1; lab = base
+        labels.append(lab); lab2row[lab] = r
+    EMPTY = "— empty —"
+    opts = [EMPTY] + labels
+    TYPES = ["sativa", "hybrid", "indica"]
+    TLAB = {"sativa": "🔴 Sativa", "hybrid": "🟢 Hybrid", "indica": "🟣 Indica"}
+
+    if mode_pick == "Tag every imported item":
+        chosen = rows
+    else:
+        cap = max(1, len(rows))
+        n_tags = int(st.number_input("How many tags?", 1, 96, min(24, cap), 1, key="hook_n"))
+        st.caption("Pick a product per tag, then fix its **type** if the import mis-classified it — "
+                   "unclassified items default to 🟢 Hybrid.")
+        b1, b2, _ = st.columns([1, 1, 3])
+        if b1.button("↧  Auto-fill in order", key="hook_af"):
+            for i in range(n_tags):
+                st.session_state[f"hk_{i}"] = labels[i] if i < len(labels) else EMPTY
+        if b2.button("✕  Clear all", key="hook_clr"):
+            for i in range(n_tags):
+                st.session_state[f"hk_{i}"] = EMPTY
+
+        def render_slot(i):
+            pk, tk, lk = f"hk_{i}", f"hkt_{i}", f"hkl_{i}"
+            if st.session_state.get(pk, EMPTY) not in opts:
+                st.session_state[pk] = EMPTY
+            pc, tc = st.columns([5, 2])
+            sel = pc.selectbox(f"Tag {i+1}", opts, key=pk)
+            if sel == EMPTY:
+                tc.selectbox("Type", TYPES, key=tk, format_func=lambda x: TLAB[x],
+                            label_visibility="hidden", disabled=True)
+                return None
+            item = dict(lab2row[sel])
+            auto = item.get("type", "hybrid")
+            if st.session_state.get(lk) != sel:
+                st.session_state[tk] = auto
+                st.session_state[lk] = sel
+            if st.session_state.get(tk) not in TYPES:
+                st.session_state[tk] = auto
+            item["type"] = tc.selectbox("Type", TYPES, key=tk,
+                              format_func=lambda x: TLAB[x], label_visibility="hidden")
+            return item
+
+        chosen = []
+        for t in range(n_tags):
+            item = render_slot(t)
+            if item:
+                chosen.append(item)
+
+    if not chosen:
+        st.info("Pick at least one item above to place on a tag.")
+        return
+
+    sel_counts = Counter(r["type"] for r in chosen)
+    st.caption(f"Selected **{len(chosen)}** tags  ·  "
+               f"{sel_counts.get('sativa',0)} sativa · {sel_counts.get('hybrid',0)} hybrid · {sel_counts.get('indica',0)} indica")
+
+    if st.button("🖨️  GENERATE HOOK TAGS", type="primary"):
+        grouped = {}
+        for r in chosen:
+            grouped.setdefault(r["type"], []).append(r)
+        with st.spinner(f"Building {len(chosen)} hook tags…"):
             try:
                 with tempfile.TemporaryDirectory() as tmp:
-                    page_paths, err = [], None
-                    for i, pg in enumerate(pages):
-                        fp = os.path.join(tmp, f"p{i}.fdf")
-                        op = os.path.join(tmp, f"p{i}.pdf")
-                        with open(fp, "w", encoding="latin-1") as f: f.write(make_fdf(pg))
-                        r = subprocess.run(["pdftk", TEMPLATE_PATH, "fill_form", fp, "output", op],
-                                           capture_output=True, text=True)
-                        if r.returncode != 0:
-                            err = f"pdftk error on sheet {i+1}: {r.stderr.strip()}"; break
-                        page_paths.append(op)
-                    if err: st.error(err); return
-                    if len(page_paths) == 1:
-                        final = page_paths[0]
-                    else:
-                        final = os.path.join(tmp, "merged.pdf")
-                        r = subprocess.run(["pdftk"]+page_paths+["cat","output",final],
-                                           capture_output=True, text=True)
-                        if r.returncode != 0:
-                            st.error(f"Merge error: {r.stderr.strip()}"); return
-                    with open(final, "rb") as f: pdf_bytes = f.read()
+                    pdf_bytes = preroll_tags.build_separate(HOOK_TEMPLATES, grouped, tmp)
             except FileNotFoundError:
-                st.error("pdftk not found — add `pdftk` to packages.txt."); return
+                st.error("pdftk not found — add `pdftk` to packages.txt.")
+                return
             except Exception as e:
-                st.error(f"Unexpected error: {e}"); return
-        st.success(f"✅ {len(rows)} tags across {len(pages)} sheet(s) — ready to print!")
-        st.download_button("📥  DOWNLOAD HOOK TAGS PDF", pdf_bytes, "HookTags_Ready.pdf", "application/pdf")
-
+                st.error(f"Error building tags: {e}")
+                return
+        st.success(f"✅ {len(chosen)} hook tags "
+                   f"({sel_counts.get('sativa',0)} sativa · {sel_counts.get('hybrid',0)} hybrid · {sel_counts.get('indica',0)} indica)")
+        st.download_button("📥  DOWNLOAD HOOK TAGS PDF", pdf_bytes,
+                           "HookTags_Ready.pdf", "application/pdf")
 
 
 with tab3:
