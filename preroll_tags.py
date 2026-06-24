@@ -154,29 +154,29 @@ def _apply_optimal_sizes(template_path, page_rows, tmpdir, tag):
     # Load the real font metrics once so text is measured exactly (no clipping).
     fontinfo = _load_font_widths(template_path)
 
-    # THC and PRICE sit on the same visual row and share field height. Compute a
-    # single matched size per slot for that pair so their baselines line up
-    # (otherwise a short price gets a much bigger font and prints lower than THC).
+    # THC and PRICE share a visual row. Size every THC/PRICE box on the sheet to
+    # ONE shared font size — the largest that still fits all of them — so prices
+    # (and THCs) are uniform tag-to-tag and their baselines line up.
     name_to_size = {}
+    tp_fields, tp_sizes = [], []
     for slot in range(1, max_slots + 1):
         sf = sm.get(slot, {})
-        thc_fn, price_fn = sf.get("thc"), sf.get("price")
-        pair = []
-        for fn in (thc_fn, price_fn):
+        for key in ("thc", "price"):
+            fn = sf.get(key)
             if not fn:
                 continue
             rect = _field_rect(writer, fn)
             if not rect:
                 continue
             fw, fh = rect
-            # Taller height factor here so the THC/price line is big and readable
-            # from the counter (matched pairing keeps the baselines aligned).
-            pair.append((fn, _optimal_size(name_to_text.get(fn, ""), fw, fh,
-                                           fontinfo, height_factor=0.80)))
-        if pair:
-            shared = min(s for _, s in pair)   # smaller of the two keeps both fitting
-            for fn, _ in pair:
-                name_to_size[fn] = shared
+            tp_fields.append(fn)
+            txt = name_to_text.get(fn, "")
+            if txt.strip():                       # ignore blank slots when finding the min
+                tp_sizes.append(_optimal_size(txt, fw, fh, fontinfo, height_factor=0.80))
+    if tp_fields:
+        shared = min(tp_sizes) if tp_sizes else 12.0
+        for fn in tp_fields:
+            name_to_size[fn] = shared
 
     for page in writer.pages:
         for a in page.get("/Annots", []):
