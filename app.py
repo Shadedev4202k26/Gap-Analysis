@@ -1925,9 +1925,9 @@ def render_preroll_tags():
         return
 
     TEMPLATES = {
-        "sativa": "Sativa_Prerolls_Updated.pdf",
-        "hybrid": "Hybrid_Prerolls_Updated_-_Copy.pdf",
-        "indica": "Indica_Prerolls_Updated.pdf",
+        "sativa": "Sativa_Prerolls.pdf",
+        "hybrid": "Hybrid_Prerolls.pdf",
+        "indica": "Indica_Prerolls.pdf",
     }
     SPLIT_TEMPLATES = {
         "sativa": "sativa_split_template.pdf",
