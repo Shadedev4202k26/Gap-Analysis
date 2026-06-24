@@ -218,7 +218,7 @@ def _fill_template(template_path, page_rows, tmpdir, tag):
     with open(fdf_path, "w", encoding="latin-1") as f:
         f.write(_make_fdf(sm, page_rows, max_slots))
     r = subprocess.run(
-        ["pdftk", sized_tmpl, "fill_form", fdf_path, "output", out_path],
+        ["pdftk", sized_tmpl, "fill_form", fdf_path, "output", out_path, "flatten"],
         capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"pdftk fill failed: {r.stderr.strip()}")
