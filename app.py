@@ -772,6 +772,8 @@ def build_tag_rows(df):
         strain = strain.upper()
 
         bits = [p.upper() for p in brand_parts]              # brand + sub-brand(s)
+        if re.search(r'\bsingles?\b', product, re.IGNORECASE):   # single-unit items
+            bits.append("SINGLE")
         wt = re.search(r'(\d*\.?\d+)\s*g\b', product, re.IGNORECASE)
         if wt:
             v = wt.group(1)
