@@ -737,6 +737,91 @@ with tab2:
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 3 — HOOK TAG GENERATOR
 # ════════════════════════════════════════════════════════════════════════════════
+def build_tag_rows(df):
+    """Parse a Dutchie inventory dataframe into deduped tag rows, shared by the
+    preroll and hook-tag generators.
+
+    Product format is `Brand | [Sub-brand…] | Strain | Description(size/form)`.
+    The strain is the section immediately before the size/form description;
+    everything before it (brand + any sub-brands) plus the weight/pack becomes
+    the brand line. The CSV's `Strain` column holds the strain TYPE
+    (sativa/hybrid/indica), which is used for colour routing.
+    """
+    price_col = "Current price" if "Current price" in df.columns else "Price"
+    SIZE_RE = re.compile(r'(?<![A-Za-z])\d*\.?\d+\s*(?:g|mg)\b', re.IGNORECASE)
+    FORM_RE = re.compile(r'\b(?:pre-?rolls?|blunts?|gummies?|gummy|chocolates?|bites?|'
+                         r'cart(?:ridge)?s?|disposables?|vapes?|flower|eighths?|quarters?|'
+                         r'infused|rosin|resin|live|single|pack|pcs?|nights?|bars?)\b',
+                         re.IGNORECASE)
+
+    def is_desc(s):
+        return bool(SIZE_RE.search(s) or FORM_RE.search(s))
+
+    raw = []
+    for _, row in df.iterrows():
+        product = str(row.get("Product", "")).strip('="').strip()
+        if not product or product.lower() == "nan":
+            continue
+        parts = [p.strip() for p in product.split("|") if p.strip()]
+        if len(parts) >= 2 and is_desc(parts[-1]):
+            strain, brand_parts = parts[-2], parts[:-2]      # …| Strain | Description
+        elif parts:
+            strain, brand_parts = parts[-1], parts[:-1]      # last part is the strain
+        else:
+            strain, brand_parts = product, []
+        strain = strain.upper()
+
+        bits = [p.upper() for p in brand_parts]              # brand + sub-brand(s)
+        wt = re.search(r'(\d*\.?\d+)\s*g\b', product, re.IGNORECASE)
+        if wt:
+            v = wt.group(1)
+            if v.endswith(".0"): v = v[:-2]
+            bits.append(f"{v}G")
+        pack = None
+        mx = re.search(r'\b(\d+)\s*[xX]\s*[\d.]', product)
+        if mx:
+            pack = f"{int(mx.group(1))}PK"
+        else:
+            mc = re.search(r'(\d+)\s*(?:ct|pk|pks|pcs?|count|counts|pack|packs|pieces?|cnt)\b',
+                           product, re.IGNORECASE)
+            if mc:
+                pack = f"{int(mc.group(1))}PK"
+        if pack:
+            bits.append(pack)
+        brand = " | ".join(b for b in bits if b)
+
+        mg = re.search(r'(\d+(?:\.\d+)?)\s*mg\b', product, re.IGNORECASE)
+        if mg:
+            mv = mg.group(1)
+            if mv.endswith(".0"): mv = mv[:-2]
+            thc = f"{mv}MG"
+        else:
+            thc_raw = str(row.get("THC", "")).strip('="').strip()
+            tm = re.search(r'(\d+)(?:\.\d+)?', thc_raw)
+            thc = (f"{tm.group(1)} %" if "%" in thc_raw else tm.group(1)) if tm else thc_raw
+
+        rp  = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
+        pdg = "".join(c for c in rp if c.isdigit() or c == ".")
+        try:
+            pv = float(pdg) if pdg else 0.0
+            price = f"${int(pv)}" if pv == int(pv) else f"${pv:.2f}"
+        except ValueError:
+            price = "$0"
+
+        scol = str(row.get("Strain", "")).strip().lower()    # type column
+        stype = scol if scol in ("sativa", "hybrid", "indica") else preroll_tags.classify_type(strain)
+
+        raw.append({"brand": brand, "strain": strain, "thc": thc,
+                    "price": price, "type": stype, "product": product})
+
+    seen, rows = set(), []
+    for r in raw:
+        key = (r["product"].strip().lower(), r["thc"].strip().lower())
+        if key not in seen:
+            seen.add(key); rows.append(r)
+    return rows
+
+
 def render_hook_tags():
     st.markdown('<div class="sec-head"><div class="sec-head-text">🏷️ Small Hook Tags</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     if not PREROLL_AVAILABLE:
@@ -770,64 +855,10 @@ def render_hook_tags():
     if "Product" not in df.columns:
         st.error("CSV must include a `Product` column.")
         return
-    price_col = "Current price" if "Current price" in df.columns else "Price"
-
-    raw_rows = []
-    for _, row in df.iterrows():
-        product = str(row.get("Product", "")).strip('="').strip()
-        if not product or product.lower() == "nan":
-            continue
-        parts  = [p.strip() for p in product.split("|")]
-        brand  = parts[0].upper() if parts else ""
-        strain = parts[1].upper() if len(parts) >= 2 else product.upper()
-        bits = [brand] if brand else []
-        wt = re.search(r'(\d*\.?\d+)\s*g\b', product, re.IGNORECASE)
-        if wt:
-            v = wt.group(1)
-            if v.endswith(".0"): v = v[:-2]
-            bits.append(f"{v}G")
-        pack = None
-        mx = re.search(r'\b(\d+)\s*[xX]\s*[\d.]', product)
-        if mx:
-            pack = f"{int(mx.group(1))}PK"
-        else:
-            mc = re.search(r'(\d+)\s*(?:ct|pk|pks|pcs?|count|counts|pack|packs|pieces?|cnt)\b',
-                           product, re.IGNORECASE)
-            if mc:
-                pack = f"{int(mc.group(1))}PK"
-        if pack:
-            bits.append(pack)
-        brand = " | ".join(bits)
-        # THC: a mg dose (edibles/drinks) shows in the THC field; else the % (decimals dropped)
-        mg = re.search(r'(\d+(?:\.\d+)?)\s*mg\b', product, re.IGNORECASE)
-        if mg:
-            mv = mg.group(1)
-            if mv.endswith(".0"): mv = mv[:-2]
-            thc = f"{mv}MG"
-        else:
-            thc_raw = str(row.get("THC", "")).strip('="').strip()
-            tm = re.search(r'(\d+)(?:\.\d+)?', thc_raw)
-            thc = (f"{tm.group(1)} %" if "%" in thc_raw else tm.group(1)) if tm else thc_raw
-        rp  = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
-        pdg = "".join(c for c in rp if c.isdigit() or c == ".")
-        try:
-            pv = float(pdg) if pdg else 0.0
-            price = f"${int(pv)}" if pv == int(pv) else f"${pv:.2f}"
-        except ValueError:
-            price = "$0"
-        stype = preroll_tags.classify_type(strain)
-        raw_rows.append({"brand": brand, "strain": strain, "thc": thc,
-                         "price": price, "type": stype, "product": product})
-
-    if not raw_rows:
+    rows = build_tag_rows(df)
+    if not rows:
         st.error("No valid product rows found in the CSV.")
         return
-
-    seen, rows = set(), []
-    for r in raw_rows:
-        key = (r["product"].strip().lower(), r["thc"].strip().lower())
-        if key not in seen:
-            seen.add(key); rows.append(r)
 
     from collections import Counter
     counts = Counter(r["type"] for r in rows)
@@ -1984,64 +2015,10 @@ def render_preroll_tags():
         return
     price_col = "Current price" if "Current price" in df.columns else "Price"
 
-    raw_rows = []
-    for _, row in df.iterrows():
-        product = str(row.get("Product", "")).strip('="').strip()
-        if not product or product.lower() == "nan":
-            continue
-        parts  = [p.strip() for p in product.split("|")]
-        brand  = parts[0].upper() if len(parts) >= 1 else ""
-        strain = parts[1].upper() if len(parts) >= 2 else product.upper()
-        # Build the brand line as Brand | Weight | Pack, omitting any missing piece.
-        brand_bits = [brand] if brand else []
-        # weight (handles 1G, 3.5G, and leading-decimal like .5G/.7G)
-        wt = re.search(r'(\d*\.?\d+)\s*g\b', product, re.IGNORECASE)
-        if wt:
-            v = wt.group(1)
-            if v.endswith(".0"): v = v[:-2]
-            brand_bits.append(f"{v}G")
-        # multi-pack count, normalized to PK (e.g. 5PK, 14PK, 28PK)
-        pack = None
-        mx = re.search(r'\b(\d+)\s*[xX]\s*[\d.]', product)  # "5 x 1G", "28 x 1G"
-        if mx:
-            pack = f"{int(mx.group(1))}PK"
-        else:
-            mc = re.search(r'(\d+)\s*(?:ct|pk|pks|pcs?|count|counts|pack|packs|pieces?|cnt)\b',
-                           product, re.IGNORECASE)
-            if mc:
-                pack = f"{int(mc.group(1))}PK"
-        if pack:
-            brand_bits.append(pack)
-        brand = " | ".join(brand_bits)
-        # THC: drop decimals without rounding (e.g. "40.70 %" -> "40 %") so the
-        # THC/price line can render larger and stay readable from the counter.
-        thc_raw = str(row.get("THC", "")).strip('="').strip()
-        tm = re.search(r'(\d+)(?:\.\d+)?', thc_raw)
-        if tm:
-            thc = f"{tm.group(1)} %" if "%" in thc_raw else tm.group(1)
-        else:
-            thc = thc_raw
-        rp  = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
-        pdg = "".join(c for c in rp if c.isdigit() or c == ".")
-        try:
-            pv = float(pdg) if pdg else 0.0
-            price = f"${int(pv)}" if pv == int(pv) else f"${pv:.2f}"
-        except ValueError:
-            price = "$0"
-        stype = preroll_tags.classify_type(str(row.get("Strain", "")))
-        raw_rows.append({"brand": brand, "strain": strain, "thc": thc,
-                         "price": price, "type": stype, "product": product})
-
-    if not raw_rows:
+    rows = build_tag_rows(df)
+    if not rows:
         st.error("No valid product rows found in the CSV.")
         return
-
-    # Dedup on full product + THC (keeps weight/potency variants separate)
-    seen, rows = set(), []
-    for r in raw_rows:
-        key = (r["product"].strip().lower(), r["thc"].strip().lower())
-        if key not in seen:
-            seen.add(key); rows.append(r)
 
     from collections import Counter
     counts = Counter(r["type"] for r in rows)
