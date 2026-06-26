@@ -104,7 +104,7 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None):
     returns {'error': ...} so the caller can fall back."""
     model = model or "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    headers = {"x-goog-api-key": gemini_key, "Content-Type": "application/json"}
+    headers = {"x-goog-api-key": (gemini_key or "").strip(), "Content-Type": "application/json"}
     prompt = (
         f'Use Google Search to find the most widely accepted, accurate profile for the '
         f'cannabis strain "{strain_name}". Return ONLY a compact JSON object — no markdown, '
@@ -123,12 +123,24 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None):
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=20)
         if r.status_code != 200:
-            return {"error": f"Gemini HTTP {r.status_code}"}
+            detail = ""
+            try:
+                detail = (r.json().get("error", {}) or {}).get("message", "")
+            except Exception:
+                detail = r.text[:300]
+            return {"error": f"HTTP {r.status_code} ({model}): {detail or r.reason}"}
         cand = (r.json().get("candidates") or [{}])[0]
         text = "".join(p.get("text", "") for p in cand.get("content", {}).get("parts", [])).strip()
+        if not text:
+            fr = cand.get("finishReason", "no text returned")
+            return {"error": f"Empty response (finishReason={fr})"}
+        raw = text
         if "{" in text and "}" in text:
             text = text[text.find("{"):text.rfind("}") + 1]
-        data = json.loads(text)
+        try:
+            data = json.loads(text)
+        except Exception:
+            return {"error": f"Could not parse JSON from model. Got: {raw[:200]}"}
         sources = []
         for ch in (cand.get("groundingMetadata", {}).get("groundingChunks", []) or []):
             w = ch.get("web", {}) or {}
@@ -138,7 +150,7 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None):
             data["_sources"] = sources[:3]
         return data
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -633,12 +645,14 @@ with tab1:
     if "last_strain" in st.session_state and st.session_state.last_strain:
         strain = st.session_state.last_strain
         gem_key = st.secrets.get("GEMINI_API_KEY", "")
-        data, grounded = None, False
+        data, grounded, gerr = None, False, ""
         if gem_key:
             with st.spinner(f"Searching Google for {strain}…"):
-                g = generate_strain_profile_grounded(gem_key, strain)
+                g = generate_strain_profile_grounded(gem_key, strain, st.secrets.get("GEMINI_MODEL"))
             if "error" not in g:
                 data, grounded = g, True
+            else:
+                gerr = g["error"]
         if data is None:
             data = generate_strain_profile(st.secrets["GROQ_API_KEY"], strain)
         if "error" not in data:
@@ -673,6 +687,9 @@ with tab1:
                            "to pull live Google Search results instead.")
             else:
                 st.caption("⚠️ Google Search lookup was unavailable just now — showing the offline AI profile.")
+                if gerr:
+                    with st.expander("What went wrong?"):
+                        st.code(gerr)
         st.session_state.last_strain = None
     st.markdown('<hr>', unsafe_allow_html=True)
     st.markdown('<div class="sec-head"><div class="sec-head-text">🧪 Cannabinoid Encyclopedia</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
