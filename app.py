@@ -97,7 +97,50 @@ def generate_strain_profile(groq_key, strain_name):
     return {"classification": "HYBRID", "lineage": "N/A", "terpenes": "N/A",
             "flavor": "N/A", "effects": "N/A", "cannabinoids": "N/A"}
 
-def get_compound_profile(api_key, compound_name):
+def generate_strain_profile_grounded(gemini_key, strain_name, model=None):
+    """Pull a strain profile from Google's AI grounded in live Google Search
+    (Gemini + google_search tool). Returns the same JSON shape as the Groq
+    profiler, plus an optional '_sources' list of {title, uri}. On any failure
+    returns {'error': ...} so the caller can fall back."""
+    model = model or "gemini-2.5-flash"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    headers = {"x-goog-api-key": gemini_key, "Content-Type": "application/json"}
+    prompt = (
+        f'Use Google Search to find the most widely accepted, accurate profile for the '
+        f'cannabis strain "{strain_name}". Return ONLY a compact JSON object — no markdown, '
+        f'no commentary — with exactly these keys: '
+        f'"classification" (Sativa, Indica, or Hybrid, noting dominance if applicable), '
+        f'"lineage" (parent strains / cross), '
+        f'"terpenes" (dominant terpenes), '
+        f'"flavor" (taste & aroma), '
+        f'"cannabinoids" (typical THC/CBD ranges), '
+        f'"effects" (commonly reported effects). '
+        f'If the strain genuinely cannot be found, set "lineage" to "Unknown strain".'
+    )
+    payload = {"contents": [{"parts": [{"text": prompt}]}],
+               "tools": [{"google_search": {}}],
+               "generationConfig": {"temperature": 0.1}}
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
+        if r.status_code != 200:
+            return {"error": f"Gemini HTTP {r.status_code}"}
+        cand = (r.json().get("candidates") or [{}])[0]
+        text = "".join(p.get("text", "") for p in cand.get("content", {}).get("parts", [])).strip()
+        if "{" in text and "}" in text:
+            text = text[text.find("{"):text.rfind("}") + 1]
+        data = json.loads(text)
+        sources = []
+        for ch in (cand.get("groundingMetadata", {}).get("groundingChunks", []) or []):
+            w = ch.get("web", {}) or {}
+            if w.get("uri"):
+                sources.append({"title": str(w.get("title", "") or "")[:80], "uri": w["uri"]})
+        if sources:
+            data["_sources"] = sources[:3]
+        return data
+    except Exception as e:
+        return {"error": str(e)}
+
+
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     system = "You are an advanced cannabinoid science database. Output JSON. Keys: status, primary_effects, medical_benefits, customer_pitch."
@@ -589,9 +632,15 @@ with tab1:
         st.rerun()
     if "last_strain" in st.session_state and st.session_state.last_strain:
         strain = st.session_state.last_strain
-        google_url = f"https://www.google.com/search?q={quote_plus(strain + ' strain')}&udm=50"
-        st.markdown(f'<a href="{google_url}" target="_blank" class="g-btn">✨ Ask Google AI about {strain}</a>', unsafe_allow_html=True)
-        data = generate_strain_profile(st.secrets["GROQ_API_KEY"], strain)
+        gem_key = st.secrets.get("GEMINI_API_KEY", "")
+        data, grounded = None, False
+        if gem_key:
+            with st.spinner(f"Searching Google for {strain}…"):
+                g = generate_strain_profile_grounded(gem_key, strain)
+            if "error" not in g:
+                data, grounded = g, True
+        if data is None:
+            data = generate_strain_profile(st.secrets["GROQ_API_KEY"], strain)
         if "error" not in data:
             clf  = str(data.get('classification', 'HYBRID')).upper()
             bcls = "sb-sativa" if "SATIVA" in clf else ("sb-indica" if "INDICA" in clf else "sb-hybrid")
@@ -607,6 +656,23 @@ with tab1:
               <div class="sc-attr"><div class="attr-label">⚡ Cannabinoids</div><div class="attr-val attr-val-hi">{data.get('cannabinoids','—')}</div></div>
               <div class="sc-attr"><div class="attr-label">🧠 Effects</div><div class="attr-val">{data.get('effects','—')}</div></div>
             </div></div>""", unsafe_allow_html=True)
+            if grounded:
+                src = data.get("_sources", [])
+                note = "🔎 Pulled live from Google Search"
+                if src:
+                    links = " · ".join(
+                        f'<a href="{s["uri"]}" target="_blank" style="color:#22D3EE;text-decoration:none">'
+                        f'{(s["title"] or "source").replace("<"," ").replace(">"," ")}</a>'
+                        for s in src)
+                    note += " — " + links
+                st.markdown(
+                    f'<div style="font-size:11px;color:#6B7280;margin:-6px 2px 10px;'
+                    f'font-family:\'Inter\',sans-serif">{note}</div>', unsafe_allow_html=True)
+            elif not gem_key:
+                st.caption("⚠️ Showing the offline AI profile. Add a `GEMINI_API_KEY` in app secrets "
+                           "to pull live Google Search results instead.")
+            else:
+                st.caption("⚠️ Google Search lookup was unavailable just now — showing the offline AI profile.")
         st.session_state.last_strain = None
     st.markdown('<hr>', unsafe_allow_html=True)
     st.markdown('<div class="sec-head"><div class="sec-head-text">🧪 Cannabinoid Encyclopedia</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
