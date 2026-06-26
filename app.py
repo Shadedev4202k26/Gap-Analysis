@@ -97,11 +97,11 @@ def generate_strain_profile(groq_key, strain_name):
     return {"classification": "HYBRID", "lineage": "N/A", "terpenes": "N/A",
             "flavor": "N/A", "effects": "N/A", "cannabinoids": "N/A"}
 
-def generate_strain_profile_grounded(gemini_key, strain_name, model=None):
-    """Pull a strain profile from Google's AI grounded in live Google Search
-    (Gemini + google_search tool). Returns the same JSON shape as the Groq
-    profiler, plus an optional '_sources' list of {title, uri}. On any failure
-    returns {'error': ...} so the caller can fall back."""
+def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_search=True):
+    """Pull a strain profile from Gemini. With use_search=True it grounds the
+    answer in live Google Search (paid feature); with use_search=False it uses
+    the model alone (free tier). Returns the Groq-style JSON shape, plus an
+    optional '_sources' list when grounded. On failure returns {'error': ...}."""
     model = model or "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     headers = {"x-goog-api-key": (gemini_key or "").strip(), "Content-Type": "application/json"}
@@ -118,8 +118,9 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None):
         f'If the strain genuinely cannot be found, set "lineage" to "Unknown strain".'
     )
     payload = {"contents": [{"parts": [{"text": prompt}]}],
-               "tools": [{"google_search": {}}],
                "generationConfig": {"temperature": 0.1}}
+    if use_search:
+        payload["tools"] = [{"google_search": {}}]
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=20)
         if r.status_code != 200:
@@ -645,16 +646,24 @@ with tab1:
     if "last_strain" in st.session_state and st.session_state.last_strain:
         strain = st.session_state.last_strain
         gem_key = st.secrets.get("GEMINI_API_KEY", "")
-        data, grounded, gerr = None, False, ""
+        gmodel = st.secrets.get("GEMINI_MODEL")
+        data, mode, gerr = None, None, ""
         if gem_key:
             with st.spinner(f"Searching Google for {strain}…"):
-                g = generate_strain_profile_grounded(gem_key, strain, st.secrets.get("GEMINI_MODEL"))
+                g = generate_strain_profile_grounded(gem_key, strain, gmodel, use_search=True)
             if "error" not in g:
-                data, grounded = g, True
+                data, mode = g, "grounded"
             else:
                 gerr = g["error"]
+                with st.spinner(f"Profiling {strain}…"):
+                    g2 = generate_strain_profile_grounded(gem_key, strain, gmodel, use_search=False)
+                if "error" not in g2:
+                    data, mode = g2, "gemini"
+                else:
+                    gerr = g2["error"]
         if data is None:
             data = generate_strain_profile(st.secrets["GROQ_API_KEY"], strain)
+            mode = mode or "groq"
         if "error" not in data:
             clf  = str(data.get('classification', 'HYBRID')).upper()
             bcls = "sb-sativa" if "SATIVA" in clf else ("sb-indica" if "INDICA" in clf else "sb-hybrid")
@@ -670,7 +679,7 @@ with tab1:
               <div class="sc-attr"><div class="attr-label">⚡ Cannabinoids</div><div class="attr-val attr-val-hi">{data.get('cannabinoids','—')}</div></div>
               <div class="sc-attr"><div class="attr-label">🧠 Effects</div><div class="attr-val">{data.get('effects','—')}</div></div>
             </div></div>""", unsafe_allow_html=True)
-            if grounded:
+            if mode == "grounded":
                 src = data.get("_sources", [])
                 note = "🔎 Pulled live from Google Search"
                 if src:
@@ -682,11 +691,21 @@ with tab1:
                 st.markdown(
                     f'<div style="font-size:11px;color:#6B7280;margin:-6px 2px 10px;'
                     f'font-family:\'Inter\',sans-serif">{note}</div>', unsafe_allow_html=True)
+            elif mode == "gemini":
+                st.caption("✨ Gemini AI profile (free). Live Google Search sourcing needs billing "
+                           "enabled on your Gemini key — see the note below to turn it on.")
+                if gerr:
+                    with st.expander("Why no live Google sources?"):
+                        st.code(gerr)
+                        st.markdown("Search grounding is a paid Gemini feature. Add billing/credits "
+                                    "at [AI Studio](https://ai.studio/projects). For the cheapest "
+                                    "grounding, set `GEMINI_MODEL = \"gemini-3.5-flash\"` in secrets "
+                                    "(5,000 free grounded prompts/month, then ~$14 per 1,000).")
             elif not gem_key:
                 st.caption("⚠️ Showing the offline AI profile. Add a `GEMINI_API_KEY` in app secrets "
                            "to pull live Google Search results instead.")
             else:
-                st.caption("⚠️ Google Search lookup was unavailable just now — showing the offline AI profile.")
+                st.caption("⚠️ Gemini was unavailable — showing the offline AI profile.")
                 if gerr:
                     with st.expander("What went wrong?"):
                         st.code(gerr)
