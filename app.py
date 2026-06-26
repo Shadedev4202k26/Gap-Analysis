@@ -564,12 +564,13 @@ with col_hdr:
     </div>""", unsafe_allow_html=True)
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab9, tab4 = st.tabs([
+tab1, tab2, tab3, tab9, tab4, tab5 = st.tabs([
     "⚡  STRAIN SNIFFER",
     "📊  INVENTORY BALANCING",
     "🏷️  SMALL HOOK TAGS",
     "🌿  PREROLL TAGS",
     "⏳  AGING STOCK",
+    "🧰  STORE TOOLS",
 ])
 # DISABLED FOR NOW — Checklist, Comms, Crossword, Burn Down.
 # The render_* functions below are left intact; re-add the labels above and
@@ -2142,3 +2143,43 @@ def render_preroll_tags():
 
 with tab9:
     render_preroll_tags()
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 5 — STORE TOOLS  (self-contained HTML mini-apps run + download)
+# ════════════════════════════════════════════════════════════════════════════════
+def render_store_tools():
+    st.markdown('<div class="sec-head"><div class="sec-head-text">🧰 Store Tools</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="instr-card"><div class="instr-title">📋 How it Works</div>
+    <div class="instr-steps">
+      <div class="instr-step"><span class="instr-icon">1</span><span>Pick a tool below — it runs right here in the app</span></div>
+      <div class="instr-step"><span class="instr-icon">💾</span><span>Data is saved in <strong>this browser on this device</strong> — nothing is uploaded</span></div>
+      <div class="instr-step"><span class="instr-icon fire">⬇️</span><span>Use <strong>Download</strong> to run a standalone copy (best for a tablet at the door)</span></div>
+    </div></div>""", unsafe_allow_html=True)
+
+    TOOLS = {
+        "🚗  Curbside Arrivals":    ("curbside-tracker.html",    900),
+        "☕  Break & Lunch Tracker": ("break-lunch-tracker.html", 940),
+    }
+    choice = st.radio("Tool", list(TOOLS.keys()), horizontal=True,
+                      label_visibility="collapsed", key="store_tool_pick")
+    fname, height = TOOLS[choice]
+
+    try:
+        html = open(fname, encoding="utf-8").read()
+    except FileNotFoundError:
+        st.error(f"`{fname}` isn't in the repo yet — commit it to your repo root next to app.py.")
+        return
+
+    components.html(html, height=height, scrolling=True)
+
+    st.download_button(f"⬇️  Download {choice.strip()} (standalone)", data=html,
+                       file_name=fname, mime="text/html", key=f"dl_{fname}")
+    st.caption("Tip: the embedded view and a downloaded copy keep their data separately. "
+               "On an iPad/tablet, download the file and open it (or host it on a static site) "
+               "so saved entries persist reliably.")
+
+
+with tab5:
+    render_store_tools()
