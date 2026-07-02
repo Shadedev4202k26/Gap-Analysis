@@ -74,16 +74,19 @@ def init_supabase():
         return None
 
 # ── AI helpers ────────────────────────────────────────────────────────────────
-def generate_strain_profile(groq_key, strain_name):
+def generate_strain_profile(groq_key, strain_name, brand=""):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
     system = ("You are a highly accurate cannabis strain database for a retail dispensary. "
               "Provide the most widely accepted genetic lineage, terpenes, flavor, and effects. "
+              "Different brands sometimes sell different genetics under the same strain name, so "
+              "when a brand is given, prioritize that brand's specific product. "
               "If unrecognizable, output 'Unknown strain, please check Google' for lineage. "
               "Output clean JSON. Keys: classification, lineage, terpenes, flavor, effects, cannabinoids.")
+    target = f'Target Strain: {strain_name}' + (f'\nBrand: {brand}' if brand else "")
     payload = {"model": "llama-3.3-70b-versatile",
                "messages": [{"role": "system", "content": system},
-                             {"role": "user", "content": f"Target Strain: {strain_name}"}],
+                             {"role": "user", "content": target}],
                "temperature": 0.1}
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=12)
@@ -97,18 +100,23 @@ def generate_strain_profile(groq_key, strain_name):
     return {"classification": "HYBRID", "lineage": "N/A", "terpenes": "N/A",
             "flavor": "N/A", "effects": "N/A", "cannabinoids": "N/A"}
 
-def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_search=True):
+def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_search=True, brand=""):
     """Pull a strain profile from Gemini. With use_search=True it grounds the
     answer in live Google Search (paid feature); with use_search=False it uses
-    the model alone (free tier). Returns the Groq-style JSON shape, plus an
-    optional '_sources' list when grounded. On failure returns {'error': ...}."""
+    the model alone (free tier). An optional brand narrows the search, since
+    different brands sell different genetics under the same strain name. Returns
+    the Groq-style JSON shape, plus an optional '_sources' list when grounded.
+    On failure returns {'error': ...}."""
     model = model or "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     headers = {"x-goog-api-key": (gemini_key or "").strip(), "Content-Type": "application/json"}
+    who = f' as sold by the brand "{brand}"' if brand else ""
+    disambig = (f' Different brands can sell different genetics under the same strain name, '
+                f'so prioritize the specific "{brand}" product.') if brand else ""
     prompt = (
         f'Use Google Search to find the most widely accepted, accurate profile for the '
-        f'cannabis strain "{strain_name}". Return ONLY a compact JSON object — no markdown, '
-        f'no commentary — with exactly these keys: '
+        f'cannabis strain "{strain_name}"{who}.{disambig} Return ONLY a compact JSON object — '
+        f'no markdown, no commentary — with exactly these keys: '
         f'"classification" (Sativa, Indica, or Hybrid, noting dominance if applicable), '
         f'"lineage" (parent strains / cross), '
         f'"terpenes" (dominant terpenes), '
@@ -638,38 +646,47 @@ tab1, tab2, tab3, tab9, tab4, tab5 = st.tabs([
 with tab1:
     st.markdown('<div class="sec-head"><div class="sec-head-text">⚡ Verified AI Strain Profiler</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     with st.form("strain_form", clear_on_submit=True):
-        user_input = st.text_input("Strain Name", placeholder="e.g., Permanent Marker, Bacio Gelato…")
+        c_strain, c_brand = st.columns([2, 1])
+        with c_strain:
+            user_input = st.text_input("Strain Name", placeholder="e.g., Permanent Marker, Bacio Gelato…")
+        with c_brand:
+            brand_input = st.text_input("Brand (optional)", placeholder="e.g., FAVRD")
         submitted = st.form_submit_button("🔍  SEARCH STRAIN")
     if submitted and user_input:
         st.session_state.last_strain = user_input
+        st.session_state.last_brand = (brand_input or "").strip()
         st.rerun()
     if "last_strain" in st.session_state and st.session_state.last_strain:
         strain = st.session_state.last_strain
+        brand = st.session_state.get("last_brand", "")
         gem_key = st.secrets.get("GEMINI_API_KEY", "")
         gmodel = st.secrets.get("GEMINI_MODEL")
+        label = f"{strain} ({brand})" if brand else strain
         data, mode, gerr = None, None, ""
         if gem_key:
-            with st.spinner(f"Searching Google for {strain}…"):
-                g = generate_strain_profile_grounded(gem_key, strain, gmodel, use_search=True)
+            with st.spinner(f"Searching Google for {label}…"):
+                g = generate_strain_profile_grounded(gem_key, strain, gmodel, use_search=True, brand=brand)
             if "error" not in g:
                 data, mode = g, "grounded"
             else:
                 gerr = g["error"]
-                with st.spinner(f"Profiling {strain}…"):
-                    g2 = generate_strain_profile_grounded(gem_key, strain, gmodel, use_search=False)
+                with st.spinner(f"Profiling {label}…"):
+                    g2 = generate_strain_profile_grounded(gem_key, strain, gmodel, use_search=False, brand=brand)
                 if "error" not in g2:
                     data, mode = g2, "gemini"
                 else:
                     gerr = g2["error"]
         if data is None:
-            data = generate_strain_profile(st.secrets["GROQ_API_KEY"], strain)
+            data = generate_strain_profile(st.secrets["GROQ_API_KEY"], strain, brand)
             mode = mode or "groq"
         if "error" not in data:
             clf  = str(data.get('classification', 'HYBRID')).upper()
             bcls = "sb-sativa" if "SATIVA" in clf else ("sb-indica" if "INDICA" in clf else "sb-hybrid")
+            brand_html = (f' <span style="font-size:13px;color:#22D3EE;font-weight:600;'
+                          f'letter-spacing:.5px">· {brand.upper()}</span>') if brand else ""
             st.markdown(f"""
             <div class="sc"><div class="sc-header-row">
-              <div class="sc-name">{strain.upper()}</div>
+              <div class="sc-name">{strain.upper()}{brand_html}</div>
               <span class="sc-badge {bcls}">{clf}</span>
             </div><div class="sc-div"></div>
             <div class="sc-grid">
