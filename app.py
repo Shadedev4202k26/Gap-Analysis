@@ -752,20 +752,33 @@ with tab2:
 
         all_rooms = sorted(df['Room'].dropna().unique().tolist())
 
-        # ── Controls: room filter + minimum stock + imbalance threshold ──────
+        # ── Controls: room filter + total-qty filter + balancing toggle ──────
         rooms = st.multiselect("Rooms to include", all_rooms, default=all_rooms,
                                key="balance_rooms")
-        ctrl_l, ctrl_r = st.columns([1, 1])
-        with ctrl_l:
-            min_stock = st.slider(
-                "Minimum stock per room", 0, 25, 5,
-                help="A room at or below this many units (while another room has "
-                     "more) is flagged 🔄 Rebalance so you can move stock over.")
-        with ctrl_r:
-            imbalance_pct = st.slider(
-                "Flag when a room holds more than this % of stock", 50, 95, 70,
-                help="A product is flagged 🔄 Rebalance when one room holds more "
-                     "than this share of its total. Lower = stricter.")
+        balancing = st.toggle(
+            "⚖️ Balancing analysis", value=True, key="balance_mode",
+            help="On = flag lopsided or low/out-of-stock rooms to rebalance. "
+                 "Off = plain room comparison that surfaces products with zero in a room.")
+        min_total = st.slider(
+            "Hide products under this total qty", 0, 50, 0,
+            help="Skip any product whose TOTAL quantity across the selected rooms is "
+                 "below this. Leave at 0 to show everything.")
+        if balancing:
+            ctrl_l, ctrl_r = st.columns([1, 1])
+            with ctrl_l:
+                imbalance_pct = st.slider(
+                    "Flag when a room holds more than this % of stock", 50, 95, 70,
+                    help="A product is flagged 🔄 Rebalance when one room holds more "
+                         "than this share of its total. Lower = stricter.")
+            with ctrl_r:
+                min_stock = st.slider(
+                    "Minimum stock per room", 0, 25, 5,
+                    help="A room at or below this many units (while another room has "
+                         "more) is flagged 🔄 Rebalance so you can move stock over.")
+        else:
+            imbalance_pct, min_stock = 70, 5
+            st.caption("Balancing is **off** — showing a plain room comparison that "
+                       "highlights products missing (zero) from one or more rooms.")
 
         if len(rooms) < 1:
             st.info("Select at least one room to analyze.")
@@ -782,60 +795,81 @@ with tab2:
             for product, prow in pivot.iterrows():
                 qtys = {r: int(prow[r]) for r in rooms}
                 total = sum(qtys.values())
-                if total <= 0:
-                    continue  # nothing in the selected rooms — skip
+                if total <= 0 or total < min_total:
+                    continue  # nothing here, or below the total-qty filter
                 shares = {r: qtys[r] / total for r in rooms}
                 top_share = max(shares.values())
-                # Trigger 1: lopsided split beyond the imbalance threshold
-                imbalanced = len(rooms) > 1 and (top_share * 100) > imbalance_pct
-                # Trigger 2: a room is at/below minimum while another has stock to move
-                low_room    = any(qtys[r] <= min_stock for r in rooms)
-                source_room = any(qtys[r] > min_stock for r in rooms)
-                low_flag = len(rooms) > 1 and low_room and source_room
-                status = "🔄 Rebalance" if (imbalanced or low_flag) else "✅ Balanced"
+                empty_rooms = [r for r in rooms if qtys[r] == 0]
                 mix = " / ".join(f"{r.split()[0]} {round(shares[r]*100)}%" for r in rooms)
                 entry = {"Product Name": product}
                 for r in rooms:
                     entry[r] = qtys[r]
                 entry["Total"] = total
-                entry["Mix %"] = mix
-                entry["Status"] = status
+                if balancing:
+                    # Trigger 1: lopsided beyond the imbalance threshold
+                    imbalanced = len(rooms) > 1 and (top_share * 100) > imbalance_pct
+                    # Trigger 2: a room at/below minimum while another has stock to move
+                    low_room    = any(qtys[r] <= min_stock for r in rooms)
+                    source_room = any(qtys[r] > min_stock for r in rooms)
+                    low_flag    = len(rooms) > 1 and low_room and source_room
+                    status = "🔄 Rebalance" if (imbalanced or low_flag) else "✅ Balanced"
+                    entry["Mix %"] = mix
+                    entry["Status"] = status
+                else:
+                    gap = len(rooms) > 1 and len(empty_rooms) > 0
+                    entry["Missing In"] = ", ".join(empty_rooms) if empty_rooms else "—"
+                    entry["Status"] = "⚠️ Gap" if gap else "✅ In all rooms"
                 entry["_skew"] = top_share  # for sorting
                 rows.append(entry)
 
             final_df = pd.DataFrame(rows)
-            # Default to showing only the ones needing action, with a toggle
-            show_all = st.checkbox("Show balanced products too", value=False)
+            flag_key = "Rebalance" if balancing else "Gap"
+            flag_mask = (final_df["Status"].str.contains(flag_key)
+                         if not final_df.empty else None)
+
+            # Default to showing only the ones needing attention, with a toggle
+            toggle_lbl = "Show balanced products too" if balancing else "Show products stocked in all rooms too"
+            show_all = st.checkbox(toggle_lbl, value=False)
             if not final_df.empty and not show_all:
-                view_df = final_df[final_df["Status"].str.contains("Rebalance")].copy()
+                view_df = final_df[flag_mask].copy()
             else:
                 view_df = final_df.copy()
 
             if not final_df.empty:
-                n_total   = len(final_df)
-                n_rebal   = int((final_df["Status"].str.contains("Rebalance")).sum())
-                n_bal     = n_total - n_rebal
+                n_total = len(final_df)
+                n_flag  = int(flag_mask.sum())
+                n_ok    = n_total - n_flag
+                lbl_flag = "🔄 Rebalance" if balancing else "⚠️ Gaps"
+                lbl_ok   = "✅ Balanced" if balancing else "✅ In all rooms"
                 st.markdown(f"""
                 <div class="metric-row">
                   <div class="m-tile"><div class="m-num">{n_total}</div><div class="m-lbl">Products</div></div>
-                  <div class="m-tile"><div class="m-num">{n_rebal}</div><div class="m-lbl">🔄 Rebalance</div></div>
-                  <div class="m-tile"><div class="m-num">{n_bal}</div><div class="m-lbl">✅ Balanced</div></div>
+                  <div class="m-tile"><div class="m-num">{n_flag}</div><div class="m-lbl">{lbl_flag}</div></div>
+                  <div class="m-tile"><div class="m-num">{n_ok}</div><div class="m-lbl">{lbl_ok}</div></div>
                 </div>""", unsafe_allow_html=True)
 
                 if view_df.empty:
-                    st.success(f"✅ Nothing to rebalance across {', '.join(rooms)} "
-                               f"at these settings. Rooms are balanced!")
+                    if balancing:
+                        st.success(f"✅ Nothing to rebalance across {', '.join(rooms)} "
+                                   f"at these settings. Rooms are balanced!")
+                    else:
+                        st.success("✅ Every product is stocked in all selected rooms — no gaps.")
                 else:
-                    # most lopsided first
+                    # most lopsided / biggest gaps first
                     view_df = view_df.sort_values(by=["Status", "_skew"],
                                                   ascending=[True, False]).reset_index(drop=True)
                     display_df = view_df.drop(columns=["_skew"])
                     st.dataframe(display_df, use_container_width=True, hide_index=True)
-                    st.download_button("📥  Download Balance Report PDF",
-                                       build_pdf(display_df, imbalance_pct, rooms, min_stock),
-                                       "Ziggy_Balance_Report.pdf", "application/pdf")
+                    if balancing:
+                        st.download_button("📥  Download Balance Report PDF",
+                                           build_pdf(display_df, imbalance_pct, rooms, min_stock),
+                                           "Ziggy_Balance_Report.pdf", "application/pdf")
+                    else:
+                        st.download_button("📥  Download Room Comparison CSV",
+                                           display_df.to_csv(index=False).encode("utf-8"),
+                                           "Ziggy_Room_Comparison.csv", "text/csv")
             else:
-                st.success("✅ No stock found in the selected rooms.")
+                st.success("✅ No stock found in the selected rooms at this total filter.")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 3 — HOOK TAG GENERATOR
