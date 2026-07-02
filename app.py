@@ -113,10 +113,13 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_se
     who = f' as sold by the brand "{brand}"' if brand else ""
     disambig = (f' Different brands can sell different genetics under the same strain name, '
                 f'so prioritize the specific "{brand}" product.') if brand else ""
+    brand_key = (f' "brand_url" (the official website URL for the brand "{brand}" — its own '
+                 f'domain, not a review or directory site; use "" if you cannot find it),') if brand else ""
     prompt = (
         f'Use Google Search to find the most widely accepted, accurate profile for the '
         f'cannabis strain "{strain_name}"{who}.{disambig} Return ONLY a compact JSON object — '
-        f'no markdown, no commentary — with exactly these keys: '
+        f'no markdown, no commentary — with exactly these keys:'
+        f'{brand_key} '
         f'"classification" (Sativa, Indica, or Hybrid, noting dominance if applicable), '
         f'"lineage" (parent strains / cross), '
         f'"terpenes" (dominant terpenes), '
@@ -682,8 +685,17 @@ with tab1:
         if "error" not in data:
             clf  = str(data.get('classification', 'HYBRID')).upper()
             bcls = "sb-sativa" if "SATIVA" in clf else ("sb-indica" if "INDICA" in clf else "sb-hybrid")
-            brand_html = (f' <span style="font-size:13px;color:#22D3EE;font-weight:600;'
-                          f'letter-spacing:.5px">· {brand.upper()}</span>') if brand else ""
+            burl = str(data.get("brand_url", "")).strip()
+            burl_ok = burl.startswith(("http://", "https://")) and "." in burl
+            if brand and burl_ok:
+                brand_html = (f' · <a href="{burl}" target="_blank" style="font-size:13px;'
+                              f'color:#22D3EE;font-weight:600;letter-spacing:.5px;'
+                              f'text-decoration:none">{brand.upper()} 🌐</a>')
+            elif brand:
+                brand_html = (f' <span style="font-size:13px;color:#22D3EE;font-weight:600;'
+                              f'letter-spacing:.5px">· {brand.upper()}</span>')
+            else:
+                brand_html = ""
             st.markdown(f"""
             <div class="sc"><div class="sc-header-row">
               <div class="sc-name">{strain.upper()}{brand_html}</div>
