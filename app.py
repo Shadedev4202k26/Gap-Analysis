@@ -180,7 +180,7 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_se
     except Exception as e:
         return {"error": str(e)}
 
-def build_pdf(dataframe, threshold_value, rooms, min_stock=None):
+def build_pdf(dataframe, threshold_value, rooms, min_stock=None, mode="balance"):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter,
                             rightMargin=36, leftMargin=36, topMargin=40, bottomMargin=40)
@@ -193,18 +193,31 @@ def build_pdf(dataframe, threshold_value, rooms, min_stock=None):
     hs = ParagraphStyle('H', parent=styles['Normal'], fontSize=9,
                         fontName='Helvetica-Bold', textColor=colors.HexColor('#FFFFFF'))
 
-    n_rebal = int(dataframe["Status"].str.contains("Rebalance").sum())
-    n_bal   = len(dataframe) - n_rebal
+    gap_mode  = (mode == "gap")
+    flag_word = "Gap" if gap_mode else "Rebalance"
+    extra_col = "Missing In" if gap_mode else "Mix %"
+    n_flag = int(dataframe["Status"].str.contains(flag_word).sum())
+    n_ok   = len(dataframe) - n_flag
 
-    story = [Paragraph("Ziggyz Room Balance Report", ts),
-             Paragraph("STOCK MIX &amp; ROOM BALANCE MANIFEST", ss)]
-    rule_txt = f"<b>Imbalance:</b> &gt;{threshold_value}%"
-    if min_stock is not None:
-        rule_txt += f" &nbsp;·&nbsp; <b>Min stock:</b> &le;{min_stock}"
-    md = [[Paragraph(f"<b>Products:</b> {len(dataframe)}", cs),
-           Paragraph(f"<b>Rebalance:</b> {n_rebal}", cs),
-           Paragraph(f"<b>Balanced:</b> {n_bal}", cs),
-           Paragraph(rule_txt, cs)]]
+    title    = "Ziggyz Room Comparison" if gap_mode else "Ziggyz Room Balance Report"
+    subtitle = ("ROOM COMPARISON &middot; MISSING STOCK" if gap_mode
+                else "STOCK MIX &amp; ROOM BALANCE MANIFEST")
+    story = [Paragraph(title, ts), Paragraph(subtitle, ss)]
+
+    if gap_mode:
+        rule_txt = "<b>Gap</b> = zero stock in one or more rooms"
+        md = [[Paragraph(f"<b>Products:</b> {len(dataframe)}", cs),
+               Paragraph(f"<b>Gaps:</b> {n_flag}", cs),
+               Paragraph(f"<b>In all rooms:</b> {n_ok}", cs),
+               Paragraph(rule_txt, cs)]]
+    else:
+        rule_txt = f"<b>Imbalance:</b> &gt;{threshold_value}%"
+        if min_stock is not None:
+            rule_txt += f" &nbsp;·&nbsp; <b>Min stock:</b> &le;{min_stock}"
+        md = [[Paragraph(f"<b>Products:</b> {len(dataframe)}", cs),
+               Paragraph(f"<b>Rebalance:</b> {n_flag}", cs),
+               Paragraph(f"<b>Balanced:</b> {n_ok}", cs),
+               Paragraph(rule_txt, cs)]]
     mt = Table(md, colWidths=[110, 110, 110, 186])
     mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#F8FAFC')),
                              ('BOX',(0,0),(-1,-1),1,colors.HexColor('#E5E7EB')),
@@ -213,11 +226,11 @@ def build_pdf(dataframe, threshold_value, rooms, min_stock=None):
     story.append(mt)
     story.append(Paragraph("Rooms: " + ", ".join(rooms), ss))
 
-    # Header: Product | [each room qty] | Total | Mix % | Status
+    # Header: Product | [each room qty] | Total | (Mix % | Missing In) | Status
     header = [Paragraph("Product", hs)]
     for r in rooms:
         header.append(Paragraph(r, hs))
-    header += [Paragraph("Total", hs), Paragraph("Mix %", hs), Paragraph("Status", hs)]
+    header += [Paragraph("Total", hs), Paragraph(extra_col, hs), Paragraph("Status", hs)]
     tdata = [header]
 
     for _, row in dataframe.iterrows():
@@ -225,16 +238,17 @@ def build_pdf(dataframe, threshold_value, rooms, min_stock=None):
         for r in rooms:
             cells.append(Paragraph(str(row[r]), cs))
         cells.append(Paragraph(str(row['Total']), cs))
-        cells.append(Paragraph(str(row['Mix %']), cs))
-        status_txt = str(row['Status']).replace("🔄", "").replace("✅", "").strip()
+        cells.append(Paragraph(str(row.get(extra_col, "")), cs))
+        status_txt = (str(row['Status']).replace("🔄", "").replace("✅", "")
+                      .replace("⚠️", "").strip())
         cells.append(Paragraph(status_txt, cs))
         tdata.append(cells)
 
     n_rooms = len(rooms)
     room_w = min(70, 150 / max(1, n_rooms))
     prod_w = 150
-    total_w, mix_w, status_w = 40, 110, 78
-    col_widths = [prod_w] + [room_w]*n_rooms + [total_w, mix_w, status_w]
+    total_w, extra_w, status_w = 40, 110, 78
+    col_widths = [prod_w] + [room_w]*n_rooms + [total_w, extra_w, status_w]
 
     dt = Table(tdata, colWidths=col_widths, repeatRows=1)
     style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1E293B')),
@@ -243,9 +257,9 @@ def build_pdf(dataframe, threshold_value, rooms, min_stock=None):
              ('PADDING',(0,0),(-1,-1),5),
              ('ALIGN',(1,0),(-1,-1),'CENTER'),
              ('ALIGN',(0,0),(0,-1),'LEFT')]
-    # Amber bar on rows needing a rebalance; faint green bar on balanced ones
+    # Amber bar on rows needing attention; faint green bar on the rest
     for i, (_, row) in enumerate(dataframe.iterrows(), start=1):
-        if "Rebalance" in str(row['Status']):
+        if flag_word in str(row['Status']):
             style.append(('LINEBEFORE',(0,i),(0,i),3,colors.HexColor('#D97706')))
         else:
             style.append(('LINEBEFORE',(0,i),(0,i),3,colors.HexColor('#34D399')))
@@ -887,9 +901,9 @@ with tab2:
                                            build_pdf(display_df, imbalance_pct, rooms, min_stock),
                                            "Ziggy_Balance_Report.pdf", "application/pdf")
                     else:
-                        st.download_button("📥  Download Room Comparison CSV",
-                                           display_df.to_csv(index=False).encode("utf-8"),
-                                           "Ziggy_Room_Comparison.csv", "text/csv")
+                        st.download_button("📥  Download Room Comparison PDF",
+                                           build_pdf(display_df, imbalance_pct, rooms, mode="gap"),
+                                           "Ziggy_Room_Comparison.pdf", "application/pdf")
             else:
                 st.success("✅ No stock found in the selected rooms at this total filter.")
 
@@ -907,11 +921,15 @@ def build_tag_rows(df):
     (sativa/hybrid/indica), which is used for colour routing.
     """
     price_col = "Current price" if "Current price" in df.columns else "Price"
+    # Descriptors that get appended to the brand line when present in a product.
+    # Add new ones here (lowercase) and they'll flow to every tag automatically.
+    BRAND_DESCRIPTORS = ["single", "hashbone", "tarantula"]
     SIZE_RE = re.compile(r'(?<![A-Za-z])\d*\.?\d+\s*(?:g|mg)\b', re.IGNORECASE)
-    FORM_RE = re.compile(r'\b(?:pre-?rolls?|blunts?|gummies?|gummy|chocolates?|bites?|'
-                         r'cart(?:ridge)?s?|disposables?|vapes?|flower|eighths?|quarters?|'
-                         r'infused|rosin|resin|live|single|pack|pcs?|nights?|bars?)\b',
-                         re.IGNORECASE)
+    _forms = [r'pre-?rolls?', r'blunts?', r'gummies?', r'gummy', r'chocolates?', r'bites?',
+              r'cart(?:ridge)?s?', r'disposables?', r'vapes?', r'flower', r'eighths?',
+              r'quarters?', r'infused', r'rosin', r'resin', r'live', r'pack', r'pcs?',
+              r'nights?', r'bars?'] + [re.escape(d) + r's?' for d in BRAND_DESCRIPTORS]
+    FORM_RE = re.compile(r'\b(?:' + "|".join(_forms) + r')\b', re.IGNORECASE)
 
     def is_desc(s):
         return bool(SIZE_RE.search(s) or FORM_RE.search(s))
@@ -931,8 +949,10 @@ def build_tag_rows(df):
         strain = strain.upper()
 
         bits = [p.upper() for p in brand_parts]              # brand + sub-brand(s)
-        if re.search(r'\bsingles?\b', product, re.IGNORECASE):   # single-unit items
-            bits.append("SINGLE")
+        for kw in BRAND_DESCRIPTORS:                          # e.g. SINGLE, HASHBONE, TARANTULA
+            up = kw.upper()
+            if up not in bits and re.search(rf'\b{re.escape(kw)}s?\b', product, re.IGNORECASE):
+                bits.append(up)
         wt = re.search(r'(\d*\.?\d+)\s*g\b', product, re.IGNORECASE)
         if wt:
             v = wt.group(1)
