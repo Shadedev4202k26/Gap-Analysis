@@ -923,12 +923,16 @@ def build_tag_rows(df):
     price_col = "Current price" if "Current price" in df.columns else "Price"
     # Descriptors that get appended to the brand line when present in a product.
     # Add new ones here (lowercase) and they'll flow to every tag automatically.
-    BRAND_DESCRIPTORS = ["single", "hashbone", "tarantula"]
+    BRAND_DESCRIPTORS = ["single", "hashbone", "tarantula", "moonrocks", "snowballs"]
+    def _desc_pat(kw):
+        # match a descriptor whether the product spells it singular or plural
+        base = kw[:-1] if kw.lower().endswith("s") else kw
+        return re.escape(base) + r's?'
     SIZE_RE = re.compile(r'(?<![A-Za-z])\d*\.?\d+\s*(?:g|mg)\b', re.IGNORECASE)
     _forms = [r'pre-?rolls?', r'blunts?', r'gummies?', r'gummy', r'chocolates?', r'bites?',
               r'cart(?:ridge)?s?', r'disposables?', r'vapes?', r'flower', r'eighths?',
               r'quarters?', r'infused', r'rosin', r'resin', r'live', r'pack', r'pcs?',
-              r'nights?', r'bars?'] + [re.escape(d) + r's?' for d in BRAND_DESCRIPTORS]
+              r'nights?', r'bars?'] + [_desc_pat(d) for d in BRAND_DESCRIPTORS]
     FORM_RE = re.compile(r'\b(?:' + "|".join(_forms) + r')\b', re.IGNORECASE)
 
     def is_desc(s):
@@ -949,9 +953,9 @@ def build_tag_rows(df):
         strain = strain.upper()
 
         bits = [p.upper() for p in brand_parts]              # brand + sub-brand(s)
-        for kw in BRAND_DESCRIPTORS:                          # e.g. SINGLE, HASHBONE, TARANTULA
+        for kw in BRAND_DESCRIPTORS:                          # e.g. SINGLE, HASHBONE, MOONROCKS
             up = kw.upper()
-            if up not in bits and re.search(rf'\b{re.escape(kw)}s?\b', product, re.IGNORECASE):
+            if up not in bits and re.search(rf'\b{_desc_pat(kw)}\b', product, re.IGNORECASE):
                 bits.append(up)
         wt = re.search(r'(\d*\.?\d+)\s*g\b', product, re.IGNORECASE)
         if wt:
