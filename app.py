@@ -891,10 +891,10 @@ with tab2:
                     else:
                         st.success("✅ Every product is stocked in all selected rooms — no gaps.")
                 else:
-                    # most lopsided / biggest gaps first
-                    view_df = view_df.sort_values(by=["Status", "_skew"],
-                                                  ascending=[True, False]).reset_index(drop=True)
-                    display_df = view_df.drop(columns=["_skew"])
+                    # one single alphabetical list, case-insensitive
+                    view_df["_name_sort"] = view_df["Product Name"].astype(str).str.lower()
+                    view_df = view_df.sort_values(by="_name_sort").reset_index(drop=True)
+                    display_df = view_df.drop(columns=["_skew", "_name_sort"])
                     st.dataframe(display_df, use_container_width=True, hide_index=True)
                     if balancing:
                         st.download_button("📥  Download Balance Report PDF",
