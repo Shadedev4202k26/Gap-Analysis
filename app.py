@@ -1031,6 +1031,62 @@ def render_hook_tags():
       <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Pick a product for each tag and fix its type if needed; tags are color-coded by strain type</span></div>
     </div></div>""", unsafe_allow_html=True)
 
+    src_mode = st.radio("Source", ["📄  Import CSV", "✏️  Custom tags"],
+                        horizontal=True, label_visibility="collapsed", key="hook_src")
+
+    # ── ✏️ Custom tags: type anything into the fields ─────────────────────────
+    if src_mode == "✏️  Custom tags":
+        st.caption("Type anything into each field — text prints exactly as entered "
+                   "(blank fields stay blank). Pick a color for each tag.")
+        n_cust = int(st.number_input("How many tags?", 1, 96, 6, 1, key="hookc_n"))
+        TYPES = ["sativa", "hybrid", "indica"]
+        TLAB = {"sativa": "🔴 Sativa", "hybrid": "🟢 Hybrid", "indica": "🟣 Indica"}
+        hdr = st.columns([3, 3, 2, 2, 2])
+        for c, t in zip(hdr, ["Brand line", "Strain / main line", "THC", "Price", "Color"]):
+            c.markdown(f"<div style='font-size:11px;font-weight:700;text-transform:uppercase;"
+                       f"letter-spacing:.06em;color:#6B7280'>{t}</div>", unsafe_allow_html=True)
+        custom = []
+        for i in range(n_cust):
+            c1, c2, c3, c4, c5 = st.columns([3, 3, 2, 2, 2])
+            b  = c1.text_input("Brand",  key=f"hookc_b_{i}", label_visibility="collapsed",
+                               placeholder="PACKS | HEAVIES | 1G")
+            s_ = c2.text_input("Strain", key=f"hookc_s_{i}", label_visibility="collapsed",
+                               placeholder="BLUE ZUSHI")
+            t_ = c3.text_input("THC",    key=f"hookc_t_{i}", label_visibility="collapsed",
+                               placeholder="24 %")
+            p  = c4.text_input("Price",  key=f"hookc_p_{i}", label_visibility="collapsed",
+                               placeholder="$45")
+            ty = c5.selectbox("Color",  TYPES, index=1, key=f"hookc_y_{i}",
+                              format_func=lambda x: TLAB[x], label_visibility="collapsed")
+            if any(x.strip() for x in (b, s_, t_, p)):
+                custom.append({"brand": b.strip(), "strain": s_.strip(),
+                               "thc": t_.strip(), "price": p.strip(), "type": ty})
+        if not custom:
+            st.info("Fill in at least one tag above.")
+            return
+        from collections import Counter
+        ccounts = Counter(r["type"] for r in custom)
+        st.caption(f"**{len(custom)}** tags  ·  {ccounts.get('sativa',0)} sativa · "
+                   f"{ccounts.get('hybrid',0)} hybrid · {ccounts.get('indica',0)} indica")
+        if st.button("🖨️  GENERATE CUSTOM HOOK TAGS", type="primary", key="hookc_go"):
+            grouped = {}
+            for r in custom:
+                grouped.setdefault(r["type"], []).append(r)
+            with st.spinner(f"Building {len(custom)} custom hook tags…"):
+                try:
+                    with tempfile.TemporaryDirectory() as tmp:
+                        pdf_bytes = preroll_tags.build_separate(HOOK_TEMPLATES, grouped, tmp)
+                except FileNotFoundError:
+                    st.error("pdftk not found — add `pdftk` to packages.txt.")
+                    return
+                except Exception as e:
+                    st.error(f"Error building tags: {e}")
+                    return
+            st.success(f"✅ {len(custom)} custom hook tags")
+            st.download_button("📥  DOWNLOAD HOOK TAGS PDF", pdf_bytes,
+                               "HookTags_Custom.pdf", "application/pdf", key="hookc_dl")
+        return
+
     hook_file = st.file_uploader(" ", type=["csv"], key="hook_csv", label_visibility="collapsed")
     if hook_file is None:
         return
