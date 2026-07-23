@@ -1131,8 +1131,6 @@ def render_hook_tags():
         else:
             _seen[base] = 1; lab = base
         labels.append(lab); lab2row[lab] = r
-    EMPTY = "— empty —"
-    opts = [EMPTY] + labels
     TYPES = ["sativa", "hybrid", "indica"]
     TLAB = {"sativa": "🔴 Sativa", "hybrid": "🟢 Hybrid", "indica": "🟣 Indica"}
 
@@ -1141,23 +1139,24 @@ def render_hook_tags():
     else:
         cap = max(1, len(rows))
         n_tags = int(st.number_input("How many tags?", 1, 96, min(24, cap), 1, key="hook_n"))
-        st.caption("Pick a product per tag, then fix its **type** if the import mis-classified it — "
-                   "unclassified items default to 🟢 Hybrid.")
+        st.caption("Click a tag's box and just start typing to search. Fix its **type** if the "
+                   "import mis-classified it — unclassified items default to 🟢 Hybrid.")
         b1, b2, _ = st.columns([1, 1, 3])
         if b1.button("↧  Auto-fill in order", key="hook_af"):
             for i in range(n_tags):
-                st.session_state[f"hk_{i}"] = labels[i] if i < len(labels) else EMPTY
+                st.session_state[f"hk_{i}"] = labels[i] if i < len(labels) else None
         if b2.button("✕  Clear all", key="hook_clr"):
             for i in range(n_tags):
-                st.session_state[f"hk_{i}"] = EMPTY
+                st.session_state[f"hk_{i}"] = None
 
         def render_slot(i):
             pk, tk, lk = f"hk_{i}", f"hkt_{i}", f"hkl_{i}"
-            if st.session_state.get(pk, EMPTY) not in opts:
-                st.session_state[pk] = EMPTY
+            if st.session_state.get(pk) not in labels:
+                st.session_state[pk] = None
             pc, tc = st.columns([5, 2])
-            sel = pc.selectbox(f"Tag {i+1}", opts, key=pk)
-            if sel == EMPTY:
+            sel = pc.selectbox(f"Tag {i+1}", labels, key=pk, index=None,
+                               placeholder="Type to search…")
+            if sel is None:
                 tc.selectbox("Type", TYPES, key=tk, format_func=lambda x: TLAB[x],
                             label_visibility="hidden", disabled=True)
                 return None
@@ -2292,8 +2291,6 @@ def render_preroll_tags():
         else:
             _seen[base] = 1; lab = base
         labels.append(lab); lab2row[lab] = r
-    EMPTY = "— empty —"
-    opts = [EMPTY] + labels
 
     TYPES = ["sativa", "hybrid", "indica"]
     TLAB = {"sativa": "🔴 Sativa", "hybrid": "🟢 Hybrid", "indica": "🟣 Indica"}
@@ -2304,23 +2301,24 @@ def render_preroll_tags():
         per_tag = 2 if split_mode else 1
         cap = max(1, (len(rows) + per_tag - 1) // per_tag)
         n_tags = int(st.number_input("How many tags?", 1, 60, min(10, cap), 1))
-        st.caption("Pick a product per slot, then fix its **type** if the import "
-                   "mis-classified it — unclassified items default to 🟢 Hybrid."
+        st.caption("Click a slot's box and just start typing to search. Fix its **type** if the "
+                   "import mis-classified it — unclassified items default to 🟢 Hybrid."
                    + ("  For split tags, pair two same-type strains." if split_mode else ""))
         b1, b2, _ = st.columns([1, 1, 3])
         if b1.button("↧  Auto-fill in order"):
             for i in range(n_tags * per_tag):
-                st.session_state[f"pk_{i}"] = labels[i] if i < len(labels) else EMPTY
+                st.session_state[f"pk_{i}"] = labels[i] if i < len(labels) else None
         if b2.button("✕  Clear all"):
             for i in range(n_tags * per_tag):
-                st.session_state[f"pk_{i}"] = EMPTY
+                st.session_state[f"pk_{i}"] = None
 
         def render_slot(i, label, prod_col, type_col):
             pk, tk, lk = f"pk_{i}", f"tp_{i}", f"lp_{i}"
-            if st.session_state.get(pk, EMPTY) not in opts:
-                st.session_state[pk] = EMPTY
-            sel = prod_col.selectbox(label, opts, key=pk)
-            if sel == EMPTY:
+            if st.session_state.get(pk) not in labels:
+                st.session_state[pk] = None
+            sel = prod_col.selectbox(label, labels, key=pk, index=None,
+                                     placeholder="Type to search…")
+            if sel is None:
                 type_col.selectbox("Type", TYPES, key=tk, format_func=lambda x: TLAB[x],
                                    label_visibility="hidden", disabled=True)
                 return None
