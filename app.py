@@ -44,6 +44,12 @@ try:
 except ImportError:
     PREROLL_AVAILABLE = False
 
+try:
+    import combine_tags
+    COMBINE_AVAILABLE = True
+except ImportError:
+    COMBINE_AVAILABLE = False
+
 st.set_page_config(page_title="ZiggyBot", page_icon="⚡", layout="wide")
 
 # ── Supabase client ───────────────────────────────────────────────────────────
@@ -1031,8 +1037,17 @@ def render_hook_tags():
       <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Pick a product for each tag and fix its type if needed; tags are color-coded by strain type</span></div>
     </div></div>""", unsafe_allow_html=True)
 
-    src_mode = st.radio("Source", ["📄  Import CSV", "✏️  Custom tags"],
+    o1, o2 = st.columns([2, 2])
+    src_mode = o1.radio("Source", ["📄  Import CSV", "✏️  Custom tags"],
                         horizontal=True, label_visibility="collapsed", key="hook_src")
+    combine_pages = o2.toggle(
+        "📄  Mix types on one page", value=False, key="hook_mix",
+        help="Save paper: put sativa, hybrid and indica tags on the SAME sheet instead of "
+             "a separate page per type. Each tag keeps its own colored stripe.")
+    if combine_pages and not COMBINE_AVAILABLE:
+        st.warning("`combine_tags.py` not found in the repo root — falling back to "
+                   "a separate page per strain type.")
+        combine_pages = False
 
     # ── ✏️ Custom tags: type anything into the fields ─────────────────────────
     if src_mode == "✏️  Custom tags":
@@ -1075,7 +1090,10 @@ def render_hook_tags():
             with st.spinner(f"Building {len(custom)} custom hook tags…"):
                 try:
                     with tempfile.TemporaryDirectory() as tmp:
-                        pdf_bytes = preroll_tags.build_separate(HOOK_TEMPLATES, grouped, tmp)
+                        if combine_pages:
+                            pdf_bytes = combine_tags.build_combined(HOOK_TEMPLATES, custom, tmp)
+                        else:
+                            pdf_bytes = preroll_tags.build_separate(HOOK_TEMPLATES, grouped, tmp)
                 except FileNotFoundError:
                     st.error("pdftk not found — add `pdftk` to packages.txt.")
                     return
@@ -1192,7 +1210,10 @@ def render_hook_tags():
         with st.spinner(f"Building {len(chosen)} hook tags…"):
             try:
                 with tempfile.TemporaryDirectory() as tmp:
-                    pdf_bytes = preroll_tags.build_separate(HOOK_TEMPLATES, grouped, tmp)
+                    if combine_pages:
+                        pdf_bytes = combine_tags.build_combined(HOOK_TEMPLATES, chosen, tmp)
+                    else:
+                        pdf_bytes = preroll_tags.build_separate(HOOK_TEMPLATES, grouped, tmp)
             except FileNotFoundError:
                 st.error("pdftk not found — add `pdftk` to packages.txt.")
                 return
@@ -2224,18 +2245,6 @@ def render_preroll_tags():
         "hybrid": "hybrid_split_template.pdf",
         "indica": "indica_split_template.pdf",
     }
-    split_mode = st.toggle(
-        "🔀  Split tags — 2 strains per tag (side-by-side, 20 per sheet)",
-        value=False,
-        help="Pairs strains two-to-a-tag inside the same Smilez border, each strain "
-             "keeping its own THC and price. Same color routing by type.")
-    active_templates = SPLIT_TEMPLATES if split_mode else TEMPLATES
-    missing = [f for f in active_templates.values() if not os.path.exists(f)]
-    if missing:
-        st.error(("Missing split template file(s) in repo root: " if split_mode
-                  else "Missing template file(s) in repo root: ") + ", ".join(missing))
-        return
-
     st.markdown("""
     <div class="instr-card"><div class="instr-title">📋 How it Works</div>
     <div class="instr-steps">
@@ -2243,6 +2252,94 @@ def render_preroll_tags():
       <div class="instr-step"><span class="instr-icon">🔴</span><span><strong>Sativa</strong> → red/orange border &nbsp;·&nbsp; <span style="color:#A78BFA"><strong>Indica</strong></span> → purple &nbsp;·&nbsp; <span style="color:#34D399"><strong>Hybrid / No&nbsp;Strain</strong></span> → blue/green</span></div>
       <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Tags are grouped into <strong>color-coded pages by strain type</strong> in one PDF</span></div>
     </div></div>""", unsafe_allow_html=True)
+
+    o1, o2, o3 = st.columns([2, 1.6, 1.6])
+    src_mode = o1.radio("Source", ["📄  Import CSV", "✏️  Custom tags"],
+                        horizontal=True, label_visibility="collapsed", key="preroll_src")
+    split_mode = o2.toggle(
+        "🔀  Split tags", value=False, key="preroll_split",
+        help="2 strains per tag, side-by-side inside one Smilez border (20 per sheet). "
+             "Each strain keeps its own THC and price.")
+    combine_pages = o3.toggle(
+        "📄  Mix types on one page", value=False, key="preroll_mix",
+        help="Save paper: put sativa, hybrid and indica tags on the SAME sheet instead of "
+             "a separate page per type. Each tag keeps its own colored border.")
+
+    active_templates = SPLIT_TEMPLATES if split_mode else TEMPLATES
+    missing = [f for f in active_templates.values() if not os.path.exists(f)]
+    if missing:
+        st.error(("Missing split template file(s) in repo root: " if split_mode
+                  else "Missing template file(s) in repo root: ") + ", ".join(missing))
+        return
+    if combine_pages and not COMBINE_AVAILABLE:
+        st.warning("`combine_tags.py` not found in the repo root — falling back to "
+                   "a separate page per strain type.")
+        combine_pages = False
+
+
+    # ── ✏️ Custom tags: type anything into the fields ─────────────────────────
+    if src_mode == "✏️  Custom tags":
+        if split_mode:
+            st.caption("Split mode: **each row below is one half of a tag** — two rows of the "
+                       "same color pair up side-by-side on one tag. Text prints exactly as entered.")
+        else:
+            st.caption("Type anything into each field — text prints exactly as entered "
+                       "(blank fields stay blank). Pick a color for each tag.")
+        row_word = "half-tags" if split_mode else "tags"
+        n_cust = int(st.number_input(f"How many {row_word}?", 1, 60,
+                                     10 if not split_mode else 12, 1, key="prc_n"))
+        TYPES = ["sativa", "hybrid", "indica"]
+        TLAB = {"sativa": "🔴 Sativa", "hybrid": "🟢 Hybrid", "indica": "🟣 Indica"}
+        hdr = st.columns([3, 3, 2, 2, 2])
+        for c, t in zip(hdr, ["Brand line", "Strain / main line", "THC", "Price", "Color"]):
+            c.markdown(f"<div style='font-size:11px;font-weight:700;text-transform:uppercase;"
+                       f"letter-spacing:.06em;color:#6B7280'>{t}</div>", unsafe_allow_html=True)
+        custom = []
+        for i in range(n_cust):
+            c1, c2, c3, c4, c5 = st.columns([3, 3, 2, 2, 2])
+            b  = c1.text_input("Brand",  key=f"prc_b_{i}", label_visibility="collapsed",
+                               placeholder="PACKS | HEAVIES | 1G")
+            s_ = c2.text_input("Strain", key=f"prc_s_{i}", label_visibility="collapsed",
+                               placeholder="BLUE ZUSHI")
+            t_ = c3.text_input("THC",    key=f"prc_t_{i}", label_visibility="collapsed",
+                               placeholder="24 %")
+            p  = c4.text_input("Price",  key=f"prc_p_{i}", label_visibility="collapsed",
+                               placeholder="$45")
+            ty = c5.selectbox("Color",  TYPES, index=1, key=f"prc_y_{i}",
+                              format_func=lambda x: TLAB[x], label_visibility="collapsed")
+            if any(x.strip() for x in (b, s_, t_, p)):
+                custom.append({"brand": b.strip(), "strain": s_.strip(),
+                               "thc": t_.strip(), "price": p.strip(), "type": ty})
+        if not custom:
+            st.info("Fill in at least one tag above.")
+            return
+        from collections import Counter
+        ccounts = Counter(r["type"] for r in custom)
+        st.caption(f"**{len(custom)}** {row_word}  ·  {ccounts.get('sativa',0)} sativa · "
+                   f"{ccounts.get('hybrid',0)} hybrid · {ccounts.get('indica',0)} indica")
+        if st.button("🖨️  GENERATE CUSTOM PREROLL TAGS", type="primary", key="prc_go"):
+            grouped = {}
+            for r in custom:
+                grouped.setdefault(r["type"], []).append(r)
+            with st.spinner(f"Building {len(custom)} custom preroll tags…"):
+                try:
+                    with tempfile.TemporaryDirectory() as tmp:
+                        if combine_pages:
+                            pdf_bytes = combine_tags.build_combined(active_templates, custom, tmp,
+                                                                      pair=2 if split_mode else 1)
+                        else:
+                            pdf_bytes = preroll_tags.build_separate(active_templates, grouped, tmp)
+                except FileNotFoundError:
+                    st.error("pdftk not found — add `pdftk` to packages.txt.")
+                    return
+                except Exception as e:
+                    st.error(f"Error building tags: {e}")
+                    return
+            st.success(f"✅ {len(custom)} custom preroll {row_word}")
+            st.download_button("📥  DOWNLOAD PREROLL TAGS PDF", pdf_bytes,
+                               "Preroll_Split_Custom.pdf" if split_mode else "Preroll_Custom.pdf",
+                               "application/pdf", key="prc_dl")
+        return
 
     pr_file = st.file_uploader(" ", type=["csv"], key="preroll_csv", label_visibility="collapsed")
     if pr_file is None:
@@ -2363,7 +2460,11 @@ def render_preroll_tags():
         with st.spinner(f"Building {n_out} tags…"):
             try:
                 with tempfile.TemporaryDirectory() as tmp:
-                    pdf_bytes = preroll_tags.build_separate(active_templates, grouped, tmp)
+                    if combine_pages:
+                        pdf_bytes = combine_tags.build_combined(active_templates, chosen, tmp,
+                                                                  pair=2 if split_mode else 1)
+                    else:
+                        pdf_bytes = preroll_tags.build_separate(active_templates, grouped, tmp)
             except FileNotFoundError:
                 st.error("pdftk not found — add `pdftk` to packages.txt.")
                 return
