@@ -2245,6 +2245,11 @@ def render_preroll_tags():
         "hybrid": "hybrid_split_template.pdf",
         "indica": "indica_split_template.pdf",
     }
+    WIDE_TEMPLATES = {
+        "sativa": "Sativa_Prerolls_4in.pdf",
+        "hybrid": "Hybrid_Prerolls_4in.pdf",
+        "indica": "Indica_Prerolls_4in.pdf",
+    }
     st.markdown("""
     <div class="instr-card"><div class="instr-title">📋 How it Works</div>
     <div class="instr-steps">
@@ -2253,22 +2258,30 @@ def render_preroll_tags():
       <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Tags are grouped into <strong>color-coded pages by strain type</strong> in one PDF</span></div>
     </div></div>""", unsafe_allow_html=True)
 
-    o1, o2, o3 = st.columns([2, 1.6, 1.6])
+    o1, o2, o3, o4 = st.columns([1.7, 1.3, 1.2, 1.5])
     src_mode = o1.radio("Source", ["📄  Import CSV", "✏️  Custom tags"],
                         horizontal=True, label_visibility="collapsed", key="preroll_src")
-    split_mode = o2.toggle(
-        "🔀  Split tags", value=False, key="preroll_split",
-        help="2 strains per tag, side-by-side inside one Smilez border (20 per sheet). "
-             "Each strain keeps its own THC and price.")
-    combine_pages = o3.toggle(
+    size_mode = o2.radio("Tag size", ["3.5 in", "4 in"], horizontal=True, key="preroll_size")
+    wide = (size_mode == "4 in")
+    if wide:
+        split_mode = False
+        o3.caption("Split is 3.5 in only")
+    else:
+        split_mode = o3.toggle(
+            "🔀  Split tags", value=False, key="preroll_split",
+            help="2 strains per tag, side-by-side inside one Smilez border (20 per sheet). "
+                 "Each strain keeps its own THC and price.")
+    combine_pages = o4.toggle(
         "📄  Mix types on one page", value=False, key="preroll_mix",
         help="Save paper: put sativa, hybrid and indica tags on the SAME sheet instead of "
              "a separate page per type. Each tag keeps its own colored border.")
 
-    active_templates = SPLIT_TEMPLATES if split_mode else TEMPLATES
+    active_templates = (WIDE_TEMPLATES if wide
+                        else (SPLIT_TEMPLATES if split_mode else TEMPLATES))
     missing = [f for f in active_templates.values() if not os.path.exists(f)]
     if missing:
-        st.error(("Missing split template file(s) in repo root: " if split_mode
+        st.error(("Missing 4 in template file(s) in repo root: " if wide else
+                  "Missing split template file(s) in repo root: " if split_mode
                   else "Missing template file(s) in repo root: ") + ", ".join(missing))
         return
     if combine_pages and not COMBINE_AVAILABLE:
@@ -2337,7 +2350,8 @@ def render_preroll_tags():
                     return
             st.success(f"✅ {len(custom)} custom preroll {row_word}")
             st.download_button("📥  DOWNLOAD PREROLL TAGS PDF", pdf_bytes,
-                               "Preroll_Split_Custom.pdf" if split_mode else "Preroll_Custom.pdf",
+                               ("Preroll_Split_Custom.pdf" if split_mode else
+                                "Preroll_4in_Custom.pdf" if wide else "Preroll_Custom.pdf"),
                                "application/pdf", key="prc_dl")
         return
 
@@ -2474,7 +2488,8 @@ def render_preroll_tags():
         st.success(f"✅ {len(chosen)} prerolls → {n_out} {'split ' if split_mode else ''}tags "
                    f"({sel_counts.get('sativa',0)} sativa · {sel_counts.get('hybrid',0)} hybrid · {sel_counts.get('indica',0)} indica)")
         st.download_button("📥  DOWNLOAD PREROLL TAGS PDF", pdf_bytes,
-                           "Preroll_Split_Tags.pdf" if split_mode else "Preroll_Tags.pdf",
+                           ("Preroll_Split_Tags.pdf" if split_mode else
+                            "Preroll_4in_Tags.pdf" if wide else "Preroll_Tags.pdf"),
                            "application/pdf")
 
 
