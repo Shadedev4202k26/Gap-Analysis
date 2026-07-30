@@ -186,7 +186,8 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_se
     except Exception as e:
         return {"error": str(e)}
 
-def build_pdf(dataframe, threshold_value, rooms, min_stock=None, mode="balance"):
+def build_pdf(dataframe, threshold_value, rooms, min_stock=None, mode="balance",
+              qty_label="Available"):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter,
                             rightMargin=36, leftMargin=36, topMargin=40, bottomMargin=40)
@@ -211,13 +212,13 @@ def build_pdf(dataframe, threshold_value, rooms, min_stock=None, mode="balance")
     story = [Paragraph(title, ts), Paragraph(subtitle, ss)]
 
     if gap_mode:
-        rule_txt = "<b>Gap</b> = zero stock in one or more rooms"
+        rule_txt = f"<b>Gap</b> = zero {qty_label} in one or more rooms"
         md = [[Paragraph(f"<b>Products:</b> {len(dataframe)}", cs),
                Paragraph(f"<b>Gaps:</b> {n_flag}", cs),
                Paragraph(f"<b>In all rooms:</b> {n_ok}", cs),
                Paragraph(rule_txt, cs)]]
     else:
-        rule_txt = f"<b>Imbalance:</b> &gt;{threshold_value}%"
+        rule_txt = f"<b>Counts:</b> {qty_label} &nbsp;·&nbsp; <b>Imbalance:</b> &gt;{threshold_value}%"
         if min_stock is not None:
             rule_txt += f" &nbsp;·&nbsp; <b>Min stock:</b> &le;{min_stock}"
         md = [[Paragraph(f"<b>Products:</b> {len(dataframe)}", cs),
@@ -780,17 +781,36 @@ with tab2:
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backoffice, select your rooms &amp; <strong>one category</strong></span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Quantity</strong></span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Available</strong></span></div>
       <div class="instr-step"><span class="instr-icon">🔄</span><span><strong>Rebalance</strong> = stock is lopsided <em>or</em> a room is running low while the other has plenty — move some over</span></div>
     </div></div>""", unsafe_allow_html=True)
     uploaded_file = st.file_uploader(" ", type="csv", key="restock_csv", label_visibility="collapsed")
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
         df.columns = [str(col).strip('="').strip() for col in df.columns]
-        qty_col = [col for col in df.columns if 'Quantity' in col or 'Qty' in col][0]
+        # Prefer "Available" (sellable stock) over "Quantity" (includes allocated)
+        def _pick_qty_col(cols):
+            for want in ("Available",):
+                for c in cols:
+                    if c.strip().lower() == want.lower():
+                        return c
+            for c in cols:
+                if "available" in c.lower():
+                    return c
+            for c in cols:
+                if "quantity" in c.lower() or c.strip().lower() == "qty":
+                    return c
+            return None
+
+        qty_col = _pick_qty_col(list(df.columns))
+        if qty_col is None:
+            st.error("CSV needs an **Available** column (or a Quantity column). "
+                     "Re-export with Product, Room and Available.")
+            st.stop()
         df['Product'] = df['Product'].apply(lambda x: str(x).strip('="').strip())
         df['Room']    = df['Room'].apply(lambda x: str(x).strip('="').strip())
         df['Qty']     = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
+        st.caption(f"Counting stock from the **{qty_col}** column.")
 
         all_rooms = sorted(df['Room'].dropna().unique().tolist())
 
@@ -904,11 +924,13 @@ with tab2:
                     st.dataframe(display_df, use_container_width=True, hide_index=True)
                     if balancing:
                         st.download_button("📥  Download Balance Report PDF",
-                                           build_pdf(display_df, imbalance_pct, rooms, min_stock),
+                                           build_pdf(display_df, imbalance_pct, rooms, min_stock,
+                                                     qty_label=qty_col),
                                            "Ziggy_Balance_Report.pdf", "application/pdf")
                     else:
                         st.download_button("📥  Download Room Comparison PDF",
-                                           build_pdf(display_df, imbalance_pct, rooms, mode="gap"),
+                                           build_pdf(display_df, imbalance_pct, rooms, mode="gap",
+                                                     qty_label=qty_col),
                                            "Ziggy_Room_Comparison.pdf", "application/pdf")
             else:
                 st.success("✅ No stock found in the selected rooms at this total filter.")
