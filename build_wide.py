@@ -57,6 +57,7 @@ def build_wide(src, out):
     cell = cells[1]
     sx0, sy0, sx1, sy1 = cell
     src_w = sx1 - sx0
+    src_h = sy1 - sy0
 
     f1 = _slot1_fields(src)
     rel = {k: [v[0] - sx0, v[1] - sy0, v[2] - sx0, v[3] - sy0] for k, v in f1.items()}
@@ -105,11 +106,12 @@ def build_wide(src, out):
                 if sw <= 0 or dw <= 0:
                     continue
                 sc = dw / sw
+                sv = TAG_H / src_h            # normalise differing source tag heights
                 tx = (dx + d0) - sc * (sx0 + s0)
-                ty = dy - sy0
+                ty = dy - sv * sy0
                 ops.append(
                     f"q {dx + d0:.3f} {dy:.3f} {dw:.3f} {TAG_H:.3f} re W n "
-                    f"{sc:.6f} 0 0 1 {tx:.3f} {ty:.3f} cm /ZFx Do Q")
+                    f"{sc:.6f} 0 0 {sv:.6f} {tx:.3f} {ty:.3f} cm /ZFx Do Q")
     content = DecodedStreamObject()
     content.set_data("\n".join(ops).encode("latin-1"))
     page[NameObject("/Contents")] = writer._add_object(content)
