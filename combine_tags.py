@@ -63,42 +63,122 @@ def _cluster(vals, tol=6.0):
     return [sum(g) / len(g) for g in out]
 
 
-def tag_cells(src):
-    """slot -> (x0, y0, x1, y1) art-true tag cell, in PDF points.
+def _raster(src, dpi=150):
+    import os
+    import subprocess
+    import tempfile
 
-    Cells are built from the template's own field grid (which was placed on the
-    art grid), corrected by the constant art-vs-field vertical offset when that
-    offset can be measured from the border art.
+    import numpy as np
+    from PIL import Image
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "p")
+        subprocess.run(["pdftoppm", "-png", "-r", str(dpi), "-singlefile", src, p],
+                       check=True, capture_output=True)
+        return np.asarray(Image.open(p + ".png").convert("RGB")).astype(float) / 255.0
+
+
+def _bands(hit, s, merge_pt=3.0):
+    """Contiguous True runs in `hit`, merged when closer than merge_pt."""
+    runs, st = [], None
+    for i, v in enumerate(hit):
+        if v and st is None:
+            st = i
+        elif not v and st is not None:
+            runs.append((st, i - 1))
+            st = None
+    if st is not None:
+        runs.append((st, len(hit) - 1))
+    out = []
+    for r in runs:
+        if out and (r[0] - out[-1][1]) / s < merge_pt:
+            out[-1] = (out[-1][0], r[1])
+        else:
+            out.append(list(r))
+            out[-1] = tuple(out[-1])
+            out[-1] = (r[0], r[1])
+    return out
+
+
+def _boundaries(bands, s, flip=None):
+    """Border bands -> the n+1 cut lines separating n tags."""
+    if len(bands) < 2:
+        return []
+    edges = [bands[0][0]]
+    for b in bands[1:-1]:
+        edges.append((b[0] + b[1]) / 2.0)
+    edges.append(bands[-1][1])
+    return [e / s for e in edges]
+
+
+def art_cells(src, dpi=150):
+    """True tag boxes taken from the printed border frame.
+
+    Returns {slot: (x0, y0, x1, y1)} in reading order, or None when the template
+    has no coloured frame (e.g. the hook tags, whose art is a background image).
     """
+    a = _raster(src, dpi)
+    s = dpi / 72.0
+    H, W = a.shape[:2]
+    sat = a.max(2) - a.min(2)
+    col = (sat > 0.20) & (a.max(2) > 0.35)
+
+    vstrip = col[:, int(80 * s):int(120 * s)]
+    hbands = _bands(vstrip.mean(1) > 0.5, s)
+    hstrip = col[int(60 * s):int(100 * s), :]
+    vbands = _bands(hstrip.mean(0) > 0.5, s)
+    if len(hbands) < 3 or len(vbands) < 3:
+        return None
+
+    ys = _boundaries(hbands, s)                    # image-space, top -> bottom
+    xs = _boundaries(vbands, s)
+    if len(ys) < 2 or len(xs) < 2:
+        return None
+    rows = [(H / s - ys[i + 1], H / s - ys[i]) for i in range(len(ys) - 1)]  # pdf y
+    cols = [(xs[i], xs[i + 1]) for i in range(len(xs) - 1)]
+
+    cells, slot = {}, 1
+    for (ry0, ry1) in rows:
+        for (cx0, cx1) in cols:
+            cells[slot] = (cx0, ry0, cx1, ry1)
+            slot += 1
+    return cells
+
+
+def uniform_grid(cells, page_w=612.0, page_h=792.0):
+    """A clean, evenly spaced grid the same shape as `cells`, centred on the page.
+    Used as the destination so every strain type lands on identical rows."""
+    xs = _cluster([(c[0] + c[2]) / 2 for c in cells.values()])
+    ys = sorted(_cluster([(c[1] + c[3]) / 2 for c in cells.values()]), reverse=True)
+    ncol, nrow = len(xs), len(ys)
+    w = _median([c[2] - c[0] for c in cells.values()])
+    h = _median([c[3] - c[1] for c in cells.values()])
+    x0 = (page_w - ncol * w) / 2.0
+    ytop = page_h - (page_h - nrow * h) / 2.0
+    out, slot = {}, 1
+    for r in range(nrow):
+        for c in range(ncol):
+            out[slot] = (x0 + c * w, ytop - (r + 1) * h, x0 + (c + 1) * w, ytop - r * h)
+            slot += 1
+    return out
+
+
+def tag_cells(src):
+    """slot -> (x0, y0, x1, y1) tag cell. Prefers the true border-frame boxes and
+    falls back to the field grid for templates without a coloured frame."""
+    ac = art_cells(src)
+    if ac:
+        return ac
     fc = _field_centres(src)
     if not fc:
         return {}
     col_c = _cluster([c[0] for c in fc.values()])
-    row_c = _cluster([c[1] for c in fc.values()])
-    row_c = sorted(row_c, reverse=True)                 # top row first
-
+    row_c = sorted(_cluster([c[1] for c in fc.values()]), reverse=True)
     w = _median([col_c[i + 1] - col_c[i] for i in range(len(col_c) - 1)]) \
-        if len(col_c) > 1 else 0.0
+        if len(col_c) > 1 else float(PdfReader(src).pages[0].mediabox[2])
     h = _median([row_c[i] - row_c[i + 1] for i in range(len(row_c) - 1)]) \
-        if len(row_c) > 1 else 0.0
-    if w <= 0:
-        w = float(PdfReader(src).pages[0].mediabox[2]) / max(1, len(col_c))
-    if h <= 0:
-        h = float(PdfReader(src).pages[0].mediabox[3]) / max(1, len(row_c))
-
-    dy = 0.0
-    try:                                                # coloured-border templates
-        import build_split as bs
-        art = bs.detect_interior_centres(src)
-        if len(art) == len(row_c):
-            dy = _median([a - b for a, b in zip(sorted(art, reverse=True), row_c)])
-    except Exception:
-        dy = 0.0
-
-    cells = {}
-    for s, (cx, cy) in fc.items():
-        cells[s] = (cx - w / 2, cy + dy - h / 2, cx + w / 2, cy + dy + h / 2)
-    return cells
+        if len(row_c) > 1 else float(PdfReader(src).pages[0].mediabox[3])
+    return {s: (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
+            for s, (cx, cy) in fc.items()}
 
 
 def _clipped_page(src_pdf, rect):
@@ -144,10 +224,9 @@ def build_combined(templates, rows_in_order, tmpdir, pair=1):
     ref = next((t for t in TYPE_ORDER if t in templates), None)
     spp = pt.slots_per_page(templates[ref])
     cells = {t: tag_cells(p) for t, p in templates.items()}
-    dest = cells[ref]
-
     pw = float(PdfReader(templates[ref]).pages[0].mediabox[2])
     ph = float(PdfReader(templates[ref]).pages[0].mediabox[3])
+    dest = uniform_grid(cells[ref], pw, ph)
 
     writer = PdfWriter()
     pages = [rows_in_order[i:i + spp] for i in range(0, len(rows_in_order), spp)]
@@ -171,11 +250,18 @@ def build_combined(templates, rows_in_order, tmpdir, pair=1):
                 dst_rect = dest.get(slot)
                 if not src_rect or not dst_rect:
                     continue
+                sw = src_rect[2] - src_rect[0]
+                sh = src_rect[3] - src_rect[1]
+                dw = dst_rect[2] - dst_rect[0]
+                dh = dst_rect[3] - dst_rect[1]
+                if sw <= 0 or sh <= 0:
+                    continue
+                sx, sy = dw / sw, dh / sh          # normalise differing tag sizes
                 layer = _clipped_page(filled[t], src_rect)
-                dx = dst_rect[0] - src_rect[0]
-                dy = dst_rect[1] - src_rect[1]
+                tx = dst_rect[0] - sx * src_rect[0]
+                ty = dst_rect[1] - sy * src_rect[1]
                 out_page.merge_transformed_page(
-                    layer, Transformation().translate(dx, dy))
+                    layer, Transformation().scale(sx, sy).translate(tx, ty))
         writer.add_page(out_page)
 
     buf = io.BytesIO()
