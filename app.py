@@ -1070,6 +1070,8 @@ def render_hook_tags():
         st.warning("`combine_tags.py` not found in the repo root — falling back to "
                    "a separate page per strain type.")
         combine_pages = False
+    elif combine_pages:
+        o2.caption(f"mixing engine v{getattr(combine_tags, '__version__', '1.x — update combine_tags.py')}")
 
     # ── ✏️ Custom tags: type anything into the fields ─────────────────────────
     if src_mode == "✏️  Custom tags":
@@ -2310,6 +2312,8 @@ def render_preroll_tags():
         st.warning("`combine_tags.py` not found in the repo root — falling back to "
                    "a separate page per strain type.")
         combine_pages = False
+    elif combine_pages:
+        o4.caption(f"mixing engine v{getattr(combine_tags, '__version__', '1.x — update combine_tags.py')}")
 
 
     # ── ✏️ Custom tags: type anything into the fields ─────────────────────────
