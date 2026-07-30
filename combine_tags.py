@@ -13,6 +13,8 @@ The border art and the text move together, so every tag keeps its own colour.
 import io
 import re
 
+__version__ = "2.0-aligned"   # art-frame detection + uniform destination grid
+
 from pypdf import PdfReader, PdfWriter, Transformation
 from pypdf._page import PageObject
 from pypdf.generic import DecodedStreamObject, NameObject
