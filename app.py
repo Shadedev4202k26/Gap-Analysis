@@ -960,7 +960,12 @@ def build_tag_rows(df):
     _forms = [r'pre-?rolls?', r'blunts?', r'gummies?', r'gummy', r'chocolates?', r'bites?',
               r'cart(?:ridge)?s?', r'disposables?', r'vapes?', r'flower', r'eighths?',
               r'quarters?', r'infused', r'rosin', r'resin', r'live', r'pack', r'pcs?',
-              r'nights?', r'bars?'] + [_desc_pat(d) for d in BRAND_DESCRIPTORS]
+              r'nights?', r'bars?',
+              # grow type / grade — these trail the strain, they are not the strain
+              r'outdoor', r'indoor', r'greenhouse', r'green\s*house', r'sun\s*-?grown',
+              r'sungrown', r'light\s*dep(?:rivation)?s?', r'deps?', r'mixed\s*light',
+              r'smalls?', r'popcorn', r'shake', r'trim', r'bulk',
+              ] + [_desc_pat(d) for d in BRAND_DESCRIPTORS]
     FORM_RE = re.compile(r'\b(?:' + "|".join(_forms) + r')\b', re.IGNORECASE)
 
     def is_desc(s):
@@ -972,10 +977,13 @@ def build_tag_rows(df):
         if not product or product.lower() == "nan":
             continue
         parts = [p.strip() for p in product.split("|") if p.strip()]
-        if len(parts) >= 2 and is_desc(parts[-1]):
-            strain, brand_parts = parts[-2], parts[:-2]      # …| Strain | Description
-        elif parts:
-            strain, brand_parts = parts[-1], parts[:-1]      # last part is the strain
+        # Peel every trailing description chunk (size, form, grow type) so the
+        # strain is the last real name — e.g. Brand | Strain | 28G | Outdoor.
+        core = list(parts)
+        while len(core) > 1 and is_desc(core[-1]):
+            core.pop()
+        if core:
+            strain, brand_parts = core[-1], core[:-1]
         else:
             strain, brand_parts = product, []
         strain = strain.upper()
@@ -989,7 +997,8 @@ def build_tag_rows(df):
         if wt:
             v = wt.group(1)
             if v.endswith(".0"): v = v[:-2]
-            bits.append(f"{v}G")
+            if f"{v}G" not in bits:
+                bits.append(f"{v}G")
         pack = None
         mx = re.search(r'\b(\d+)\s*[xX]\s*[\d.]', product)
         if mx:
@@ -999,7 +1008,7 @@ def build_tag_rows(df):
                            product, re.IGNORECASE)
             if mc:
                 pack = f"{int(mc.group(1))}PK"
-        if pack:
+        if pack and pack not in bits:
             bits.append(pack)
         brand = " | ".join(b for b in bits if b)
 
