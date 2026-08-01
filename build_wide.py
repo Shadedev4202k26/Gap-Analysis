@@ -209,9 +209,21 @@ def flatten_art(src, out, dpi=300):
     ph = float(page.mediabox[3])
 
     with tempfile.TemporaryDirectory() as td:
+        # Rasterise an ANNOTATION-FREE copy. Rendering the template as-is bakes
+        # the field placeholders (BRAND_1, STRAIN_1 …) into the artwork, and the
+        # real values then print on top of them.
+        bare = PdfWriter()
+        bare.append(PdfReader(src))
+        bare.pages[0][NameObject("/Annots")] = ArrayObject()
+        if "/AcroForm" in bare._root_object:
+            bare._root_object["/AcroForm"].get_object()[
+                NameObject("/Fields")] = ArrayObject()
+        bare_path = os.path.join(td, "bare.pdf")
+        with open(bare_path, "wb") as bf:
+            bare.write(bf)
         stem = os.path.join(td, "art")
-        subprocess.run(["pdftoppm", "-png", "-r", str(dpi), "-singlefile", src, stem],
-                       check=True, capture_output=True)
+        subprocess.run(["pdftoppm", "-png", "-r", str(dpi), "-singlefile",
+                        bare_path, stem], check=True, capture_output=True)
         buf = io.BytesIO()
         c = rl_canvas.Canvas(buf, pagesize=(pw, ph))
         c.drawImage(ImageReader(stem + ".png"), 0, 0, width=pw, height=ph)
