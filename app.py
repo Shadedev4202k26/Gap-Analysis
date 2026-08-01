@@ -1035,6 +1035,52 @@ def build_tag_rows(df):
     return rows
 
 
+def edit_tag_lines(chosen, key):
+    """Optional editable table for the final tag text. Lets any line on any tag
+    be corrected before printing, without changing the imported data. Returns
+    the (possibly edited) rows."""
+    if not chosen:
+        return chosen
+    edit_on = st.toggle("✏️  Edit tag text", value=False, key=f"{key}_edit",
+                        help="Fine-tune the exact wording on each tag — brand line, "
+                             "strain, THC and price. Blank a cell to leave it off the tag.")
+    if not edit_on:
+        return chosen
+
+    TYPES = ["sativa", "hybrid", "indica"]
+    src = pd.DataFrame([{ "Brand line": r.get("brand", ""),
+                          "Strain": r.get("strain", ""),
+                          "THC": r.get("thc", ""),
+                          "Price": r.get("price", ""),
+                          "Type": r.get("type", "hybrid")} for r in chosen])
+    st.caption("Edit any cell — the tags print exactly what you leave here.")
+    edited = st.data_editor(
+        src, use_container_width=True, hide_index=True, num_rows="fixed",
+        key=f"{key}_editor",
+        column_config={
+            "Brand line": st.column_config.TextColumn(width="medium"),
+            "Strain": st.column_config.TextColumn(width="medium"),
+            "THC": st.column_config.TextColumn(width="small"),
+            "Price": st.column_config.TextColumn(width="small"),
+            "Type": st.column_config.SelectboxColumn(options=TYPES, width="small"),
+        })
+    out = []
+    for i, r in enumerate(chosen):
+        try:
+            row = edited.iloc[i]
+        except Exception:
+            out.append(r); continue
+        n = dict(r)
+        n["brand"] = str(row["Brand line"] or "").strip()
+        n["strain"] = str(row["Strain"] or "").strip()
+        n["thc"] = str(row["THC"] or "").strip()
+        n["price"] = str(row["Price"] or "").strip()
+        t = str(row["Type"] or "").strip().lower()
+        n["type"] = t if t in TYPES else r.get("type", "hybrid")
+        out.append(n)
+    return out
+
+
 def render_hook_tags():
     st.markdown('<div class="sec-head"><div class="sec-head-text">🏷️ Small Hook Tags</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     if not PREROLL_AVAILABLE:
@@ -1118,8 +1164,15 @@ def render_hook_tags():
                             pdf_bytes = combine_tags.build_combined(HOOK_TEMPLATES, custom, tmp)
                         else:
                             pdf_bytes = preroll_tags.build_separate(HOOK_TEMPLATES, grouped, tmp)
-                except FileNotFoundError:
-                    st.error("pdftk not found — add `pdftk` to packages.txt.")
+                except FileNotFoundError as e:
+                    miss = getattr(e, "filename", "") or str(e)
+                    if "pdftoppm" in str(miss):
+                        st.error("`pdftoppm` not found — add **poppler-utils** to packages.txt "
+                                 "(needed for mixing types on one page).")
+                    elif "pdftk" in str(miss):
+                        st.error("pdftk not found — add `pdftk` to packages.txt.")
+                    else:
+                        st.error(f"Missing file: {miss}")
                     return
                 except Exception as e:
                     st.error(f"Error building tags: {e}")
@@ -1223,6 +1276,8 @@ def render_hook_tags():
         st.info("Pick at least one item above to place on a tag.")
         return
 
+    chosen = edit_tag_lines(chosen, "hook")
+
     sel_counts = Counter(r["type"] for r in chosen)
     st.caption(f"Selected **{len(chosen)}** tags  ·  "
                f"{sel_counts.get('sativa',0)} sativa · {sel_counts.get('hybrid',0)} hybrid · {sel_counts.get('indica',0)} indica")
@@ -1238,8 +1293,15 @@ def render_hook_tags():
                         pdf_bytes = combine_tags.build_combined(HOOK_TEMPLATES, chosen, tmp)
                     else:
                         pdf_bytes = preroll_tags.build_separate(HOOK_TEMPLATES, grouped, tmp)
-            except FileNotFoundError:
-                st.error("pdftk not found — add `pdftk` to packages.txt.")
+            except FileNotFoundError as e:
+                miss = getattr(e, "filename", "") or str(e)
+                if "pdftoppm" in str(miss):
+                    st.error("`pdftoppm` not found — add **poppler-utils** to packages.txt "
+                             "(needed for mixing types on one page).")
+                elif "pdftk" in str(miss):
+                    st.error("pdftk not found — add `pdftk` to packages.txt.")
+                else:
+                    st.error(f"Missing file: {miss}")
                 return
             except Exception as e:
                 st.error(f"Error building tags: {e}")
@@ -2274,6 +2336,11 @@ def render_preroll_tags():
         "hybrid": "Hybrid_Prerolls_4in.pdf",
         "indica": "Indica_Prerolls_4in.pdf",
     }
+    WIDE_SPLIT_TEMPLATES = {
+        "sativa": "Sativa_Split_4in.pdf",
+        "hybrid": "Hybrid_Split_4in.pdf",
+        "indica": "Indica_Split_4in.pdf",
+    }
     st.markdown("""
     <div class="instr-card"><div class="instr-title">📋 How it Works</div>
     <div class="instr-steps">
@@ -2287,21 +2354,19 @@ def render_preroll_tags():
                         horizontal=True, label_visibility="collapsed", key="preroll_src")
     size_mode = o2.radio("Tag size", ["3.5 in", "4 in"], horizontal=True, key="preroll_size")
     wide = (size_mode == "4 in")
-    if wide:
-        split_mode = False
-        o3.caption("Split is 3.5 in only")
-    else:
-        split_mode = o3.toggle(
-            "🔀  Split tags", value=False, key="preroll_split",
-            help="2 strains per tag, side-by-side inside one Smilez border (20 per sheet). "
-                 "Each strain keeps its own THC and price.")
+    split_mode = o3.toggle(
+        "🔀  Split tags", value=False, key="preroll_split",
+        help="2 strains per tag, side-by-side inside one Smilez border (20 per sheet). "
+             "Each strain keeps its own THC and price.")
     combine_pages = o4.toggle(
         "📄  Mix types on one page", value=False, key="preroll_mix",
         help="Save paper: put sativa, hybrid and indica tags on the SAME sheet instead of "
              "a separate page per type. Each tag keeps its own colored border.")
 
-    active_templates = (WIDE_TEMPLATES if wide
-                        else (SPLIT_TEMPLATES if split_mode else TEMPLATES))
+    if wide:
+        active_templates = WIDE_SPLIT_TEMPLATES if split_mode else WIDE_TEMPLATES
+    else:
+        active_templates = SPLIT_TEMPLATES if split_mode else TEMPLATES
     missing = [f for f in active_templates.values() if not os.path.exists(f)]
     if missing:
         st.error(("Missing 4 in template file(s) in repo root: " if wide else
@@ -2368,15 +2433,23 @@ def render_preroll_tags():
                                                                       pair=2 if split_mode else 1)
                         else:
                             pdf_bytes = preroll_tags.build_separate(active_templates, grouped, tmp)
-                except FileNotFoundError:
-                    st.error("pdftk not found — add `pdftk` to packages.txt.")
+                except FileNotFoundError as e:
+                    miss = getattr(e, "filename", "") or str(e)
+                    if "pdftoppm" in str(miss):
+                        st.error("`pdftoppm` not found — add **poppler-utils** to packages.txt "
+                                 "(needed for mixing types on one page).")
+                    elif "pdftk" in str(miss):
+                        st.error("pdftk not found — add `pdftk` to packages.txt.")
+                    else:
+                        st.error(f"Missing file: {miss}")
                     return
                 except Exception as e:
                     st.error(f"Error building tags: {e}")
                     return
             st.success(f"✅ {len(custom)} custom preroll {row_word}")
             st.download_button("📥  DOWNLOAD PREROLL TAGS PDF", pdf_bytes,
-                               ("Preroll_Split_Custom.pdf" if split_mode else
+                               ("Preroll_Split_4in_Custom.pdf" if (split_mode and wide) else
+                                "Preroll_Split_Custom.pdf" if split_mode else
                                 "Preroll_4in_Custom.pdf" if wide else "Preroll_Custom.pdf"),
                                "application/pdf", key="prc_dl")
         return
@@ -2488,6 +2561,8 @@ def render_preroll_tags():
         st.info("Pick at least one item above to place on a tag.")
         return
 
+    chosen = edit_tag_lines(chosen, "preroll")
+
     sel_counts = Counter(r["type"] for r in chosen)
     n_out = (len(chosen) + 1) // 2 if split_mode else len(chosen)
     st.caption(f"Selected **{len(chosen)}** items → **{n_out}** {'split ' if split_mode else ''}tags  ·  "
@@ -2505,8 +2580,15 @@ def render_preroll_tags():
                                                                   pair=2 if split_mode else 1)
                     else:
                         pdf_bytes = preroll_tags.build_separate(active_templates, grouped, tmp)
-            except FileNotFoundError:
-                st.error("pdftk not found — add `pdftk` to packages.txt.")
+            except FileNotFoundError as e:
+                miss = getattr(e, "filename", "") or str(e)
+                if "pdftoppm" in str(miss):
+                    st.error("`pdftoppm` not found — add **poppler-utils** to packages.txt "
+                             "(needed for mixing types on one page).")
+                elif "pdftk" in str(miss):
+                    st.error("pdftk not found — add `pdftk` to packages.txt.")
+                else:
+                    st.error(f"Missing file: {miss}")
                 return
             except Exception as e:
                 st.error(f"Error building tags: {e}")
@@ -2514,7 +2596,8 @@ def render_preroll_tags():
         st.success(f"✅ {len(chosen)} prerolls → {n_out} {'split ' if split_mode else ''}tags "
                    f"({sel_counts.get('sativa',0)} sativa · {sel_counts.get('hybrid',0)} hybrid · {sel_counts.get('indica',0)} indica)")
         st.download_button("📥  DOWNLOAD PREROLL TAGS PDF", pdf_bytes,
-                           ("Preroll_Split_Tags.pdf" if split_mode else
+                           ("Preroll_Split_4in_Tags.pdf" if (split_mode and wide) else
+                            "Preroll_Split_Tags.pdf" if split_mode else
                             "Preroll_4in_Tags.pdf" if wide else "Preroll_Tags.pdf"),
                            "application/pdf")
 
