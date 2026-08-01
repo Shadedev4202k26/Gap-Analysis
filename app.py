@@ -1035,6 +1035,53 @@ def build_tag_rows(df):
     return rows
 
 
+# ── Hand tags between the Preroll and Hook tag builders ──────────────────────
+HANDOFF_LABEL = {"hook": "Small Hook Tags", "preroll": "Preroll Tags"}
+
+
+def send_tags_to(chosen, target, key):
+    """Offer to push the current tag rows over to the other tag builder."""
+    if not chosen:
+        return
+    if st.button(f"📤  Send these {len(chosen)} to {HANDOFF_LABEL[target]}",
+                 key=f"{key}_send",
+                 help="Reuse this exact list in the other tag builder — no re-import needed."):
+        st.session_state[f"handoff_{target}"] = [dict(r) for r in chosen]
+        st.session_state[f"handoff_{target}_from"] = HANDOFF_LABEL[
+            "preroll" if target == "hook" else "hook"]
+        st.success(f"Sent {len(chosen)} tags to **{HANDOFF_LABEL[target]}** — "
+                   f"open that tab and choose “📥 Sent from …”.")
+
+
+def take_handoff(target):
+    """Rows waiting for this builder, if any."""
+    return st.session_state.get(f"handoff_{target}") or []
+
+
+def handoff_source_options(target, base_options):
+    """Add the '📥 Sent from …' source option when rows are waiting."""
+    rows = take_handoff(target)
+    if not rows:
+        return base_options, None
+    src = st.session_state.get(f"handoff_{target}_from", "the other tool")
+    label = f"📥  Sent from {src} ({len(rows)})"
+    return base_options + [label], label
+
+
+def render_handoff_rows(target):
+    """Show the received rows and let them be cleared. Returns the rows."""
+    rows = take_handoff(target)
+    src = st.session_state.get(f"handoff_{target}_from", "the other tool")
+    c1, c2 = st.columns([3, 1])
+    c1.caption(f"**{len(rows)}** tags received from **{src}**. "
+               f"Edit any line below, then generate.")
+    if c2.button("✕  Clear received", key=f"{target}_handoff_clear"):
+        st.session_state.pop(f"handoff_{target}", None)
+        st.session_state.pop(f"handoff_{target}_from", None)
+        st.rerun()
+    return [dict(r) for r in rows]
+
+
 def edit_tag_lines(chosen, key):
     """Editable table for the final tag text, pre-seeded with the imported data.
     Every line can be corrected, and each tag can be printed multiple times.
@@ -1133,7 +1180,8 @@ def render_hook_tags():
     </div></div>""", unsafe_allow_html=True)
 
     o1, o2 = st.columns([2, 2])
-    src_mode = o1.radio("Source", ["📄  Import CSV", "✏️  Custom tags"],
+    _opts, _recv = handoff_source_options("hook", ["📄  Import CSV", "✏️  Custom tags"])
+    src_mode = o1.radio("Source", _opts,
                         horizontal=True, label_visibility="collapsed", key="hook_src")
     combine_pages = o2.toggle(
         "📄  Mix types on one page", value=False, key="hook_mix",
@@ -1145,6 +1193,47 @@ def render_hook_tags():
         combine_pages = False
     elif combine_pages:
         o2.caption(f"mixing engine v{getattr(combine_tags, '__version__', '1.x — update combine_tags.py')}")
+
+    # ── 📥 Rows handed over from the Preroll builder ──────────────────────────
+    if _recv and src_mode == _recv:
+        received = render_handoff_rows("hook")
+        received = edit_tag_lines(received, "hook_recv")
+        if not received:
+            st.info("No tags left — clear the received batch or send a new one.")
+            return
+        from collections import Counter
+        rc = Counter(r.get("type", "hybrid") for r in received)
+        st.caption(f"**{len(received)}** tags  ·  {rc.get('sativa',0)} sativa · "
+                   f"{rc.get('hybrid',0)} hybrid · {rc.get('indica',0)} indica")
+        if st.button("🖨️  GENERATE HOOK TAGS", type="primary", key="hookr_go"):
+            grouped = {}
+            for r in received:
+                grouped.setdefault(r.get("type", "hybrid"), []).append(r)
+            with st.spinner(f"Building {len(received)} hook tags…"):
+                try:
+                    with tempfile.TemporaryDirectory() as tmp:
+                        if combine_pages:
+                            pdf_bytes = combine_tags.build_combined(HOOK_TEMPLATES, received, tmp)
+                        else:
+                            pdf_bytes = preroll_tags.build_separate(HOOK_TEMPLATES, grouped, tmp)
+                except FileNotFoundError as e:
+                    miss = getattr(e, "filename", "") or str(e)
+                    if "pdftoppm" in str(miss):
+                        st.error("`pdftoppm` not found — add **poppler-utils** to packages.txt "
+                                 "(needed for mixing types on one page).")
+                    elif "pdftk" in str(miss):
+                        st.error("pdftk not found — add `pdftk` to packages.txt.")
+                    else:
+                        st.error(f"Missing file: {miss}")
+                    return
+                except Exception as e:
+                    st.error(f"Error building tags: {e}")
+                    return
+            st.success(f"✅ {len(received)} hook tags")
+            st.download_button("📥  DOWNLOAD HOOK TAGS PDF", pdf_bytes,
+                               "HookTags_Ready.pdf", "application/pdf", key="hookr_dl")
+        send_tags_to(received, "preroll", "hookr")
+        return
 
     # ── ✏️ Custom tags: type anything into the fields ─────────────────────────
     if src_mode == "✏️  Custom tags":
@@ -1207,6 +1296,7 @@ def render_hook_tags():
             st.success(f"✅ {len(custom)} custom hook tags")
             st.download_button("📥  DOWNLOAD HOOK TAGS PDF", pdf_bytes,
                                "HookTags_Custom.pdf", "application/pdf", key="hookc_dl")
+        send_tags_to(custom, "preroll", "hookc")
         return
 
     hook_file = st.file_uploader(" ", type=["csv"], key="hook_csv", label_visibility="collapsed")
@@ -1337,6 +1427,7 @@ def render_hook_tags():
                    f"({sel_counts.get('sativa',0)} sativa · {sel_counts.get('hybrid',0)} hybrid · {sel_counts.get('indica',0)} indica)")
         st.download_button("📥  DOWNLOAD HOOK TAGS PDF", pdf_bytes,
                            "HookTags_Ready.pdf", "application/pdf")
+    send_tags_to(chosen, "preroll", "hook")
 
 
 with tab3:
@@ -2377,7 +2468,8 @@ def render_preroll_tags():
     </div></div>""", unsafe_allow_html=True)
 
     o1, o2, o3, o4 = st.columns([1.7, 1.3, 1.2, 1.5])
-    src_mode = o1.radio("Source", ["📄  Import CSV", "✏️  Custom tags"],
+    _optsP, _recvP = handoff_source_options("preroll", ["📄  Import CSV", "✏️  Custom tags"])
+    src_mode = o1.radio("Source", _optsP,
                         horizontal=True, label_visibility="collapsed", key="preroll_src")
     size_mode = o2.radio("Tag size", ["3.5 in", "4 in"], horizontal=True, key="preroll_size")
     wide = (size_mode == "4 in")
@@ -2407,6 +2499,49 @@ def render_preroll_tags():
     elif combine_pages:
         o4.caption(f"mixing engine v{getattr(combine_tags, '__version__', '1.x — update combine_tags.py')}")
 
+
+    # ── 📥 Rows handed over from the Hook tag builder ─────────────────────────
+    if _recvP and src_mode == _recvP:
+        received = render_handoff_rows("preroll")
+        received = edit_tag_lines(received, "preroll_recv")
+        if not received:
+            st.info("No tags left — clear the received batch or send a new one.")
+            return
+        from collections import Counter
+        rc = Counter(r.get("type", "hybrid") for r in received)
+        st.caption(f"**{len(received)}** tags  ·  {rc.get('sativa',0)} sativa · "
+                   f"{rc.get('hybrid',0)} hybrid · {rc.get('indica',0)} indica")
+        if st.button("🖨️  GENERATE PREROLL TAGS", type="primary", key="prr_go"):
+            grouped = {}
+            for r in received:
+                grouped.setdefault(r.get("type", "hybrid"), []).append(r)
+            with st.spinner(f"Building {len(received)} preroll tags…"):
+                try:
+                    with tempfile.TemporaryDirectory() as tmp:
+                        if combine_pages:
+                            pdf_bytes = combine_tags.build_combined(
+                                active_templates, received, tmp,
+                                pair=2 if split_mode else 1)
+                        else:
+                            pdf_bytes = preroll_tags.build_separate(active_templates, grouped, tmp)
+                except FileNotFoundError as e:
+                    miss = getattr(e, "filename", "") or str(e)
+                    if "pdftoppm" in str(miss):
+                        st.error("`pdftoppm` not found — add **poppler-utils** to packages.txt "
+                                 "(needed for mixing types on one page).")
+                    elif "pdftk" in str(miss):
+                        st.error("pdftk not found — add `pdftk` to packages.txt.")
+                    else:
+                        st.error(f"Missing file: {miss}")
+                    return
+                except Exception as e:
+                    st.error(f"Error building tags: {e}")
+                    return
+            st.success(f"✅ {len(received)} preroll tags")
+            st.download_button("📥  DOWNLOAD PREROLL TAGS PDF", pdf_bytes,
+                               "Preroll_Tags.pdf", "application/pdf", key="prr_dl")
+        send_tags_to(received, "hook", "prr")
+        return
 
     # ── ✏️ Custom tags: type anything into the fields ─────────────────────────
     if src_mode == "✏️  Custom tags":
@@ -2479,6 +2614,7 @@ def render_preroll_tags():
                                 "Preroll_Split_Custom.pdf" if split_mode else
                                 "Preroll_4in_Custom.pdf" if wide else "Preroll_Custom.pdf"),
                                "application/pdf", key="prc_dl")
+        send_tags_to(custom, "hook", "prc")
         return
 
     pr_file = st.file_uploader(" ", type=["csv"], key="preroll_csv", label_visibility="collapsed")
@@ -2627,6 +2763,7 @@ def render_preroll_tags():
                             "Preroll_Split_Tags.pdf" if split_mode else
                             "Preroll_4in_Tags.pdf" if wide else "Preroll_Tags.pdf"),
                            "application/pdf")
+    send_tags_to(chosen, "hook", "preroll")
 
 
 with tab9:
