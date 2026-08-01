@@ -980,10 +980,18 @@ def build_tag_rows(df):
         # Peel every trailing description chunk (size, form, grow type) so the
         # strain is the last real name — e.g. Brand | Strain | 28G | Outdoor.
         core = list(parts)
-        while len(core) > 1 and is_desc(core[-1]):
+        # Peel trailing description chunks, but never so far that the BRAND gets
+        # pulled onto the strain line: a product with 3+ sections always keeps at
+        # least brand + strain.
+        floor = 2 if len(parts) >= 3 else 1
+        while len(core) > floor and is_desc(core[-1]):
             core.pop()
-        if core:
+        if len(core) >= 2:
             strain, brand_parts = core[-1], core[:-1]
+        elif core:
+            # Only one real name (e.g. "Trap House | 28G") — it is the brand, so
+            # show it on the brand line rather than mislabelling it as a strain.
+            strain, brand_parts = "", core
         else:
             strain, brand_parts = product, []
         strain = strain.upper()
