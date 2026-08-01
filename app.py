@@ -1,7 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
-import os, json, requests, re, subprocess, tempfile, shutil, random
+import os, json, requests, re, subprocess, tempfile, shutil, random, hashlib
 from urllib.parse import quote_plus
 from datetime import date, datetime, timezone
 from reportlab.lib.pagesizes import letter
@@ -1036,48 +1036,75 @@ def build_tag_rows(df):
 
 
 def edit_tag_lines(chosen, key):
-    """Optional editable table for the final tag text. Lets any line on any tag
-    be corrected before printing, without changing the imported data. Returns
-    the (possibly edited) rows."""
+    """Editable table for the final tag text, pre-seeded with the imported data.
+    Every line can be corrected, and each tag can be printed multiple times.
+    Returns the expanded (possibly edited) rows."""
     if not chosen:
         return chosen
     edit_on = st.toggle("✏️  Edit tag text", value=False, key=f"{key}_edit",
                         help="Fine-tune the exact wording on each tag — brand line, "
-                             "strain, THC and price. Blank a cell to leave it off the tag.")
+                             "strain, THC and price — and set how many copies to print. "
+                             "Blank a cell to leave that line off the tag.")
     if not edit_on:
         return chosen
 
     TYPES = ["sativa", "hybrid", "indica"]
-    src = pd.DataFrame([{ "Brand line": r.get("brand", ""),
-                          "Strain": r.get("strain", ""),
-                          "THC": r.get("thc", ""),
-                          "Price": r.get("price", ""),
-                          "Type": r.get("type", "hybrid")} for r in chosen])
-    st.caption("Edit any cell — the tags print exactly what you leave here.")
+    src = pd.DataFrame([{"Copies": int(r.get("copies", 1) or 1),
+                         "Brand line": str(r.get("brand", "") or ""),
+                         "Strain": str(r.get("strain", "") or ""),
+                         "THC": str(r.get("thc", "") or ""),
+                         "Price": str(r.get("price", "") or ""),
+                         "Type": r.get("type", "hybrid")} for r in chosen])
+
+    # The editor caches its first render against its key, so tie the key to the
+    # current selection — otherwise picking different products leaves stale or
+    # blank cells behind instead of re-seeding with the imported data.
+    sig = hashlib.md5(
+        "|".join(f'{r.get("brand","")}~{r.get("strain","")}~{r.get("thc","")}~'
+                 f'{r.get("price","")}~{r.get("type","")}' for r in chosen)
+        .encode("utf-8")).hexdigest()[:10]
+
+    st.caption("Pre-filled from your import — change only what you need. "
+               "**Copies** prints that tag more than once.")
     edited = st.data_editor(
         src, use_container_width=True, hide_index=True, num_rows="fixed",
-        key=f"{key}_editor",
+        key=f"{key}_editor_{sig}",
         column_config={
+            "Copies": st.column_config.NumberColumn(min_value=0, max_value=60, step=1,
+                                                    width="small", help="How many of this tag to print"),
             "Brand line": st.column_config.TextColumn(width="medium"),
             "Strain": st.column_config.TextColumn(width="medium"),
             "THC": st.column_config.TextColumn(width="small"),
             "Price": st.column_config.TextColumn(width="small"),
             "Type": st.column_config.SelectboxColumn(options=TYPES, width="small"),
         })
+
     out = []
     for i, r in enumerate(chosen):
         try:
             row = edited.iloc[i]
         except Exception:
-            out.append(r); continue
+            out.append(dict(r))
+            continue
         n = dict(r)
-        n["brand"] = str(row["Brand line"] or "").strip()
-        n["strain"] = str(row["Strain"] or "").strip()
-        n["thc"] = str(row["THC"] or "").strip()
-        n["price"] = str(row["Price"] or "").strip()
-        t = str(row["Type"] or "").strip().lower()
+        n["brand"] = str(row["Brand line"] if pd.notna(row["Brand line"]) else "").strip()
+        n["strain"] = str(row["Strain"] if pd.notna(row["Strain"]) else "").strip()
+        n["thc"] = str(row["THC"] if pd.notna(row["THC"]) else "").strip()
+        n["price"] = str(row["Price"] if pd.notna(row["Price"]) else "").strip()
+        t = str(row["Type"] if pd.notna(row["Type"]) else "").strip().lower()
         n["type"] = t if t in TYPES else r.get("type", "hybrid")
-        out.append(n)
+        try:
+            copies = int(row["Copies"]) if pd.notna(row["Copies"]) else 1
+        except (TypeError, ValueError):
+            copies = 1
+        n.pop("copies", None)
+        for _ in range(max(0, copies)):
+            out.append(dict(n))
+
+    total = len(out)
+    if total != len(chosen):
+        st.caption(f"➡️  **{total}** tags will print "
+                   f"(from {len(chosen)} row{'s' if len(chosen) != 1 else ''}).")
     return out
 
 
