@@ -13,12 +13,15 @@ border gradient is continuous, the seams are invisible.
 
 Usage:  python build_wide.py Sativa_Prerolls.pdf Sativa_Prerolls_4in.pdf
 """
+import io
 import re
 import sys
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import (ArrayObject, BooleanObject, DecodedStreamObject,
                            FloatObject, NameObject, NumberObject)
+
+from reportlab.pdfgen import canvas as rl_canvas
 
 import build_split as bs
 import combine_tags as ct
@@ -49,6 +52,24 @@ def _logo_extent(rel):
     leaves between the THC and PRICE fields. Deterministic for every colour
     (colour detection is unreliable when the border and logo share a hue)."""
     return rel["THC"][2], rel["PRICE"][0]
+
+
+
+def _slot_fields(src):
+    """{slot: {KEY: rect}} for every field on a built template."""
+    r = PdfReader(src)
+    out = {}
+    for a in r.pages[0].get("/Annots", []) or []:
+        o = a.get_object()
+        v = o.get("/V")
+        if v is None and o.get("/Parent"):
+            v = o["/Parent"].get_object().get("/V")
+        if o.get("/Rect") and isinstance(v, str):
+            m = re.match(r"(BRAND|STRAIN|THC|PRICE)_+\s*(\d+)", v.strip())
+            if m:
+                out.setdefault(int(m.group(2)), {})[m.group(1)] = [
+                    float(x) for x in o["/Rect"]]
+    return out
 
 
 def build_wide(src, out):
@@ -160,3 +181,51 @@ def build_wide(src, out):
 
 if __name__ == "__main__":
     build_wide(sys.argv[1], sys.argv[2])
+
+
+def flatten_art(src, out, dpi=300):
+    """Rebuild `src` with its page art baked into ONE background image.
+
+    The sliced construction above draws the source page five times per tag (50
+    full-page draws a sheet), which makes rendering ~4x slower — and once such a
+    sheet is composited for mixed-type printing the cost multiplies until viewers
+    show the file but refuse to print it. The artwork is a raster image to begin
+    with, so flattening costs no real quality.
+
+    The original document is kept and only its page CONTENT is swapped, so the
+    form fields, their /DA font sizing and the embedded Paralucent-Heavy font in
+    /DR all survive untouched.
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    from reportlab.lib.utils import ImageReader
+
+    writer = PdfWriter()
+    writer.append(PdfReader(src))
+    page = writer.pages[0]
+    pw = float(page.mediabox[2])
+    ph = float(page.mediabox[3])
+
+    with tempfile.TemporaryDirectory() as td:
+        stem = os.path.join(td, "art")
+        subprocess.run(["pdftoppm", "-png", "-r", str(dpi), "-singlefile", src, stem],
+                       check=True, capture_output=True)
+        buf = io.BytesIO()
+        c = rl_canvas.Canvas(buf, pagesize=(pw, ph))
+        c.drawImage(ImageReader(stem + ".png"), 0, 0, width=pw, height=ph)
+        c.save()
+    buf.seek(0)
+
+    # Import the flat art page, then hand its content+resources to the real page.
+    writer.append(PdfReader(buf))
+    art = writer.pages[-1]
+    page[NameObject("/Contents")] = art.get(NameObject("/Contents"))
+    page[NameObject("/Resources")] = art.get(NameObject("/Resources"))
+    writer.remove_page(len(writer.pages) - 1)
+
+    with open(out, "wb") as f:
+        writer.write(f)
+    n = len(_slot_fields(out))
+    print(f"flattened {out}: art baked at {dpi}dpi, {n} slots kept")
