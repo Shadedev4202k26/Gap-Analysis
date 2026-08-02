@@ -14,7 +14,7 @@ import io
 import os
 import re
 
-__version__ = "2.4-fast"   # shared XObjects + flattened 4in art (no ghost placeholders)
+__version__ = "2.5-guides"   # shared XObjects, flat 4in art, full-page cut guides
 
 from pypdf import PdfReader, PdfWriter, Transformation
 from pypdf._page import PageObject
@@ -490,7 +490,13 @@ def build_combined(templates, rows_in_order, tmpdir, pair=1):
         # slow enough that viewers show the file but disable printing). Tags that
         # share a transform are therefore drawn in ONE pass, clipped to the union
         # of their destination cells.
+        # Each tag is clipped to its own cell, so anything OUTSIDE the cells —
+        # the cut guides in the gutters and page margins — would never be drawn.
+        # Lay one whole sheet down first as a base layer; every tag is then
+        # painted over it, so the guides run right across the finished page.
         ops = []
+        ops.append("q /ZT0 Do Q")
+
         for n, t in enumerate(by_type):
             groups = {}
             for slot, _ in by_type[t]:
