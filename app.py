@@ -50,6 +50,12 @@ try:
 except ImportError:
     COMBINE_AVAILABLE = False
 
+try:
+    import build_dual
+    DUAL_AVAILABLE = True
+except ImportError:
+    DUAL_AVAILABLE = False
+
 st.set_page_config(page_title="ZiggyBot", page_icon="⚡", layout="wide")
 
 # ── Supabase client ───────────────────────────────────────────────────────────
@@ -2492,8 +2498,18 @@ def render_preroll_tags():
     wide = (size_mode == "4 in")
     split_mode = o3.toggle(
         "🔀  Split tags", value=False, key="preroll_split",
-        help="2 strains per tag, side-by-side inside one Smilez border (20 per sheet). "
-             "Each strain keeps its own THC and price.")
+        help="2 strains per tag, side-by-side (20 per sheet). Each half gets its own "
+             "strain-type colour frame, so a sativa can share a tag with an indica.")
+    # Split tags always use the dual-colour design: each half carries its own
+    # strain-type frame, so every two-item bin looks the same. The old static
+    # split templates are retired and only used if build_dual.py is missing.
+    dual_mode = bool(split_mode and DUAL_AVAILABLE)
+    if split_mode:
+        if dual_mode:
+            o3.caption("each half gets its own strain color")
+        else:
+            st.warning("`build_dual.py` not found in the repo root — falling back to "
+                       "the retired single-colour split templates.")
     combine_pages = o4.toggle(
         "📄  Mix types on one page", value=False, key="preroll_mix",
         help="Save paper: put sativa, hybrid and indica tags on the SAME sheet instead of "
@@ -2503,7 +2519,10 @@ def render_preroll_tags():
         active_templates = WIDE_SPLIT_TEMPLATES if split_mode else WIDE_TEMPLATES
     else:
         active_templates = SPLIT_TEMPLATES if split_mode else TEMPLATES
-    missing = [f for f in active_templates.values() if not os.path.exists(f)]
+    # Dual split builds its sheet from the single-strain base art, so that is what
+    # has to be present — the retired split templates are not needed.
+    need = (WIDE_TEMPLATES if wide else TEMPLATES) if dual_mode else active_templates
+    missing = [f for f in need.values() if not os.path.exists(f)]
     if missing:
         st.error(("Missing 4 in template file(s) in repo root: " if wide else
                   "Missing split template file(s) in repo root: " if split_mode
@@ -2535,7 +2554,10 @@ def render_preroll_tags():
             with st.spinner(f"Building {len(received)} preroll tags…"):
                 try:
                     with tempfile.TemporaryDirectory() as tmp:
-                        if combine_pages:
+                        if dual_mode:
+                            pdf_bytes = build_dual.build_sheet(
+                                received, tmp, size=("4" if wide else "3.5"))
+                        elif combine_pages:
                             pdf_bytes = combine_tags.build_combined(
                                 active_templates, received, tmp,
                                 pair=2 if split_mode else 1)
@@ -2607,7 +2629,9 @@ def render_preroll_tags():
             with st.spinner(f"Building {len(custom)} custom preroll tags…"):
                 try:
                     with tempfile.TemporaryDirectory() as tmp:
-                        if combine_pages:
+                        if dual_mode:
+                            pdf_bytes = build_dual.build_sheet(custom, tmp, size=('4' if wide else '3.5'))
+                        elif combine_pages:
                             pdf_bytes = combine_tags.build_combined(active_templates, custom, tmp,
                                                                       pair=2 if split_mode else 1)
                         else:
@@ -2627,7 +2651,8 @@ def render_preroll_tags():
                     return
             st.success(f"✅ {len(custom)} custom preroll {row_word}")
             st.download_button("📥  DOWNLOAD PREROLL TAGS PDF", pdf_bytes,
-                               ("Preroll_Split_4in_Custom.pdf" if (split_mode and wide) else
+                               ("Preroll_Dual_Custom.pdf" if dual_mode else
+                                "Preroll_Split_4in_Custom.pdf" if (split_mode and wide) else
                                 "Preroll_Split_Custom.pdf" if split_mode else
                                 "Preroll_4in_Custom.pdf" if wide else "Preroll_Custom.pdf"),
                                "application/pdf", key="prc_dl")
@@ -2755,7 +2780,9 @@ def render_preroll_tags():
         with st.spinner(f"Building {n_out} tags…"):
             try:
                 with tempfile.TemporaryDirectory() as tmp:
-                    if combine_pages:
+                    if dual_mode:
+                        pdf_bytes = build_dual.build_sheet(chosen, tmp, size=('4' if wide else '3.5'))
+                    elif combine_pages:
                         pdf_bytes = combine_tags.build_combined(active_templates, chosen, tmp,
                                                                   pair=2 if split_mode else 1)
                     else:
@@ -2776,7 +2803,8 @@ def render_preroll_tags():
         st.success(f"✅ {len(chosen)} prerolls → {n_out} {'split ' if split_mode else ''}tags "
                    f"({sel_counts.get('sativa',0)} sativa · {sel_counts.get('hybrid',0)} hybrid · {sel_counts.get('indica',0)} indica)")
         st.download_button("📥  DOWNLOAD PREROLL TAGS PDF", pdf_bytes,
-                           ("Preroll_Split_4in_Tags.pdf" if (split_mode and wide) else
+                           ("Preroll_Dual_Tags.pdf" if dual_mode else
+                            "Preroll_Split_4in_Tags.pdf" if (split_mode and wide) else
                             "Preroll_Split_Tags.pdf" if split_mode else
                             "Preroll_4in_Tags.pdf" if wide else "Preroll_Tags.pdf"),
                            "application/pdf")
