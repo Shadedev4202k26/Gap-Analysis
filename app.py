@@ -848,6 +848,17 @@ with tab2:
             st.caption("Balancing is **off** — showing a plain room comparison that "
                        "highlights products missing (zero) from one or more rooms.")
 
+        # Storage rooms are back-stock: empty is normal there, so an empty storage
+        # room should not flag a gap on its own (that is what buries the report in
+        # pages of zeros). They still count toward totals and still show their qty.
+        default_store = [r for r in rooms if "vault" in r.lower()
+                         or "storage" in r.lower() or "back" in r.lower()]
+        store_rooms = st.multiselect(
+            "Storage rooms — zero here is OK", rooms, default=default_store,
+            key="balance_storage",
+            help="Rooms you hold back-stock in. A zero in these rooms will not be "
+                 "reported as a gap; a zero in a selling room still will.")
+
         if len(rooms) < 1:
             st.info("Select at least one room to analyze.")
         else:
@@ -868,6 +879,8 @@ with tab2:
                 shares = {r: qtys[r] / total for r in rooms}
                 top_share = max(shares.values())
                 empty_rooms = [r for r in rooms if qtys[r] == 0]
+                # only zeros in SELLING rooms count as a gap
+                gap_rooms = [r for r in empty_rooms if r not in store_rooms]
                 mix = " / ".join(f"{r.split()[0]} {round(shares[r]*100)}%" for r in rooms)
                 entry = {"Product Name": product}
                 for r in rooms:
@@ -877,15 +890,16 @@ with tab2:
                     # Trigger 1: lopsided beyond the imbalance threshold
                     imbalanced = len(rooms) > 1 and (top_share * 100) > imbalance_pct
                     # Trigger 2: a room at/below minimum while another has stock to move
-                    low_room    = any(qtys[r] <= min_stock for r in rooms)
+                    sell_rooms  = [r for r in rooms if r not in store_rooms] or rooms
+                    low_room    = any(qtys[r] <= min_stock for r in sell_rooms)
                     source_room = any(qtys[r] > min_stock for r in rooms)
                     low_flag    = len(rooms) > 1 and low_room and source_room
                     status = "🔄 Rebalance" if (imbalanced or low_flag) else "✅ Balanced"
                     entry["Mix %"] = mix
                     entry["Status"] = status
                 else:
-                    gap = len(rooms) > 1 and len(empty_rooms) > 0
-                    entry["Missing In"] = ", ".join(empty_rooms) if empty_rooms else "—"
+                    gap = len(rooms) > 1 and len(gap_rooms) > 0
+                    entry["Missing In"] = ", ".join(gap_rooms) if gap_rooms else "—"
                     entry["Status"] = "⚠️ Gap" if gap else "✅ In all rooms"
                 entry["_skew"] = top_share  # for sorting
                 rows.append(entry)
@@ -957,11 +971,13 @@ def build_tag_rows(df):
     price_col = "Current price" if "Current price" in df.columns else "Price"
     # Descriptors that get appended to the brand line when present in a product.
     # Add new ones here (lowercase) and they'll flow to every tag automatically.
-    BRAND_DESCRIPTORS = ["single", "hashbone", "tarantula", "moonrocks", "snowballs"]
+    BRAND_DESCRIPTORS = ["single", "hashbone", "tarantula", "moonrocks", "snowballs",
+                         "live resin"]
     def _desc_pat(kw):
-        # match a descriptor whether the product spells it singular or plural
+        # match a descriptor whether the product spells it singular or plural,
+        # and allow any spacing/hyphen between words ("live resin", "Live-Resin")
         base = kw[:-1] if kw.lower().endswith("s") else kw
-        return re.escape(base) + r's?'
+        return r"[\s\-]+".join(re.escape(w) for w in base.split()) + r"s?"
     SIZE_RE = re.compile(r'(?<![A-Za-z])\d*\.?\d+\s*(?:g|mg)\b', re.IGNORECASE)
     _forms = [r'pre-?rolls?', r'blunts?', r'gummies?', r'gummy', r'chocolates?', r'bites?',
               r'cart(?:ridge)?s?', r'disposables?', r'vapes?', r'flower', r'eighths?',
