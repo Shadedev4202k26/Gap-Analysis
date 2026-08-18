@@ -14,7 +14,7 @@ import io
 import os
 import re
 
-__version__ = "2.5-guides"   # shared XObjects, flat 4in art, full-page cut guides
+__version__ = "2.6-guides"   # shared XObjects, flat 4in art, bold cut guides + crop ticks
 
 from pypdf import PdfReader, PdfWriter, Transformation
 from pypdf._page import PageObject
@@ -414,6 +414,46 @@ def _clipped_page(src_pdf, rect):
     return page
 
 
+GUIDE_GRAY = 0.45          # darker than the template's own hairlines
+GUIDE_W = 0.6              # pt
+TICK = 14.0                # how far a crop tick reaches into the margin
+
+
+def _guide_ops(dest, pw, ph, framed=False):
+    """Cut-guide drawing ops for a composited sheet.
+
+    `framed` templates (coloured tag borders) get margin ticks only, so nothing
+    is drawn across the artwork; unframed ones (hook tags) also get dashed lines
+    along every cell boundary, including the top edge of the first row.
+    """
+    xs = sorted({round(c[0], 2) for c in dest.values()} |
+                {round(c[2], 2) for c in dest.values()})
+    ys = sorted({round(c[1], 2) for c in dest.values()} |
+                {round(c[3], 2) for c in dest.values()})
+    if not xs or not ys:
+        return ""
+    x0, x1 = xs[0], xs[-1]
+    y0, y1 = ys[0], ys[-1]
+
+    out = [f"q {GUIDE_GRAY} G {GUIDE_W} w"]
+    # crop ticks reaching into the page margins at every boundary
+    out.append("[] 0 d")
+    for x in xs:
+        out.append(f"{x:.2f} {y1:.2f} m {x:.2f} {min(ph, y1 + TICK):.2f} l S")
+        out.append(f"{x:.2f} {y0:.2f} m {x:.2f} {max(0, y0 - TICK):.2f} l S")
+    for y in ys:
+        out.append(f"{x0:.2f} {y:.2f} m {max(0, x0 - TICK):.2f} {y:.2f} l S")
+        out.append(f"{x1:.2f} {y:.2f} m {min(pw, x1 + TICK):.2f} {y:.2f} l S")
+    if not framed:
+        out.append("[3 3] 0 d")                     # dashed across the sheet
+        for y in ys:
+            out.append(f"{x0:.2f} {y:.2f} m {x1:.2f} {y:.2f} l S")
+        for x in xs:
+            out.append(f"{x:.2f} {y0:.2f} m {x:.2f} {y1:.2f} l S")
+    out.append("Q")
+    return "\n".join(out)
+
+
 def build_combined(templates, rows_in_order, tmpdir, pair=1):
     """Mix strain types on shared pages. rows_in_order is a flat list of row
     dicts (each with a 'type'); they fill slots in order. Returns PDF bytes.
@@ -520,6 +560,13 @@ def build_combined(templates, rows_in_order, tmpdir, pair=1):
                                 for r, w, h in rects)
                 ops.append(f"q {clip} W n "
                            f"{sx:.6f} 0 0 {sy:.6f} {tx:.3f} {ty:.3f} cm /ZT{n} Do Q")
+
+        # Cut guides. The base sheet's own guides are a very light gray and get
+        # washed out further on a composite, and nothing marks the TOP edge of the
+        # first row — so draw crisp ones at every cell boundary. Templates whose
+        # tags have a printed colour frame already show their own edge, so those
+        # only get tick marks out in the page margins.
+        ops.append(_guide_ops(dest, pw, ph, framed=bool(art_cells(templates[ref]))))
 
         out_page = PageObject.create_blank_page(width=pw, height=ph)
         writer.add_page(out_page)
