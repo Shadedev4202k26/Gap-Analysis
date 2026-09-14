@@ -87,6 +87,25 @@ def init_supabase():
         return None
 
 # ── AI helpers ────────────────────────────────────────────────────────────────
+def fmt_ai(v):
+    """Render an AI JSON value as readable card text. Models return lists
+    (['Myrcene', 'Pinene']), objects ({'THC': '17-24%'}) or bullet text as
+    often as plain strings; printing those raw shows Python syntax on the card."""
+    if v is None or v == "" or v == [] or v == {}:
+        return "—"
+    if isinstance(v, dict):
+        return " · ".join(f"{k} {fmt_ai(x)}" for k, x in v.items())
+    if isinstance(v, (list, tuple)):
+        return ", ".join(fmt_ai(x) for x in v if x not in (None, ""))
+    lines = [l.strip().lstrip("-•*").strip() for l in str(v).splitlines() if l.strip()]
+    if not lines:
+        return "—"
+    if len(lines) > 1 and lines[0].endswith(":"):
+        s = lines[0] + " " + "; ".join(lines[1:])
+    else:
+        s = "; ".join(lines)
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 def generate_strain_profile(groq_key, strain_name, brand=""):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
@@ -97,7 +116,8 @@ def generate_strain_profile(groq_key, strain_name, brand=""):
               "If unrecognizable, output 'Unknown strain, please check Google' for lineage. "
               "Output clean JSON. Keys: classification, lineage, terpenes, flavor, effects, cannabinoids.")
     target = f'Target Strain: {strain_name}' + (f'\nBrand: {brand}' if brand else "")
-    payload = {"model": "llama-3.3-70b-versatile",
+    # llama-3.3-70b-versatile was shut down by Groq on 2026-08-16; gpt-oss-120b is its named replacement.
+    payload = {"model": "openai/gpt-oss-120b",
                "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": target}],
                "temperature": 0.1}
@@ -112,6 +132,26 @@ def generate_strain_profile(groq_key, strain_name, brand=""):
         return {"error": str(e)}
     return {"classification": "HYBRID", "lineage": "N/A", "terpenes": "N/A",
             "flavor": "N/A", "effects": "N/A", "cannabinoids": "N/A"}
+
+def get_compound_profile(api_key, compound_name):
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    system = "You are an advanced cannabinoid science database. Output JSON. Keys: status, primary_effects, medical_benefits, customer_pitch."
+    # llama-3.1-8b-instant was shut down by Groq on 2026-08-16; gpt-oss-20b is its named replacement.
+    payload = {"model": "openai/gpt-oss-20b",
+               "messages": [{"role": "system", "content": system},
+                             {"role": "user", "content": f"Profile for: {compound_name}"}],
+               "temperature": 0.1}
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
+        if r.status_code == 200:
+            c = r.json()['choices'][0]['message']['content'].strip()
+            if "{" in c and "}" in c:
+                c = c[c.find("{"):c.rfind("}") + 1]
+            return json.loads(c)
+        return {"error": f"Status {r.status_code}"}
+    except Exception as e:
+        return {"error": str(e)}
 
 def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_search=True, brand=""):
     """Pull a strain profile from Gemini. With use_search=True it grounds the
@@ -173,25 +213,6 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_se
         return data
     except Exception as e:
         return {"error": f"{type(e).__name__}: {e}"}
-
-
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    system = "You are an advanced cannabinoid science database. Output JSON. Keys: status, primary_effects, medical_benefits, customer_pitch."
-    payload = {"model": "llama-3.1-8b-instant",
-               "messages": [{"role": "system", "content": system},
-                             {"role": "user", "content": f"Profile for: {compound_name}"}],
-               "temperature": 0.1}
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=10)
-        if r.status_code == 200:
-            c = r.json()['choices'][0]['message']['content'].strip()
-            if "{" in c and "}" in c:
-                c = c[c.find("{"):c.rfind("}") + 1]
-            return json.loads(c)
-        return {"error": f"Status {r.status_code}"}
-    except Exception as e:
-        return {"error": str(e)}
 
 def build_pdf(dataframe, threshold_value, rooms, min_stock=None, mode="balance",
               qty_label="Available"):
@@ -712,7 +733,8 @@ with tab1:
             mode = mode or "groq"
         if "error" not in data:
             clf  = str(data.get('classification', 'HYBRID')).upper()
-            bcls = "sb-sativa" if "SATIVA" in clf else ("sb-indica" if "INDICA" in clf else "sb-hybrid")
+            bcls = ("sb-hybrid" if "HYBRID" in clf else "sb-sativa" if "SATIVA" in clf
+                    else "sb-indica" if "INDICA" in clf else "sb-hybrid")
             if brand:
                 bsearch = "https://www.google.com/search?q=" + quote_plus(f"{brand} cannabis brand official website")
                 brand_html = (f' · <a href="{bsearch}" target="_blank" title="Find official website" '
@@ -726,11 +748,11 @@ with tab1:
               <span class="sc-badge {bcls}">{clf}</span>
             </div><div class="sc-div"></div>
             <div class="sc-grid">
-              <div class="sc-attr sc-attr-full"><div class="attr-label">🌿 Lineage</div><div class="attr-val">{data.get('lineage','—')}</div></div>
-              <div class="sc-attr"><div class="attr-label">🧪 Terpenes</div><div class="attr-val">{data.get('terpenes','—')}</div></div>
-              <div class="sc-attr"><div class="attr-label">🍋 Flavor</div><div class="attr-val">{data.get('flavor','—')}</div></div>
-              <div class="sc-attr"><div class="attr-label">⚡ Cannabinoids</div><div class="attr-val attr-val-hi">{data.get('cannabinoids','—')}</div></div>
-              <div class="sc-attr"><div class="attr-label">🧠 Effects</div><div class="attr-val">{data.get('effects','—')}</div></div>
+              <div class="sc-attr sc-attr-full"><div class="attr-label">🌿 Lineage</div><div class="attr-val">{fmt_ai(data.get('lineage'))}</div></div>
+              <div class="sc-attr"><div class="attr-label">🧪 Terpenes</div><div class="attr-val">{fmt_ai(data.get('terpenes'))}</div></div>
+              <div class="sc-attr"><div class="attr-label">🍋 Flavor</div><div class="attr-val">{fmt_ai(data.get('flavor'))}</div></div>
+              <div class="sc-attr"><div class="attr-label">⚡ Cannabinoids</div><div class="attr-val attr-val-hi">{fmt_ai(data.get('cannabinoids'))}</div></div>
+              <div class="sc-attr"><div class="attr-label">🧠 Effects</div><div class="attr-val">{fmt_ai(data.get('effects'))}</div></div>
             </div></div>""", unsafe_allow_html=True)
             if mode == "grounded":
                 src = data.get("_sources", [])
@@ -777,10 +799,12 @@ with tab1:
             st.markdown(f"""
             <div class="cc"><div class="cc-name">🔬 {target_chem.upper()}</div><div class="cc-div"></div>
             <div class="sc-grid">
-              <div class="sc-attr"><div class="attr-label">🧠 Primary Effects</div><div class="attr-val">{chem_data.get('primary_effects','—')}</div></div>
-              <div class="sc-attr"><div class="attr-label">🩺 Medical Benefits</div><div class="attr-val">{chem_data.get('medical_benefits','—')}</div></div>
-              <div class="sc-attr sc-attr-full"><div class="attr-label">🎯 Budtender Pitch</div><div class="attr-val attr-val-hi" style="font-style:italic;">"{chem_data.get('customer_pitch','—')}"</div></div>
+              <div class="sc-attr"><div class="attr-label">🧠 Primary Effects</div><div class="attr-val">{fmt_ai(chem_data.get('primary_effects'))}</div></div>
+              <div class="sc-attr"><div class="attr-label">🩺 Medical Benefits</div><div class="attr-val">{fmt_ai(chem_data.get('medical_benefits'))}</div></div>
+              <div class="sc-attr sc-attr-full"><div class="attr-label">🎯 Budtender Pitch</div><div class="attr-val attr-val-hi" style="font-style:italic;">"{fmt_ai(chem_data.get('customer_pitch'))}"</div></div>
             </div></div>""", unsafe_allow_html=True)
+        else:
+            st.warning(f"Couldn't load a profile for {target_chem} right now ({chem_data['error']}). Try again in a moment.")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 2 — INVENTORY INTEL
