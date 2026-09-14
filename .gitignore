@@ -1,0 +1,7 @@
+# Local Python environment
+.venv/
+__pycache__/
+*.pyc
+
+# Local secrets — real keys live in Streamlit Cloud's secrets settings
+.streamlit/secrets.toml

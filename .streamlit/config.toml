@@ -1,0 +1,9 @@
+# Base theme — matches the :root tokens in app.py's CSS, so Streamlit's own
+# chrome (header bar, menus, widget internals, focus rings) is dark natively
+# instead of relying on CSS overrides.
+[theme]
+base = "dark"
+primaryColor = "#8B5CF6"
+backgroundColor = "#080B16"
+secondaryBackgroundColor = "#0E1424"
+textColor = "#EAF0FB"

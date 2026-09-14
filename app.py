@@ -427,17 +427,20 @@ p{color:var(--dim)!important}
 hr{border:none!important;height:1px!important;background:var(--border)!important;margin:22px 0!important}
 
 /* TABS */
-.stTabs [data-baseweb='tab-list']{background:rgba(10,14,28,.7)!important;backdrop-filter:blur(20px)!important;border:1px solid var(--b-purple)!important;border-radius:var(--r)!important;padding:5px!important;gap:3px!important;box-shadow:inset 0 0 26px rgba(139,92,246,.06)!important;margin-bottom:24px!important}
-.stTabs [data-baseweb='tab']{background:transparent!important;border:1px solid transparent!important;border-radius:var(--rs)!important;color:var(--muted)!important;font-family:'JetBrains Mono',monospace!important;font-weight:700!important;font-size:11px!important;letter-spacing:1px!important;text-transform:uppercase!important;padding:9px 16px!important;transition:all var(--t)!important}
-.stTabs [data-baseweb='tab']:hover{color:var(--cyan-l)!important;background:rgba(34,211,238,.06)!important}
-.stTabs [aria-selected='true']{background:rgba(34,211,238,.08)!important;color:var(--cyan-l)!important;border:1px solid var(--b-cyan)!important;box-shadow:0 0 16px rgba(34,211,238,.2),inset 0 0 12px rgba(34,211,238,.05)!important}
-.stTabs [data-baseweb='tab-highlight'],.stTabs [data-baseweb='tab-border']{display:none!important}
+.stTabs [role='tablist']{background:rgba(10,14,28,.7)!important;backdrop-filter:blur(20px)!important;border:1px solid var(--b-purple)!important;border-radius:var(--r)!important;padding:5px!important;gap:3px!important;box-shadow:inset 0 0 26px rgba(139,92,246,.06)!important;margin-bottom:24px!important}
+.stTabs [data-testid='stTab']{background:transparent!important;border:1px solid transparent!important;border-radius:var(--rs)!important;padding:9px 16px!important;transition:all var(--t)!important}
+.stTabs [data-testid='stTab'] p{color:var(--muted)!important;font-family:'JetBrains Mono',monospace!important;font-weight:700!important;font-size:11px!important;letter-spacing:1px!important;text-transform:uppercase!important;transition:color var(--t)!important}
+.stTabs [data-testid='stTab']:hover{background:rgba(34,211,238,.06)!important}
+.stTabs [data-testid='stTab']:hover p{color:var(--cyan-l)!important}
+.stTabs [data-testid='stTab'][aria-selected='true']{background:rgba(34,211,238,.08)!important;border:1px solid var(--b-cyan)!important;box-shadow:0 0 16px rgba(34,211,238,.2),inset 0 0 12px rgba(34,211,238,.05)!important}
+.stTabs [data-testid='stTab'][aria-selected='true'] p{color:var(--cyan-l)!important}
+.stTabs .react-aria-SelectionIndicator{display:none!important}
 
 /* BUTTONS */
-.stButton>button{background:linear-gradient(135deg,#8B5CF6,#5B21B6)!important;color:#fff!important;border:none!important;border-radius:var(--rs)!important;font-family:'Inter',sans-serif!important;font-weight:700!important;font-size:11px!important;letter-spacing:1.5px!important;text-transform:uppercase!important;padding:13px 30px!important;box-shadow:var(--gp)!important;transition:all var(--t)!important;position:relative!important;overflow:hidden!important;width:100%!important}
-.stButton>button::after{content:'';position:absolute;top:0;left:-100%;width:55%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent);animation:shimmer 2.8s ease infinite}
-.stButton>button:hover{transform:translateY(-2px)!important;box-shadow:0 0 40px rgba(139,92,246,.55),0 8px 28px rgba(0,0,0,.4)!important;background:linear-gradient(135deg,#A78BFA,#7C3AED)!important}
-.stButton>button:active{transform:translateY(0)!important}
+.stButton>button,[data-testid="stFormSubmitButton"] button{background:linear-gradient(135deg,#8B5CF6,#5B21B6)!important;color:#fff!important;border:none!important;border-radius:var(--rs)!important;font-family:'Inter',sans-serif!important;font-weight:700!important;font-size:11px!important;letter-spacing:1.5px!important;text-transform:uppercase!important;padding:13px 30px!important;box-shadow:var(--gp)!important;transition:all var(--t)!important;position:relative!important;overflow:hidden!important;width:100%!important}
+.stButton>button::after,[data-testid="stFormSubmitButton"] button::after{content:'';position:absolute;top:0;left:-100%;width:55%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent);animation:shimmer 2.8s ease infinite}
+.stButton>button:hover,[data-testid="stFormSubmitButton"] button:hover{transform:translateY(-2px)!important;box-shadow:0 0 40px rgba(139,92,246,.55),0 8px 28px rgba(0,0,0,.4)!important;background:linear-gradient(135deg,#A78BFA,#7C3AED)!important}
+.stButton>button:active,[data-testid="stFormSubmitButton"] button:active{transform:translateY(0)!important}
 .stDownloadButton>button{background:linear-gradient(135deg,#10B981,#065F46)!important;color:#fff!important;border:none!important;border-radius:var(--rs)!important;font-family:'Inter',sans-serif!important;font-weight:700!important;font-size:11px!important;letter-spacing:1.5px!important;text-transform:uppercase!important;padding:13px 30px!important;box-shadow:var(--gg)!important;transition:all var(--t)!important;width:100%!important}
 .stDownloadButton>button:hover{transform:translateY(-2px)!important;box-shadow:0 0 40px rgba(52,211,153,.5),0 8px 28px rgba(0,0,0,.4)!important}
 
