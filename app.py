@@ -11,6 +11,7 @@ from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from io import BytesIO
 from collections import defaultdict
+from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 
 try:
     from pypdf import PdfReader, PdfWriter
@@ -282,10 +283,14 @@ def build_pdf(dataframe, threshold_value, rooms, min_stock=None, mode="balance",
     buffer.seek(0)
     return buffer.getvalue()
 
+def fmt_qty(q):
+    """Display a quantity without float noise: 12.0 -> '12', 28.50 -> '28.5'."""
+    return f"{q:.2f}".rstrip("0").rstrip(".")
+
 def build_aging_pdf(watch_items, summary, today_date, watch_days=45, exp_soon_days=60):
-    """Build a print-ready PDF of the aging-stock watch list, grouped by
-    category and color-coded by severity. `watch_items` is the list of
-    aggregated product dicts; `summary` is a dict of headline counts."""
+    """Build a print-ready PDF of the aging-stock watch list: one row per METRC
+    package, oldest first, color-coded by severity. `watch_items` must already be
+    sorted oldest-first; `summary` is a dict of headline counts."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter,
                             rightMargin=36, leftMargin=36, topMargin=40, bottomMargin=40)
@@ -298,26 +303,29 @@ def build_aging_pdf(watch_items, summary, today_date, watch_days=45, exp_soon_da
                           textColor=colors.HexColor('#6B7280'), spaceAfter=18, leading=11)
     cs = ParagraphStyle('C', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#374151'), leading=11)
     cs_b = ParagraphStyle('CB', parent=cs, fontName='Helvetica-Bold')
+    cs_sub = ParagraphStyle('CS', parent=cs, fontSize=7.5, textColor=colors.HexColor('#6B7280'), leading=9)
+    cs_tag = ParagraphStyle('CT', parent=cs, fontName='Courier-Bold', fontSize=7.5, leading=9)
     hs = ParagraphStyle('H', parent=styles['Normal'], fontSize=9,
                         fontName='Helvetica-Bold', textColor=colors.HexColor('#FFFFFF'))
-    cat_style = ParagraphStyle('Cat', parent=styles['Normal'], fontSize=11,
-                               fontName='Helvetica-Bold', textColor=colors.HexColor('#5B21B6'),
-                               spaceBefore=14, spaceAfter=6)
 
     def sev_color(age):
         if age >= 90: return colors.HexColor('#DC2626')   # red
         if age >= 60: return colors.HexColor('#D97706')   # amber
         return colors.HexColor('#2563EB')                 # blue
 
+    def esc(s):
+        return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+    generated = f"{today_date.strftime('%B')} {today_date.day}, {today_date.year}"
     story = [Paragraph("Ziggyz Aging Stock Watch List", ts),
-             Paragraph(f"PRODUCTS AGED {watch_days}+ DAYS &nbsp;·&nbsp; GENERATED {today_date.strftime('%B %-d, %Y')}", ss)]
+             Paragraph(f"PACKAGES AGED {watch_days}+ DAYS &nbsp;·&nbsp; OLDEST FIRST &nbsp;·&nbsp; GENERATED {generated.upper()}", ss)]
 
     # Summary band
-    md = [[Paragraph(f"<b>Aging SKUs:</b> {summary['watch_count']}", cs),
+    md = [[Paragraph(f"<b>Aging Packages:</b> {summary['watch_count']}", cs),
            Paragraph(f"<b>Units Stuck:</b> {summary['watch_units']}", cs),
            Paragraph(f"<b>Expiring &lt;{exp_soon_days}d:</b> {summary['expiring']}", cs),
-           Paragraph(f"<b>Total SKUs:</b> {summary['total_skus']}", cs)]]
-    mt = Table(md, colWidths=[124, 124, 134, 124])
+           Paragraph(f"<b>Total Packages:</b> {summary['total_pkgs']}", cs)]]
+    mt = Table(md, colWidths=[134, 124, 134, 124])
     mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#F8FAFC')),
                              ('BOX',(0,0),(-1,-1),1,colors.HexColor('#E5E7EB')),
                              ('INNERGRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
@@ -325,54 +333,45 @@ def build_aging_pdf(watch_items, summary, today_date, watch_days=45, exp_soon_da
     story.append(mt)
     story.append(Paragraph(
         "Watch list to investigate — age is a proxy for stagnation, not proof of non-sales. "
-        "Review each item before discounting or pulling.", note))
+        "Review each package before discounting or pulling.", note))
 
-    # Group by category, ordered by oldest item
-    by_cat = defaultdict(list)
+    header = [Paragraph("Age", hs), Paragraph("METRC Tag", hs), Paragraph("Product", hs),
+              Paragraph("Qty", hs), Paragraph("Room", hs), Paragraph("Flags", hs)]
+    tdata = [header]
+    row_colors = []
     for v in watch_items:
-        by_cat[v["cat"]].append(v)
-    cat_order = sorted(by_cat.keys(), key=lambda c: -max(v["age"] for v in by_cat[c]))
+        flags = []
+        if v["days_to_exp"] is not None and v["days_to_exp"] < exp_soon_days:
+            flags.append("EXPIRED" if v["days_to_exp"] < 0 else f"EXP {v['days_to_exp']}d")
+        if v["on_sale"]:
+            flags.append("ON SALE")
+        sub = " · ".join(esc(b) for b in (v["brand"], v["cat"]) if b)
+        product_cell = [Paragraph(esc(v["product"]), cs)]
+        if sub:
+            product_cell.append(Paragraph(sub, cs_sub))
+        tdata.append([
+            Paragraph(f'<b>{v["age"]}d</b>', cs_b),
+            Paragraph(esc(v["metrc"]) or "—", cs_tag),
+            product_cell,
+            Paragraph(fmt_qty(v["qty"]), cs),
+            Paragraph(esc(v["room"]) or "—", cs),
+            Paragraph(", ".join(flags) if flags else "—", cs),
+        ])
+        row_colors.append(sev_color(v["age"]))
 
-    for cat in cat_order:
-        items = sorted(by_cat[cat], key=lambda v: -v["age"])
-        oldest = items[0]["age"]
-        story.append(Paragraph(f"{cat or 'Uncategorized'} &nbsp;—&nbsp; {len(items)} item(s), oldest {oldest}d", cat_style))
-
-        header = [Paragraph("Age", hs), Paragraph("Product", hs),
-                  Paragraph("Brand", hs), Paragraph("Qty", hs),
-                  Paragraph("Rooms", hs), Paragraph("Flags", hs)]
-        tdata = [header]
-        row_colors = []
-        for v in items:
-            flags = []
-            if v["days_to_exp"] is not None and v["days_to_exp"] < exp_soon_days:
-                flags.append("EXPIRED" if v["days_to_exp"] < 0 else f"EXP {v['days_to_exp']}d")
-            if v["on_sale"]:
-                flags.append("ON SALE")
-            rooms = ", ".join(sorted(v["rooms"])) if v["rooms"] else "—"
-            tdata.append([
-                Paragraph(f'<b>{v["age"]}d</b>', cs_b),
-                Paragraph(v["product"], cs),
-                Paragraph(v["brand"] or "—", cs),
-                Paragraph(str(v["qty"]), cs),
-                Paragraph(rooms, cs),
-                Paragraph(", ".join(flags) if flags else "—", cs),
-            ])
-            row_colors.append(sev_color(v["age"]))
-
-        tbl = Table(tdata, colWidths=[34, 168, 96, 30, 120, 92], repeatRows=1)
-        style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1E293B')),
-                 ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
-                 ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
-                 ('PADDING',(0,0),(-1,-1),5),
-                 ('ALIGN',(0,0),(0,-1),'CENTER'),
-                 ('ALIGN',(3,0),(3,-1),'CENTER')]
-        # Severity color bar on the Age cell of each data row
-        for i, c in enumerate(row_colors, start=1):
-            style.append(('TEXTCOLOR',(0,i),(0,i),c))
-            style.append(('LINEBEFORE',(0,i),(0,i),3,c))
-        tbl.setStyle(TableStyle(style))
-        story.append(tbl)
+    tbl = Table(tdata, colWidths=[34, 120, 176, 30, 96, 84], repeatRows=1)
+    style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1E293B')),
+             ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
+             ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+             ('PADDING',(0,0),(-1,-1),5),
+             ('ALIGN',(0,0),(0,-1),'CENTER'),
+             ('ALIGN',(3,0),(3,-1),'CENTER')]
+    # Severity color bar on the Age cell of each data row
+    for i, c in enumerate(row_colors, start=1):
+        style.append(('TEXTCOLOR',(0,i),(0,i),c))
+        style.append(('LINEBEFORE',(0,i),(0,i),3,c))
+    tbl.setStyle(TableStyle(style))
+    story.append(tbl)
 
     doc.build(story)
     buffer.seek(0)
@@ -615,6 +614,8 @@ hr{border:none!important;height:1px!important;background:var(--border)!important
 .ds-age-unit{font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:3px}
 .ds-name{font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:var(--text);line-height:1.3}
 .ds-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:4px;letter-spacing:.3px}
+.ds-metrc{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);margin-top:4px;letter-spacing:.4px}
+.ds-metrc b{color:var(--cyan-l);font-weight:700}
 .ds-flags{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
 .ds-flag{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;padding:2px 8px;border-radius:50px;letter-spacing:.5px}
 .dsf-exp{background:rgba(239,68,68,.13);color:#FCA5A5;border:1px solid rgba(239,68,68,.3)}
@@ -1052,15 +1053,25 @@ def build_tag_rows(df):
             thc = f"{mv}MG"
         else:
             thc_raw = str(row.get("THC", "")).strip('="').strip()
-            tm = re.search(r'(\d+)(?:\.\d+)?', thc_raw)
-            thc = (f"{tm.group(1)} %" if "%" in thc_raw else tm.group(1)) if tm else thc_raw
+            tm = re.search(r'\d+(?:\.\d+)?', thc_raw)
+            if tm:
+                # Store rule: THC always rounds DOWN, never up (87.66 % -> 87 %).
+                tv = int(Decimal(tm.group(0)).quantize(Decimal("1"), rounding=ROUND_FLOOR))
+                thc = f"{tv} %" if "%" in thc_raw else str(tv)
+            else:
+                thc = thc_raw
 
         rp  = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
         pdg = "".join(c for c in rp if c.isdigit() or c == ".")
+        # Store rule: prices are always exact, never rounded. Whole dollars drop
+        # the .00; anything else keeps at least two decimals and every digit given.
         try:
-            pv = float(pdg) if pdg else 0.0
-            price = f"${int(pv)}" if pv == int(pv) else f"${pv:.2f}"
-        except ValueError:
+            pv = Decimal(pdg) if pdg else Decimal(0)
+            if pv == pv.to_integral_value():
+                price = f"${int(pv)}"
+            else:
+                price = f"${pv if pv.as_tuple().exponent < -2 else pv.quantize(Decimal('0.01'))}"
+        except InvalidOperation:
             price = "$0"
 
         scol = str(row.get("Strain", "")).strip().lower()    # type column
@@ -1750,7 +1761,7 @@ def render_dead_stock():
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backend, export your <strong>full inventory</strong> (any rooms/categories)</span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Include at minimum: <strong>Product, Available, Inventory date, Expiration date</strong></span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Include at minimum: <strong>Product, Package ID (METRC tag), Available, Inventory date, Expiration date</strong></span></div>
       <div class="instr-step"><span class="instr-icon">i</span><span>This is a <strong>watch list to investigate</strong>, not a sales report — it flags old stock by age, not proven non-sales</span></div>
     </div></div>""", unsafe_allow_html=True)
 
@@ -1770,10 +1781,11 @@ def render_dead_stock():
     df.columns = [str(c).strip('="').strip() for c in df.columns]
 
     def col(*names):
-        """Return the first matching column name present in the df."""
+        """Return the first matching column name present in the df (case-insensitive)."""
+        lookup = {c.lower(): c for c in df.columns}
         for n in names:
-            if n in df.columns:
-                return n
+            if n.lower() in lookup:
+                return lookup[n.lower()]
         return None
 
     c_product = col("Product", "Online title")
@@ -1786,6 +1798,12 @@ def render_dead_stock():
     c_sale    = col("Is on sale")
     c_brand   = col("Brand")
     c_price   = col("Current price", "Price (Catalog)")
+    c_metrc   = col("Package ID", "Package Id", "PackageId", "Metrc tag", "METRC ID",
+                    "Metrc package", "Metrc package ID", "External package ID", "Package tag", "Package")
+    if not c_metrc:
+        c_metrc = next((c for c in df.columns
+                        if ("metrc" in c.lower() or "package" in c.lower())
+                        and not any(w in c.lower() for w in ("date", "size", "type", "count"))), None)
 
     if not c_product or not c_invdate:
         st.error("This CSV is missing required columns (Product and Inventory/Packaging date). Re-export with those fields included.")
@@ -1805,15 +1823,18 @@ def render_dead_stock():
                 continue
         return None
 
-    def to_int(v):
-        v = cln(v)
-        digits = "".join(ch for ch in v if ch.isdigit())
-        return int(digits) if digits else 0
+    def to_qty(v):
+        # Keep the decimal point — stripping to digits turned 28.5 into 285.
+        m = re.search(r'-?\d+(?:\.\d+)?', cln(v).replace(",", ""))
+        return float(m.group(0)) if m else 0.0
 
     today = date.today()
 
-    # ── Aggregate by product (sum quantity across rooms, keep oldest date) ─────
-    agg = {}
+    # ── One entry per package row — never merge packages of the same product ──
+    # Each export row is its own METRC package with its own date and quantity.
+    # Merging by product name summed fresh packages into an old package's age,
+    # so a product with 2 old units and 10 new ones read as 12 old units.
+    items = []
     for _, row in df.iterrows():
         product = cln(row.get(c_product))
         if not product or product.lower() == "nan":
@@ -1823,38 +1844,26 @@ def render_dead_stock():
         ref = ref or pdate(row.get(c_invdate))
         if ref is None:
             continue
-        age = (today - ref).days
 
         exp = pdate(row.get(c_expdate)) if c_expdate else None
-        days_to_exp = (exp - today).days if exp else None
+        items.append({
+            "product": product,
+            "metrc": cln(row.get(c_metrc)) if c_metrc else "",
+            "age": (today - ref).days,
+            "qty": to_qty(row.get(c_avail)) if c_avail else 0.0,
+            "days_to_exp": (exp - today).days if exp else None,
+            "room": cln(row.get(c_room)) if c_room else "",
+            "cat": cln(row.get(c_cat)) if c_cat else "",
+            "brand": cln(row.get(c_brand)) if c_brand else "",
+            "price": cln(row.get(c_price)) if c_price else "",
+            "on_sale": cln(row.get(c_sale)).lower() in ("yes", "true", "1") if c_sale else False,
+        })
 
-        qty   = to_int(row.get(c_avail)) if c_avail else 0
-        room  = cln(row.get(c_room)) if c_room else ""
-        cat   = cln(row.get(c_cat)) if c_cat else "Uncategorized"
-        brand = cln(row.get(c_brand)) if c_brand else ""
-        price = cln(row.get(c_price)) if c_price else ""
-        on_sale = cln(row.get(c_sale)).lower() in ("yes", "true", "1") if c_sale else False
+    # ── Watch candidates (45+ days), oldest package first across the whole list ─
+    watch = sorted((v for v in items if v["age"] >= WATCH_DAYS),
+                   key=lambda v: (-v["age"], -v["qty"], v["product"]))
 
-        if product not in agg:
-            agg[product] = {
-                "product": product, "age": age, "qty": qty,
-                "days_to_exp": days_to_exp, "cat": cat, "brand": brand,
-                "price": price, "on_sale": on_sale, "rooms": set()
-            }
-        else:
-            a = agg[product]
-            a["age"] = max(a["age"], age)               # oldest wins
-            a["qty"] += qty                             # sum across rooms
-            if days_to_exp is not None:
-                a["days_to_exp"] = days_to_exp if a["days_to_exp"] is None else min(a["days_to_exp"], days_to_exp)
-            a["on_sale"] = a["on_sale"] or on_sale
-        if room:
-            agg[product]["rooms"].add(room)
-
-    # ── Filter to watch candidates (45+ days) ─────────────────────────────────
-    watch = [v for v in agg.values() if v["age"] >= WATCH_DAYS]
-
-    total_skus = len(agg)
+    total_pkgs = len(items)
     watch_count = len(watch)
     expiring = [v for v in watch if v["days_to_exp"] is not None and v["days_to_exp"] < EXP_SOON_DAYS]
     watch_units = sum(v["qty"] for v in watch)
@@ -1862,14 +1871,18 @@ def render_dead_stock():
     # ── Summary tiles ─────────────────────────────────────────────────────────
     st.markdown(f"""
     <div class="checklist-summary">
-      <div class="cs-tile cs-tile-total"><div class="cs-num">{total_skus}</div><div class="cs-lbl">Total SKUs</div></div>
+      <div class="cs-tile cs-tile-total"><div class="cs-num">{total_pkgs}</div><div class="cs-lbl">Total Packages</div></div>
       <div class="cs-tile cs-tile-afternoon"><div class="cs-num">{watch_count}</div><div class="cs-lbl">⏳ Aging 45+d</div></div>
-      <div class="cs-tile cs-tile-handover"><div class="cs-num">{watch_units}</div><div class="cs-lbl">Units Stuck</div></div>
+      <div class="cs-tile cs-tile-handover"><div class="cs-num">{fmt_qty(watch_units)}</div><div class="cs-lbl">Units Stuck</div></div>
       <div class="cs-tile cs-tile-morning" style="border:none"><div class="cs-num" style="color:#FCA5A5">{len(expiring)}</div><div class="cs-lbl">🔴 Exp &lt;60d</div></div>
     </div>""", unsafe_allow_html=True)
 
+    if not c_metrc:
+        st.warning("No METRC / Package ID column found in this export — rows are listed without tags. "
+                   "Re-export with **Package ID** included to show METRC numbers.")
+
     if not watch:
-        st.success(f"✅ No products aged {WATCH_DAYS}+ days. Inventory is fresh!")
+        st.success(f"✅ No packages aged {WATCH_DAYS}+ days. Inventory is fresh!")
         return
 
     # ── Severity tiering by age ───────────────────────────────────────────────
@@ -1877,6 +1890,9 @@ def render_dead_stock():
         if age >= 90:  return "critical"
         if age >= 60:  return "high"
         return "watch"
+
+    def esc(s):
+        return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
     def render_row(v):
         sev = severity(v["age"])
@@ -1890,10 +1906,11 @@ def render_dead_stock():
             flags += '<span class="ds-flag dsf-sale">🏷️ ON SALE</span>'
         flags_html = f'<div class="ds-flags">{flags}</div>' if flags else ''
 
-        rooms = ", ".join(sorted(v["rooms"])) if v["rooms"] else "—"
-        brand = f'{v["brand"]} · ' if v["brand"] else ''
-        price = f' · ${v["price"]}' if v["price"] else ''
-        name = v["product"].replace('<', '&lt;').replace('>', '&gt;')
+        meta = " · ".join(esc(b) for b in (v["brand"], v["cat"], v["room"]) if b)
+        if v["price"]:
+            meta = f'{meta} · ${esc(v["price"])}' if meta else f'${esc(v["price"])}'
+        meta_html = f'<div class="ds-meta">{meta}</div>' if meta else ''
+        metrc_html = f'<div class="ds-metrc">METRC <b>{esc(v["metrc"]) or "—"}</b></div>'
 
         st.markdown(f"""
         <div class="ds-row ds-row-{sev}">
@@ -1902,42 +1919,32 @@ def render_dead_stock():
             <div class="ds-age-unit">Days</div>
           </div>
           <div>
-            <div class="ds-name">{name}</div>
-            <div class="ds-meta">{brand}{rooms}{price}</div>
+            <div class="ds-name">{esc(v["product"])}</div>
+            {metrc_html}
+            {meta_html}
             {flags_html}
           </div>
           <div class="ds-qty">
-            <div class="ds-qty-num">{v["qty"]}</div>
+            <div class="ds-qty-num">{fmt_qty(v["qty"])}</div>
             <div class="ds-qty-lbl">In Stock</div>
           </div>
         </div>""", unsafe_allow_html=True)
 
-    # ── Group by Category, sort each group age-first (oldest first) ────────────
-    by_cat = defaultdict(list)
+    st.markdown(f"""
+    <div class="ds-group-hdr">
+      <span>Oldest first</span>
+      <span class="ds-group-count">{watch_count} package(s) · oldest {watch[0]["age"]}d</span>
+    </div>""", unsafe_allow_html=True)
     for v in watch:
-        by_cat[v["cat"]].append(v)
-
-    # Order categories by their oldest item
-    cat_order = sorted(by_cat.keys(), key=lambda c: -max(v["age"] for v in by_cat[c]))
-
-    for cat in cat_order:
-        items = sorted(by_cat[cat], key=lambda v: -v["age"])  # age-first
-        oldest = items[0]["age"]
-        st.markdown(f"""
-        <div class="ds-group-hdr">
-          <span>{cat or 'Uncategorized'}</span>
-          <span class="ds-group-count">{len(items)} item(s) · oldest {oldest}d</span>
-        </div>""", unsafe_allow_html=True)
-        for v in items:
-            render_row(v)
+        render_row(v)
 
     # ── Export the watch list as a print-ready PDF ────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
     summary = {
         "watch_count": watch_count,
-        "watch_units": watch_units,
+        "watch_units": fmt_qty(watch_units),
         "expiring": len(expiring),
-        "total_skus": total_skus,
+        "total_pkgs": total_pkgs,
     }
     pdf_bytes = build_aging_pdf(watch, summary, today,
                                 watch_days=WATCH_DAYS, exp_soon_days=EXP_SOON_DAYS)
