@@ -11,7 +11,6 @@ from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from io import BytesIO
 from collections import defaultdict
-from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 
 try:
     from pypdf import PdfReader, PdfWriter
@@ -87,25 +86,6 @@ def init_supabase():
         return None
 
 # ── AI helpers ────────────────────────────────────────────────────────────────
-def fmt_ai(v):
-    """Render an AI JSON value as readable card text. Models return lists
-    (['Myrcene', 'Pinene']), objects ({'THC': '17-24%'}) or bullet text as
-    often as plain strings; printing those raw shows Python syntax on the card."""
-    if v is None or v == "" or v == [] or v == {}:
-        return "—"
-    if isinstance(v, dict):
-        return " · ".join(f"{k} {fmt_ai(x)}" for k, x in v.items())
-    if isinstance(v, (list, tuple)):
-        return ", ".join(fmt_ai(x) for x in v if x not in (None, ""))
-    lines = [l.strip().lstrip("-•*").strip() for l in str(v).splitlines() if l.strip()]
-    if not lines:
-        return "—"
-    if len(lines) > 1 and lines[0].endswith(":"):
-        s = lines[0] + " " + "; ".join(lines[1:])
-    else:
-        s = "; ".join(lines)
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
 def generate_strain_profile(groq_key, strain_name, brand=""):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
@@ -116,8 +96,7 @@ def generate_strain_profile(groq_key, strain_name, brand=""):
               "If unrecognizable, output 'Unknown strain, please check Google' for lineage. "
               "Output clean JSON. Keys: classification, lineage, terpenes, flavor, effects, cannabinoids.")
     target = f'Target Strain: {strain_name}' + (f'\nBrand: {brand}' if brand else "")
-    # llama-3.3-70b-versatile was shut down by Groq on 2026-08-16; gpt-oss-120b is its named replacement.
-    payload = {"model": "openai/gpt-oss-120b",
+    payload = {"model": "llama-3.3-70b-versatile",
                "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": target}],
                "temperature": 0.1}
@@ -132,26 +111,6 @@ def generate_strain_profile(groq_key, strain_name, brand=""):
         return {"error": str(e)}
     return {"classification": "HYBRID", "lineage": "N/A", "terpenes": "N/A",
             "flavor": "N/A", "effects": "N/A", "cannabinoids": "N/A"}
-
-def get_compound_profile(api_key, compound_name):
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    system = "You are an advanced cannabinoid science database. Output JSON. Keys: status, primary_effects, medical_benefits, customer_pitch."
-    # llama-3.1-8b-instant was shut down by Groq on 2026-08-16; gpt-oss-20b is its named replacement.
-    payload = {"model": "openai/gpt-oss-20b",
-               "messages": [{"role": "system", "content": system},
-                             {"role": "user", "content": f"Profile for: {compound_name}"}],
-               "temperature": 0.1}
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=20)
-        if r.status_code == 200:
-            c = r.json()['choices'][0]['message']['content'].strip()
-            if "{" in c and "}" in c:
-                c = c[c.find("{"):c.rfind("}") + 1]
-            return json.loads(c)
-        return {"error": f"Status {r.status_code}"}
-    except Exception as e:
-        return {"error": str(e)}
 
 def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_search=True, brand=""):
     """Pull a strain profile from Gemini. With use_search=True it grounds the
@@ -213,6 +172,25 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_se
         return data
     except Exception as e:
         return {"error": f"{type(e).__name__}: {e}"}
+
+
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    system = "You are an advanced cannabinoid science database. Output JSON. Keys: status, primary_effects, medical_benefits, customer_pitch."
+    payload = {"model": "llama-3.1-8b-instant",
+               "messages": [{"role": "system", "content": system},
+                             {"role": "user", "content": f"Profile for: {compound_name}"}],
+               "temperature": 0.1}
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=10)
+        if r.status_code == 200:
+            c = r.json()['choices'][0]['message']['content'].strip()
+            if "{" in c and "}" in c:
+                c = c[c.find("{"):c.rfind("}") + 1]
+            return json.loads(c)
+        return {"error": f"Status {r.status_code}"}
+    except Exception as e:
+        return {"error": str(e)}
 
 def build_pdf(dataframe, threshold_value, rooms, min_stock=None, mode="balance",
               qty_label="Available"):
@@ -304,14 +282,10 @@ def build_pdf(dataframe, threshold_value, rooms, min_stock=None, mode="balance",
     buffer.seek(0)
     return buffer.getvalue()
 
-def fmt_qty(q):
-    """Display a quantity without float noise: 12.0 -> '12', 28.50 -> '28.5'."""
-    return f"{q:.2f}".rstrip("0").rstrip(".")
-
 def build_aging_pdf(watch_items, summary, today_date, watch_days=45, exp_soon_days=60):
-    """Build a print-ready PDF of the aging-stock watch list: one row per METRC
-    package, oldest first, color-coded by severity. `watch_items` must already be
-    sorted oldest-first; `summary` is a dict of headline counts."""
+    """Build a print-ready PDF of the aging-stock watch list, grouped by
+    category and color-coded by severity. `watch_items` is the list of
+    aggregated product dicts; `summary` is a dict of headline counts."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter,
                             rightMargin=36, leftMargin=36, topMargin=40, bottomMargin=40)
@@ -324,29 +298,26 @@ def build_aging_pdf(watch_items, summary, today_date, watch_days=45, exp_soon_da
                           textColor=colors.HexColor('#6B7280'), spaceAfter=18, leading=11)
     cs = ParagraphStyle('C', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#374151'), leading=11)
     cs_b = ParagraphStyle('CB', parent=cs, fontName='Helvetica-Bold')
-    cs_sub = ParagraphStyle('CS', parent=cs, fontSize=7.5, textColor=colors.HexColor('#6B7280'), leading=9)
-    cs_tag = ParagraphStyle('CT', parent=cs, fontName='Courier-Bold', fontSize=7.5, leading=9)
     hs = ParagraphStyle('H', parent=styles['Normal'], fontSize=9,
                         fontName='Helvetica-Bold', textColor=colors.HexColor('#FFFFFF'))
+    cat_style = ParagraphStyle('Cat', parent=styles['Normal'], fontSize=11,
+                               fontName='Helvetica-Bold', textColor=colors.HexColor('#5B21B6'),
+                               spaceBefore=14, spaceAfter=6)
 
     def sev_color(age):
         if age >= 90: return colors.HexColor('#DC2626')   # red
         if age >= 60: return colors.HexColor('#D97706')   # amber
         return colors.HexColor('#2563EB')                 # blue
 
-    def esc(s):
-        return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-
-    generated = f"{today_date.strftime('%B')} {today_date.day}, {today_date.year}"
     story = [Paragraph("Ziggyz Aging Stock Watch List", ts),
-             Paragraph(f"PACKAGES AGED {watch_days}+ DAYS &nbsp;·&nbsp; OLDEST FIRST &nbsp;·&nbsp; GENERATED {generated.upper()}", ss)]
+             Paragraph(f"PRODUCTS AGED {watch_days}+ DAYS &nbsp;·&nbsp; GENERATED {today_date.strftime('%B %-d, %Y')}", ss)]
 
     # Summary band
-    md = [[Paragraph(f"<b>Aging Packages:</b> {summary['watch_count']}", cs),
+    md = [[Paragraph(f"<b>Aging SKUs:</b> {summary['watch_count']}", cs),
            Paragraph(f"<b>Units Stuck:</b> {summary['watch_units']}", cs),
            Paragraph(f"<b>Expiring &lt;{exp_soon_days}d:</b> {summary['expiring']}", cs),
-           Paragraph(f"<b>Total Packages:</b> {summary['total_pkgs']}", cs)]]
-    mt = Table(md, colWidths=[134, 124, 134, 124])
+           Paragraph(f"<b>Total SKUs:</b> {summary['total_skus']}", cs)]]
+    mt = Table(md, colWidths=[124, 124, 134, 124])
     mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#F8FAFC')),
                              ('BOX',(0,0),(-1,-1),1,colors.HexColor('#E5E7EB')),
                              ('INNERGRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
@@ -354,45 +325,54 @@ def build_aging_pdf(watch_items, summary, today_date, watch_days=45, exp_soon_da
     story.append(mt)
     story.append(Paragraph(
         "Watch list to investigate — age is a proxy for stagnation, not proof of non-sales. "
-        "Review each package before discounting or pulling.", note))
+        "Review each item before discounting or pulling.", note))
 
-    header = [Paragraph("Age", hs), Paragraph("METRC Tag", hs), Paragraph("Product", hs),
-              Paragraph("Qty", hs), Paragraph("Room", hs), Paragraph("Flags", hs)]
-    tdata = [header]
-    row_colors = []
+    # Group by category, ordered by oldest item
+    by_cat = defaultdict(list)
     for v in watch_items:
-        flags = []
-        if v["days_to_exp"] is not None and v["days_to_exp"] < exp_soon_days:
-            flags.append("EXPIRED" if v["days_to_exp"] < 0 else f"EXP {v['days_to_exp']}d")
-        if v["on_sale"]:
-            flags.append("ON SALE")
-        sub = " · ".join(esc(b) for b in (v["brand"], v["cat"]) if b)
-        product_cell = [Paragraph(esc(v["product"]), cs)]
-        if sub:
-            product_cell.append(Paragraph(sub, cs_sub))
-        tdata.append([
-            Paragraph(f'<b>{v["age"]}d</b>', cs_b),
-            Paragraph(esc(v["metrc"]) or "—", cs_tag),
-            product_cell,
-            Paragraph(fmt_qty(v["qty"]), cs),
-            Paragraph(esc(v["room"]) or "—", cs),
-            Paragraph(", ".join(flags) if flags else "—", cs),
-        ])
-        row_colors.append(sev_color(v["age"]))
+        by_cat[v["cat"]].append(v)
+    cat_order = sorted(by_cat.keys(), key=lambda c: -max(v["age"] for v in by_cat[c]))
 
-    tbl = Table(tdata, colWidths=[34, 120, 176, 30, 96, 84], repeatRows=1)
-    style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1E293B')),
-             ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
-             ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
-             ('PADDING',(0,0),(-1,-1),5),
-             ('ALIGN',(0,0),(0,-1),'CENTER'),
-             ('ALIGN',(3,0),(3,-1),'CENTER')]
-    # Severity color bar on the Age cell of each data row
-    for i, c in enumerate(row_colors, start=1):
-        style.append(('TEXTCOLOR',(0,i),(0,i),c))
-        style.append(('LINEBEFORE',(0,i),(0,i),3,c))
-    tbl.setStyle(TableStyle(style))
-    story.append(tbl)
+    for cat in cat_order:
+        items = sorted(by_cat[cat], key=lambda v: -v["age"])
+        oldest = items[0]["age"]
+        story.append(Paragraph(f"{cat or 'Uncategorized'} &nbsp;—&nbsp; {len(items)} item(s), oldest {oldest}d", cat_style))
+
+        header = [Paragraph("Age", hs), Paragraph("Product", hs),
+                  Paragraph("Brand", hs), Paragraph("Qty", hs),
+                  Paragraph("Rooms", hs), Paragraph("Flags", hs)]
+        tdata = [header]
+        row_colors = []
+        for v in items:
+            flags = []
+            if v["days_to_exp"] is not None and v["days_to_exp"] < exp_soon_days:
+                flags.append("EXPIRED" if v["days_to_exp"] < 0 else f"EXP {v['days_to_exp']}d")
+            if v["on_sale"]:
+                flags.append("ON SALE")
+            rooms = ", ".join(sorted(v["rooms"])) if v["rooms"] else "—"
+            tdata.append([
+                Paragraph(f'<b>{v["age"]}d</b>', cs_b),
+                Paragraph(v["product"], cs),
+                Paragraph(v["brand"] or "—", cs),
+                Paragraph(str(v["qty"]), cs),
+                Paragraph(rooms, cs),
+                Paragraph(", ".join(flags) if flags else "—", cs),
+            ])
+            row_colors.append(sev_color(v["age"]))
+
+        tbl = Table(tdata, colWidths=[34, 168, 96, 30, 120, 92], repeatRows=1)
+        style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1E293B')),
+                 ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
+                 ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+                 ('PADDING',(0,0),(-1,-1),5),
+                 ('ALIGN',(0,0),(0,-1),'CENTER'),
+                 ('ALIGN',(3,0),(3,-1),'CENTER')]
+        # Severity color bar on the Age cell of each data row
+        for i, c in enumerate(row_colors, start=1):
+            style.append(('TEXTCOLOR',(0,i),(0,i),c))
+            style.append(('LINEBEFORE',(0,i),(0,i),3,c))
+        tbl.setStyle(TableStyle(style))
+        story.append(tbl)
 
     doc.build(story)
     buffer.seek(0)
@@ -447,20 +427,17 @@ p{color:var(--dim)!important}
 hr{border:none!important;height:1px!important;background:var(--border)!important;margin:22px 0!important}
 
 /* TABS */
-.stTabs [role='tablist']{background:rgba(10,14,28,.7)!important;backdrop-filter:blur(20px)!important;border:1px solid var(--b-purple)!important;border-radius:var(--r)!important;padding:5px!important;gap:3px!important;box-shadow:inset 0 0 26px rgba(139,92,246,.06)!important;margin-bottom:24px!important}
-.stTabs [data-testid='stTab']{background:transparent!important;border:1px solid transparent!important;border-radius:var(--rs)!important;padding:9px 16px!important;transition:all var(--t)!important}
-.stTabs [data-testid='stTab'] p{color:var(--muted)!important;font-family:'JetBrains Mono',monospace!important;font-weight:700!important;font-size:11px!important;letter-spacing:1px!important;text-transform:uppercase!important;transition:color var(--t)!important}
-.stTabs [data-testid='stTab']:hover{background:rgba(34,211,238,.06)!important}
-.stTabs [data-testid='stTab']:hover p{color:var(--cyan-l)!important}
-.stTabs [data-testid='stTab'][aria-selected='true']{background:rgba(34,211,238,.08)!important;border:1px solid var(--b-cyan)!important;box-shadow:0 0 16px rgba(34,211,238,.2),inset 0 0 12px rgba(34,211,238,.05)!important}
-.stTabs [data-testid='stTab'][aria-selected='true'] p{color:var(--cyan-l)!important}
-.stTabs .react-aria-SelectionIndicator{display:none!important}
+.stTabs [data-baseweb='tab-list']{background:rgba(10,14,28,.7)!important;backdrop-filter:blur(20px)!important;border:1px solid var(--b-purple)!important;border-radius:var(--r)!important;padding:5px!important;gap:3px!important;box-shadow:inset 0 0 26px rgba(139,92,246,.06)!important;margin-bottom:24px!important}
+.stTabs [data-baseweb='tab']{background:transparent!important;border:1px solid transparent!important;border-radius:var(--rs)!important;color:var(--muted)!important;font-family:'JetBrains Mono',monospace!important;font-weight:700!important;font-size:11px!important;letter-spacing:1px!important;text-transform:uppercase!important;padding:9px 16px!important;transition:all var(--t)!important}
+.stTabs [data-baseweb='tab']:hover{color:var(--cyan-l)!important;background:rgba(34,211,238,.06)!important}
+.stTabs [aria-selected='true']{background:rgba(34,211,238,.08)!important;color:var(--cyan-l)!important;border:1px solid var(--b-cyan)!important;box-shadow:0 0 16px rgba(34,211,238,.2),inset 0 0 12px rgba(34,211,238,.05)!important}
+.stTabs [data-baseweb='tab-highlight'],.stTabs [data-baseweb='tab-border']{display:none!important}
 
 /* BUTTONS */
-.stButton>button,[data-testid="stFormSubmitButton"] button{background:linear-gradient(135deg,#8B5CF6,#5B21B6)!important;color:#fff!important;border:none!important;border-radius:var(--rs)!important;font-family:'Inter',sans-serif!important;font-weight:700!important;font-size:11px!important;letter-spacing:1.5px!important;text-transform:uppercase!important;padding:13px 30px!important;box-shadow:var(--gp)!important;transition:all var(--t)!important;position:relative!important;overflow:hidden!important;width:100%!important}
-.stButton>button::after,[data-testid="stFormSubmitButton"] button::after{content:'';position:absolute;top:0;left:-100%;width:55%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent);animation:shimmer 2.8s ease infinite}
-.stButton>button:hover,[data-testid="stFormSubmitButton"] button:hover{transform:translateY(-2px)!important;box-shadow:0 0 40px rgba(139,92,246,.55),0 8px 28px rgba(0,0,0,.4)!important;background:linear-gradient(135deg,#A78BFA,#7C3AED)!important}
-.stButton>button:active,[data-testid="stFormSubmitButton"] button:active{transform:translateY(0)!important}
+.stButton>button{background:linear-gradient(135deg,#8B5CF6,#5B21B6)!important;color:#fff!important;border:none!important;border-radius:var(--rs)!important;font-family:'Inter',sans-serif!important;font-weight:700!important;font-size:11px!important;letter-spacing:1.5px!important;text-transform:uppercase!important;padding:13px 30px!important;box-shadow:var(--gp)!important;transition:all var(--t)!important;position:relative!important;overflow:hidden!important;width:100%!important}
+.stButton>button::after{content:'';position:absolute;top:0;left:-100%;width:55%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent);animation:shimmer 2.8s ease infinite}
+.stButton>button:hover{transform:translateY(-2px)!important;box-shadow:0 0 40px rgba(139,92,246,.55),0 8px 28px rgba(0,0,0,.4)!important;background:linear-gradient(135deg,#A78BFA,#7C3AED)!important}
+.stButton>button:active{transform:translateY(0)!important}
 .stDownloadButton>button{background:linear-gradient(135deg,#10B981,#065F46)!important;color:#fff!important;border:none!important;border-radius:var(--rs)!important;font-family:'Inter',sans-serif!important;font-weight:700!important;font-size:11px!important;letter-spacing:1.5px!important;text-transform:uppercase!important;padding:13px 30px!important;box-shadow:var(--gg)!important;transition:all var(--t)!important;width:100%!important}
 .stDownloadButton>button:hover{transform:translateY(-2px)!important;box-shadow:0 0 40px rgba(52,211,153,.5),0 8px 28px rgba(0,0,0,.4)!important}
 
@@ -511,6 +488,9 @@ hr{border:none!important;height:1px!important;background:var(--border)!important
 .hub-coord b{color:var(--purple-l)}
 .hub-title{font-family:'Syne',sans-serif!important;font-weight:800!important;font-size:42px!important;letter-spacing:-1.6px!important;line-height:.9!important;margin:0!important;background:linear-gradient(120deg,#fff 8%,var(--purple-l) 52%,var(--cyan-l))!important;-webkit-background-clip:text!important;background-clip:text!important;color:transparent!important;filter:drop-shadow(0 0 22px rgba(139,92,246,.3))}
 .hub-title em{font-style:normal}
+/* Smilez wordmark — sits in the status row, in place of the old status pill */
+.zb-mark{height:26px;width:auto;display:block;flex:0 0 auto;filter:drop-shadow(0 0 16px rgba(96,192,240,.22))}
+.zb-mark[alt]{font-family:'Syne',sans-serif;font-weight:800;font-size:19px;color:#FAFAFA}
 .hub-sub{font-family:'Space Mono',monospace;font-size:10px;font-weight:400;color:var(--muted);letter-spacing:2.4px;text-transform:uppercase;margin-top:9px}
 .hub-pills{display:flex;gap:7px;flex-wrap:wrap;margin-top:16px}
 .hpill{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;padding:5px 11px;border-radius:5px;letter-spacing:.5px}
@@ -635,8 +615,6 @@ hr{border:none!important;height:1px!important;background:var(--border)!important
 .ds-age-unit{font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:3px}
 .ds-name{font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:var(--text);line-height:1.3}
 .ds-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:4px;letter-spacing:.3px}
-.ds-metrc{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);margin-top:4px;letter-spacing:.4px}
-.ds-metrc b{color:var(--cyan-l);font-weight:700}
 .ds-flags{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
 .ds-flag{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;padding:2px 8px;border-radius:50px;letter-spacing:.5px}
 .dsf-exp{background:rgba(239,68,68,.13);color:#FCA5A5;border:1px solid rgba(239,68,68,.3)}
@@ -648,6 +626,28 @@ hr{border:none!important;height:1px!important;background:var(--border)!important
 .ds-group-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);font-weight:400}
 </style>
 """, unsafe_allow_html=True)
+
+
+# ── Smilez wordmark ───────────────────────────────────────────────────────────
+def _smilez_mark():
+    """Return an <img> for the Smilez wordmark.
+
+    Prefers a file committed next to app.py and embeds it, so the header never
+    depends on the branding site being reachable. Falls back to the hosted asset,
+    then to plain text.
+    """
+    import base64 as _b64
+    for fn, mime in (("smilez-wordmark-white.png", "image/png"),
+                     ("smilez-wordmark-white.webp", "image/webp"),
+                     ("smilez-wordmark.svg", "image/svg+xml")):
+        try:
+            with open(fn, "rb") as fh:
+                b = _b64.b64encode(fh.read()).decode()
+            return f'<img class="zb-mark" src="data:{mime};base64,{b}" alt="Smilez">'
+        except OSError:
+            continue
+    return ('<img class="zb-mark" alt="Smilez" '
+            'src="https://smilezdeli.netlify.app/brand/smilez-wordmark-white.webp?v=1">')
 
 # ── HEADER ────────────────────────────────────────────────────────────────────
 col_vid, col_hdr = st.columns([1, 1])
@@ -661,7 +661,7 @@ with col_hdr:
       <span class="hub-tick tl"></span><span class="hub-tick tr"></span><span class="hub-tick bl"></span><span class="hub-tick br"></span>
       <div class="hub-inner">
       <div class="hub-status-row">
-        <div class="hub-live"><span class="status-dot"></span>System Online</div>
+        __SMILEZ_MARK__
         <span class="hub-build">ZIGGYBOT · v2.0</span>
       </div>
       <div class="hub-coord">X:0042 / Y:0117 · <b>5 MODULES ONLINE</b></div>
@@ -677,7 +677,7 @@ with col_hdr:
     </div></div>
     <div class="hub-quote">
       <p>"Your attitude, not your aptitude, will determine your altitude." — <em>Zig Ziglar</em></p>
-    </div>""", unsafe_allow_html=True)
+    </div>""".replace("__SMILEZ_MARK__", _smilez_mark()), unsafe_allow_html=True)
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab9, tab4, tab5 = st.tabs([
@@ -733,8 +733,7 @@ with tab1:
             mode = mode or "groq"
         if "error" not in data:
             clf  = str(data.get('classification', 'HYBRID')).upper()
-            bcls = ("sb-hybrid" if "HYBRID" in clf else "sb-sativa" if "SATIVA" in clf
-                    else "sb-indica" if "INDICA" in clf else "sb-hybrid")
+            bcls = "sb-sativa" if "SATIVA" in clf else ("sb-indica" if "INDICA" in clf else "sb-hybrid")
             if brand:
                 bsearch = "https://www.google.com/search?q=" + quote_plus(f"{brand} cannabis brand official website")
                 brand_html = (f' · <a href="{bsearch}" target="_blank" title="Find official website" '
@@ -748,11 +747,11 @@ with tab1:
               <span class="sc-badge {bcls}">{clf}</span>
             </div><div class="sc-div"></div>
             <div class="sc-grid">
-              <div class="sc-attr sc-attr-full"><div class="attr-label">🌿 Lineage</div><div class="attr-val">{fmt_ai(data.get('lineage'))}</div></div>
-              <div class="sc-attr"><div class="attr-label">🧪 Terpenes</div><div class="attr-val">{fmt_ai(data.get('terpenes'))}</div></div>
-              <div class="sc-attr"><div class="attr-label">🍋 Flavor</div><div class="attr-val">{fmt_ai(data.get('flavor'))}</div></div>
-              <div class="sc-attr"><div class="attr-label">⚡ Cannabinoids</div><div class="attr-val attr-val-hi">{fmt_ai(data.get('cannabinoids'))}</div></div>
-              <div class="sc-attr"><div class="attr-label">🧠 Effects</div><div class="attr-val">{fmt_ai(data.get('effects'))}</div></div>
+              <div class="sc-attr sc-attr-full"><div class="attr-label">🌿 Lineage</div><div class="attr-val">{data.get('lineage','—')}</div></div>
+              <div class="sc-attr"><div class="attr-label">🧪 Terpenes</div><div class="attr-val">{data.get('terpenes','—')}</div></div>
+              <div class="sc-attr"><div class="attr-label">🍋 Flavor</div><div class="attr-val">{data.get('flavor','—')}</div></div>
+              <div class="sc-attr"><div class="attr-label">⚡ Cannabinoids</div><div class="attr-val attr-val-hi">{data.get('cannabinoids','—')}</div></div>
+              <div class="sc-attr"><div class="attr-label">🧠 Effects</div><div class="attr-val">{data.get('effects','—')}</div></div>
             </div></div>""", unsafe_allow_html=True)
             if mode == "grounded":
                 src = data.get("_sources", [])
@@ -799,12 +798,10 @@ with tab1:
             st.markdown(f"""
             <div class="cc"><div class="cc-name">🔬 {target_chem.upper()}</div><div class="cc-div"></div>
             <div class="sc-grid">
-              <div class="sc-attr"><div class="attr-label">🧠 Primary Effects</div><div class="attr-val">{fmt_ai(chem_data.get('primary_effects'))}</div></div>
-              <div class="sc-attr"><div class="attr-label">🩺 Medical Benefits</div><div class="attr-val">{fmt_ai(chem_data.get('medical_benefits'))}</div></div>
-              <div class="sc-attr sc-attr-full"><div class="attr-label">🎯 Budtender Pitch</div><div class="attr-val attr-val-hi" style="font-style:italic;">"{fmt_ai(chem_data.get('customer_pitch'))}"</div></div>
+              <div class="sc-attr"><div class="attr-label">🧠 Primary Effects</div><div class="attr-val">{chem_data.get('primary_effects','—')}</div></div>
+              <div class="sc-attr"><div class="attr-label">🩺 Medical Benefits</div><div class="attr-val">{chem_data.get('medical_benefits','—')}</div></div>
+              <div class="sc-attr sc-attr-full"><div class="attr-label">🎯 Budtender Pitch</div><div class="attr-val attr-val-hi" style="font-style:italic;">"{chem_data.get('customer_pitch','—')}"</div></div>
             </div></div>""", unsafe_allow_html=True)
-        else:
-            st.warning(f"Couldn't load a profile for {target_chem} right now ({chem_data['error']}). Try again in a moment.")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 2 — INVENTORY INTEL
@@ -1077,25 +1074,15 @@ def build_tag_rows(df):
             thc = f"{mv}MG"
         else:
             thc_raw = str(row.get("THC", "")).strip('="').strip()
-            tm = re.search(r'\d+(?:\.\d+)?', thc_raw)
-            if tm:
-                # Store rule: THC always rounds DOWN, never up (87.66 % -> 87 %).
-                tv = int(Decimal(tm.group(0)).quantize(Decimal("1"), rounding=ROUND_FLOOR))
-                thc = f"{tv} %" if "%" in thc_raw else str(tv)
-            else:
-                thc = thc_raw
+            tm = re.search(r'(\d+)(?:\.\d+)?', thc_raw)
+            thc = (f"{tm.group(1)} %" if "%" in thc_raw else tm.group(1)) if tm else thc_raw
 
         rp  = str(row.get(price_col, "0")).replace("$", "").strip('="').strip()
         pdg = "".join(c for c in rp if c.isdigit() or c == ".")
-        # Store rule: prices are always exact, never rounded. Whole dollars drop
-        # the .00; anything else keeps at least two decimals and every digit given.
         try:
-            pv = Decimal(pdg) if pdg else Decimal(0)
-            if pv == pv.to_integral_value():
-                price = f"${int(pv)}"
-            else:
-                price = f"${pv if pv.as_tuple().exponent < -2 else pv.quantize(Decimal('0.01'))}"
-        except InvalidOperation:
+            pv = float(pdg) if pdg else 0.0
+            price = f"${int(pv)}" if pv == int(pv) else f"${pv:.2f}"
+        except ValueError:
             price = "$0"
 
         scol = str(row.get("Strain", "")).strip().lower()    # type column
@@ -1785,7 +1772,7 @@ def render_dead_stock():
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backend, export your <strong>full inventory</strong> (any rooms/categories)</span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Include at minimum: <strong>Product, Package ID (METRC tag), Available, Inventory date, Expiration date</strong></span></div>
+      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Include at minimum: <strong>Product, Available, Inventory date, Expiration date</strong></span></div>
       <div class="instr-step"><span class="instr-icon">i</span><span>This is a <strong>watch list to investigate</strong>, not a sales report — it flags old stock by age, not proven non-sales</span></div>
     </div></div>""", unsafe_allow_html=True)
 
@@ -1805,11 +1792,10 @@ def render_dead_stock():
     df.columns = [str(c).strip('="').strip() for c in df.columns]
 
     def col(*names):
-        """Return the first matching column name present in the df (case-insensitive)."""
-        lookup = {c.lower(): c for c in df.columns}
+        """Return the first matching column name present in the df."""
         for n in names:
-            if n.lower() in lookup:
-                return lookup[n.lower()]
+            if n in df.columns:
+                return n
         return None
 
     c_product = col("Product", "Online title")
@@ -1822,12 +1808,6 @@ def render_dead_stock():
     c_sale    = col("Is on sale")
     c_brand   = col("Brand")
     c_price   = col("Current price", "Price (Catalog)")
-    c_metrc   = col("Package ID", "Package Id", "PackageId", "Metrc tag", "METRC ID",
-                    "Metrc package", "Metrc package ID", "External package ID", "Package tag", "Package")
-    if not c_metrc:
-        c_metrc = next((c for c in df.columns
-                        if ("metrc" in c.lower() or "package" in c.lower())
-                        and not any(w in c.lower() for w in ("date", "size", "type", "count"))), None)
 
     if not c_product or not c_invdate:
         st.error("This CSV is missing required columns (Product and Inventory/Packaging date). Re-export with those fields included.")
@@ -1847,18 +1827,15 @@ def render_dead_stock():
                 continue
         return None
 
-    def to_qty(v):
-        # Keep the decimal point — stripping to digits turned 28.5 into 285.
-        m = re.search(r'-?\d+(?:\.\d+)?', cln(v).replace(",", ""))
-        return float(m.group(0)) if m else 0.0
+    def to_int(v):
+        v = cln(v)
+        digits = "".join(ch for ch in v if ch.isdigit())
+        return int(digits) if digits else 0
 
     today = date.today()
 
-    # ── One entry per package row — never merge packages of the same product ──
-    # Each export row is its own METRC package with its own date and quantity.
-    # Merging by product name summed fresh packages into an old package's age,
-    # so a product with 2 old units and 10 new ones read as 12 old units.
-    items = []
+    # ── Aggregate by product (sum quantity across rooms, keep oldest date) ─────
+    agg = {}
     for _, row in df.iterrows():
         product = cln(row.get(c_product))
         if not product or product.lower() == "nan":
@@ -1868,26 +1845,38 @@ def render_dead_stock():
         ref = ref or pdate(row.get(c_invdate))
         if ref is None:
             continue
+        age = (today - ref).days
 
         exp = pdate(row.get(c_expdate)) if c_expdate else None
-        items.append({
-            "product": product,
-            "metrc": cln(row.get(c_metrc)) if c_metrc else "",
-            "age": (today - ref).days,
-            "qty": to_qty(row.get(c_avail)) if c_avail else 0.0,
-            "days_to_exp": (exp - today).days if exp else None,
-            "room": cln(row.get(c_room)) if c_room else "",
-            "cat": cln(row.get(c_cat)) if c_cat else "",
-            "brand": cln(row.get(c_brand)) if c_brand else "",
-            "price": cln(row.get(c_price)) if c_price else "",
-            "on_sale": cln(row.get(c_sale)).lower() in ("yes", "true", "1") if c_sale else False,
-        })
+        days_to_exp = (exp - today).days if exp else None
 
-    # ── Watch candidates (45+ days), oldest package first across the whole list ─
-    watch = sorted((v for v in items if v["age"] >= WATCH_DAYS),
-                   key=lambda v: (-v["age"], -v["qty"], v["product"]))
+        qty   = to_int(row.get(c_avail)) if c_avail else 0
+        room  = cln(row.get(c_room)) if c_room else ""
+        cat   = cln(row.get(c_cat)) if c_cat else "Uncategorized"
+        brand = cln(row.get(c_brand)) if c_brand else ""
+        price = cln(row.get(c_price)) if c_price else ""
+        on_sale = cln(row.get(c_sale)).lower() in ("yes", "true", "1") if c_sale else False
 
-    total_pkgs = len(items)
+        if product not in agg:
+            agg[product] = {
+                "product": product, "age": age, "qty": qty,
+                "days_to_exp": days_to_exp, "cat": cat, "brand": brand,
+                "price": price, "on_sale": on_sale, "rooms": set()
+            }
+        else:
+            a = agg[product]
+            a["age"] = max(a["age"], age)               # oldest wins
+            a["qty"] += qty                             # sum across rooms
+            if days_to_exp is not None:
+                a["days_to_exp"] = days_to_exp if a["days_to_exp"] is None else min(a["days_to_exp"], days_to_exp)
+            a["on_sale"] = a["on_sale"] or on_sale
+        if room:
+            agg[product]["rooms"].add(room)
+
+    # ── Filter to watch candidates (45+ days) ─────────────────────────────────
+    watch = [v for v in agg.values() if v["age"] >= WATCH_DAYS]
+
+    total_skus = len(agg)
     watch_count = len(watch)
     expiring = [v for v in watch if v["days_to_exp"] is not None and v["days_to_exp"] < EXP_SOON_DAYS]
     watch_units = sum(v["qty"] for v in watch)
@@ -1895,18 +1884,14 @@ def render_dead_stock():
     # ── Summary tiles ─────────────────────────────────────────────────────────
     st.markdown(f"""
     <div class="checklist-summary">
-      <div class="cs-tile cs-tile-total"><div class="cs-num">{total_pkgs}</div><div class="cs-lbl">Total Packages</div></div>
+      <div class="cs-tile cs-tile-total"><div class="cs-num">{total_skus}</div><div class="cs-lbl">Total SKUs</div></div>
       <div class="cs-tile cs-tile-afternoon"><div class="cs-num">{watch_count}</div><div class="cs-lbl">⏳ Aging 45+d</div></div>
-      <div class="cs-tile cs-tile-handover"><div class="cs-num">{fmt_qty(watch_units)}</div><div class="cs-lbl">Units Stuck</div></div>
+      <div class="cs-tile cs-tile-handover"><div class="cs-num">{watch_units}</div><div class="cs-lbl">Units Stuck</div></div>
       <div class="cs-tile cs-tile-morning" style="border:none"><div class="cs-num" style="color:#FCA5A5">{len(expiring)}</div><div class="cs-lbl">🔴 Exp &lt;60d</div></div>
     </div>""", unsafe_allow_html=True)
 
-    if not c_metrc:
-        st.warning("No METRC / Package ID column found in this export — rows are listed without tags. "
-                   "Re-export with **Package ID** included to show METRC numbers.")
-
     if not watch:
-        st.success(f"✅ No packages aged {WATCH_DAYS}+ days. Inventory is fresh!")
+        st.success(f"✅ No products aged {WATCH_DAYS}+ days. Inventory is fresh!")
         return
 
     # ── Severity tiering by age ───────────────────────────────────────────────
@@ -1914,9 +1899,6 @@ def render_dead_stock():
         if age >= 90:  return "critical"
         if age >= 60:  return "high"
         return "watch"
-
-    def esc(s):
-        return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
     def render_row(v):
         sev = severity(v["age"])
@@ -1930,11 +1912,10 @@ def render_dead_stock():
             flags += '<span class="ds-flag dsf-sale">🏷️ ON SALE</span>'
         flags_html = f'<div class="ds-flags">{flags}</div>' if flags else ''
 
-        meta = " · ".join(esc(b) for b in (v["brand"], v["cat"], v["room"]) if b)
-        if v["price"]:
-            meta = f'{meta} · ${esc(v["price"])}' if meta else f'${esc(v["price"])}'
-        meta_html = f'<div class="ds-meta">{meta}</div>' if meta else ''
-        metrc_html = f'<div class="ds-metrc">METRC <b>{esc(v["metrc"]) or "—"}</b></div>'
+        rooms = ", ".join(sorted(v["rooms"])) if v["rooms"] else "—"
+        brand = f'{v["brand"]} · ' if v["brand"] else ''
+        price = f' · ${v["price"]}' if v["price"] else ''
+        name = v["product"].replace('<', '&lt;').replace('>', '&gt;')
 
         st.markdown(f"""
         <div class="ds-row ds-row-{sev}">
@@ -1943,32 +1924,42 @@ def render_dead_stock():
             <div class="ds-age-unit">Days</div>
           </div>
           <div>
-            <div class="ds-name">{esc(v["product"])}</div>
-            {metrc_html}
-            {meta_html}
+            <div class="ds-name">{name}</div>
+            <div class="ds-meta">{brand}{rooms}{price}</div>
             {flags_html}
           </div>
           <div class="ds-qty">
-            <div class="ds-qty-num">{fmt_qty(v["qty"])}</div>
+            <div class="ds-qty-num">{v["qty"]}</div>
             <div class="ds-qty-lbl">In Stock</div>
           </div>
         </div>""", unsafe_allow_html=True)
 
-    st.markdown(f"""
-    <div class="ds-group-hdr">
-      <span>Oldest first</span>
-      <span class="ds-group-count">{watch_count} package(s) · oldest {watch[0]["age"]}d</span>
-    </div>""", unsafe_allow_html=True)
+    # ── Group by Category, sort each group age-first (oldest first) ────────────
+    by_cat = defaultdict(list)
     for v in watch:
-        render_row(v)
+        by_cat[v["cat"]].append(v)
+
+    # Order categories by their oldest item
+    cat_order = sorted(by_cat.keys(), key=lambda c: -max(v["age"] for v in by_cat[c]))
+
+    for cat in cat_order:
+        items = sorted(by_cat[cat], key=lambda v: -v["age"])  # age-first
+        oldest = items[0]["age"]
+        st.markdown(f"""
+        <div class="ds-group-hdr">
+          <span>{cat or 'Uncategorized'}</span>
+          <span class="ds-group-count">{len(items)} item(s) · oldest {oldest}d</span>
+        </div>""", unsafe_allow_html=True)
+        for v in items:
+            render_row(v)
 
     # ── Export the watch list as a print-ready PDF ────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
     summary = {
         "watch_count": watch_count,
-        "watch_units": fmt_qty(watch_units),
+        "watch_units": watch_units,
         "expiring": len(expiring),
-        "total_pkgs": total_pkgs,
+        "total_skus": total_skus,
     }
     pdf_bytes = build_aging_pdf(watch, summary, today,
                                 watch_days=WATCH_DAYS, exp_soon_days=EXP_SOON_DAYS)
