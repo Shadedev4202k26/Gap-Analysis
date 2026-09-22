@@ -222,7 +222,57 @@ def _fill_template(template_path, page_rows, tmpdir, tag):
         capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"pdftk fill failed: {r.stderr.strip()}")
-    return out_path
+    # The Smilez logo is removed from every tag design, so this runs on every
+    # page — it clears the logo and draws any deal badges in the space it frees.
+    return _finish_page(template_path, out_path, page_rows, tmpdir, tag)
+
+
+def _finish_page(template_path, filled_path, page_rows, tmpdir, tag):
+    """Clear the Smilez logo on every tag, and draw deal badges where present.
+
+    Rows fill slots 1..n in order, so row i belongs to slot i+1.
+    """
+    import io as _io
+    try:
+        import sale_badges
+    except ImportError:
+        return filled_path
+    from reportlab.pdfgen import canvas as _canvas
+
+    geom = sale_badges.slot_geometry(template_path)
+    if not geom:
+        return filled_path
+    reader = PdfReader(filled_path)
+    page = reader.pages[0]
+    pw, ph = float(page.mediabox[2]), float(page.mediabox[3])
+    buf = _io.BytesIO()
+    c = _canvas.Canvas(buf, pagesize=(pw, ph))
+    drew = 0
+    for i, row in enumerate(page_rows, 1):
+        g = geom.get(i)
+        if not g:
+            continue
+        deal = (row or {}).get("deal")
+        if deal:
+            sale_badges.draw_deal(c, g, deal, template_path)
+            drew += 1
+        elif row:
+            sale_badges.clear_logo(c, g, template_path)
+            drew += 1
+    if not drew:
+        return filled_path
+    c.save()
+    buf.seek(0)
+    overlay = PdfReader(buf)
+    if not overlay.pages:
+        return filled_path
+    writer = PdfWriter()
+    writer.append(reader)
+    writer.pages[0].merge_page(overlay.pages[0])
+    out = os.path.join(tmpdir, f"{tag}_deals.pdf")
+    with open(out, "wb") as f:
+        writer.write(f)
+    return out
 
 
 # ── SEPARATE mode: stack colored pages in one PDF ─────────────────────────────
