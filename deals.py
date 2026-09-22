@@ -166,9 +166,13 @@ def _brand_hit(brand, hay):
 
     Sheet brands often carry trailing product words ("Packs Glass Cone"), so try
     the full phrase first and drop words from the end until something matches.
+    A brand of two or more words never drops to a single one: "High Neighbor"
+    worn down to "high" claimed both "High Supply" and "Stay High", and "Fire
+    Styxx" worn down to "fire" claimed "Michigander Fire".
     """
     words = _norm(brand).split()
-    while words:
+    floor = 2 if len(words) > 1 else 1
+    while len(words) >= floor:
         phrase = " ".join(words)
         if len(phrase) >= 3:
             # tolerate singular/plural on the last word ("Citizens" vs "Citizen")
@@ -185,13 +189,20 @@ def _brand_hit(brand, hay):
 
 def matches(deal, row):
     """Does this deal apply to this product row?"""
-    hay = _norm(f"{row.get('product','')} {row.get('brand','')}")
-    hit = any(_brand_hit(b, hay) for b in deal.brands)
-    if not hit:
+    text = _norm(f"{row.get('product','')} {row.get('brand','')}")
+    # Brands are matched against the brand field only, never the whole product
+    # name. Several real brands double as ordinary product words, and _brand_hit
+    # drops trailing words until something sticks, so matching the full name put
+    # other brands' deals on the wrong tags: "Packs" hit every "28 x 1G Preroll
+    # Pack", and "Fire Styxx" degraded to "fire". Custom tags carry no brand, so
+    # those still fall back to the whole line.
+    brand_text = _norm(row.get("brand", "")) or text
+    if not any(_brand_hit(b, brand_text) for b in deal.brands):
         return False
     if deal.size:
+        # Sizes are written into the product name, so this still reads it all.
         size = _norm(deal.size).replace(" ", "")
-        sizes = {s.replace(" ", "") for s in re.findall(r"\d*\.?\d+\s*(?:g|mg|oz|pk)", hay)}
+        sizes = {s.replace(" ", "") for s in re.findall(r"\d*\.?\d+\s*(?:g|mg|oz|pk)", text)}
         if sizes and size not in sizes:
             return False
     return True

@@ -1159,7 +1159,11 @@ def deal_controls(key):
     """
     if not DEALS_AVAILABLE:
         return None
-    with st.expander("🏷️  Weekly deals — add sale bubbles (optional)", expanded=False):
+    # Open until a sheet is loaded. Collapsed by default it reads as a thin
+    # strip of chrome and gets missed entirely.
+    loaded = st.session_state.get(f"{key}_dealfile") is not None
+    with st.expander("🏷️  Weekly deals sheet — drop it here for sale bubbles (optional)",
+                     expanded=not loaded):
         up = st.file_uploader(
             "Drag in this week's deals sheet (CSV or Excel)",
             type=["csv", "xlsx", "xls"], key=f"{key}_dealfile",
@@ -1311,11 +1315,16 @@ def render_hook_tags():
     elif combine_pages:
         o2.caption(f"mixing engine v{getattr(combine_tags, '__version__', '1.x — update combine_tags.py')}")
 
+    # Picked once for the whole tab, above every source branch. Nested inside a
+    # branch it only appeared after a CSV was imported AND tags were selected,
+    # so on a freshly opened tab there was no deals uploader on the page at all.
+    tab_deals = deal_controls("hook")
+
     # ── 📥 Rows handed over from the Preroll builder ──────────────────────────
     if _recv and src_mode == _recv:
         received = render_handoff_rows("hook")
         received = edit_tag_lines(received, "hook_recv")
-        received = apply_deals(received, deal_controls("hook_recv"), "hook_recv")
+        received = apply_deals(received, tab_deals, "hook_recv")
         if not received:
             st.info("No tags left — clear the received batch or send a new one.")
             return
@@ -1383,6 +1392,7 @@ def render_hook_tags():
         if not custom:
             st.info("Fill in at least one tag above.")
             return
+        custom = apply_deals(custom, tab_deals, "hook_custom")
         from collections import Counter
         ccounts = Counter(r["type"] for r in custom)
         st.caption(f"**{len(custom)}** tags  ·  {ccounts.get('sativa',0)} sativa · "
@@ -1512,7 +1522,7 @@ def render_hook_tags():
         return
 
     chosen = edit_tag_lines(chosen, "hook")
-    chosen = apply_deals(chosen, deal_controls("hook"), "hook")
+    chosen = apply_deals(chosen, tab_deals, "hook")
 
     sel_counts = Counter(r["type"] for r in chosen)
     st.caption(f"Selected **{len(chosen)}** tags  ·  "
@@ -2631,12 +2641,15 @@ def render_preroll_tags():
     elif combine_pages:
         o4.caption(f"mixing engine v{getattr(combine_tags, '__version__', '1.x — update combine_tags.py')}")
 
+    # Picked once for the whole tab, above every source branch — see the note on
+    # the same call in render_hook_tags().
+    tab_deals = deal_controls("preroll")
 
     # ── 📥 Rows handed over from the Hook tag builder ─────────────────────────
     if _recvP and src_mode == _recvP:
         received = render_handoff_rows("preroll")
         received = edit_tag_lines(received, "preroll_recv")
-        received = apply_deals(received, deal_controls("preroll_recv"), "preroll_recv")
+        received = apply_deals(received, tab_deals, "preroll_recv")
         if not received:
             st.info("No tags left — clear the received batch or send a new one.")
             return
@@ -2715,6 +2728,7 @@ def render_preroll_tags():
         if not custom:
             st.info("Fill in at least one tag above.")
             return
+        custom = apply_deals(custom, tab_deals, "preroll_custom")
         from collections import Counter
         ccounts = Counter(r["type"] for r in custom)
         st.caption(f"**{len(custom)}** {row_word}  ·  {ccounts.get('sativa',0)} sativa · "
@@ -2864,7 +2878,7 @@ def render_preroll_tags():
         return
 
     chosen = edit_tag_lines(chosen, "preroll")
-    chosen = apply_deals(chosen, deal_controls("preroll"), "preroll")
+    chosen = apply_deals(chosen, tab_deals, "preroll")
 
     sel_counts = Counter(r["type"] for r in chosen)
     n_out = (len(chosen) + 1) // 2 if split_mode else len(chosen)
