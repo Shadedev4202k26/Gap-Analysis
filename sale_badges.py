@@ -14,6 +14,7 @@ Deal kinds (a dict per tag):
 
 Deal text is normalised on the way in: "3 for $55" / "3 FOR $55" -> "3/$55".
 """
+import os
 import re
 
 from pypdf import PdfReader
@@ -33,6 +34,17 @@ TIER_TEXT = 11.0         # tier text size (pt)
 NEW_PRICE, OLD_PRICE = 16.0, 10.0   # markdown sizes (pt)
 MIN_INLINE_POCKET = 40   # narrower than this -> badge goes above the price line
 
+# Smilez logo position per template, measured from the art and stored as an
+# offset from that slot's THC box (x0, y0, x1, y1). Hybrid art is offset, so
+# its logo pokes past the pocket — masking the pocket alone leaves a sliver.
+LOGO_OFFSETS = {
+    "Sativa_Prerolls.pdf": (83.8, 2.5, 148.2, 18.2),
+    "Hybrid_Prerolls.pdf": (78.5, 6.9, 143.8, 22.8),
+    "Indica_Prerolls.pdf": (84.1, 3.5, 148.5, 19.2),
+    "Sativa_Prerolls_4in.pdf": (100.9, 2.4, 165.3, 18.0),
+    "Hybrid_Prerolls_4in.pdf": (89.0, 6.8, 154.6, 22.1),
+    "Indica_Prerolls_4in.pdf": (102.6, 3.5, 167.2, 19.2),
+}
 
 # ── text ─────────────────────────────────────────────────────────────────────
 def normalize(text):
@@ -88,6 +100,25 @@ def _fit(c, text, max_w, max_size, min_size=5):
     return size
 
 
+def _logo_mask(g, box, template=None):
+    """Area to clear so no part of the Smilez logo survives.
+
+    Starts from the pocket, widens just enough to cover this template's measured
+    logo, and stays clear of the coloured border at the tag's bottom edge. Never
+    widened blindly into the THC/price boxes — that would clip their text.
+    """
+    off = LOGO_OFFSETS.get(os.path.basename(str(template or "")))
+    if not off:
+        return box
+    thc = g["THC"]
+    lx0, ly0 = thc[0] + off[0], thc[1] + off[1]
+    lx1, ly1 = thc[0] + off[2], thc[1] + off[3]
+    # margins: enough to catch antialiased edges, not enough to reach the tag's
+    # coloured border (which starts ~8pt above the cell, just below the logo)
+    return (min(box[0], lx0 - 2), max(box[1], ly0 - 1.5),
+            max(box[2], lx1 + 2), min(box[3], ly1 + 2.5))
+
+
 def _white(c, rect, inset=1):
     x0, y0, x1, y1 = rect
     c.setFillColorRGB(1, 1, 1)
@@ -108,7 +139,7 @@ def _badge(c, box, field_h, lines, align="center"):
         if line_size > stack_size + 0.5:
             lines = [joined]
     stacked = len(lines) > 1
-    h = min(TIER_H if stacked else BADGE_H, (y1 - y0) - 2)
+    h = min(TIER_H if stacked else BADGE_H, (y1 - y0) - 6)
     size = (TIER_TEXT if stacked else BADGE_TEXT) * h / (TIER_H if stacked else BADGE_H)
     need = max(c.stringWidth(t, FONT, size) for t in lines) + 12
     w = min((x1 - x0) - 5, max(BADGE_W, need))
@@ -170,13 +201,13 @@ def _markdown(c, price_rect, was, now):
     c.drawString(start + ow + gap, base, now)
 
 
-def draw_deal(c, g, deal):
+def draw_deal(c, g, deal, template=None):
     """Draw one tag's deal. `g` is that slot's geometry, `deal` a deal dict."""
     if not deal:
         return
     mode, box, field_h = deal_box(g)
     if mode == "inline":
-        _white(c, box)                             # remove the Smilez logo
+        _white(c, _logo_mask(g, box, template))    # remove the Smilez logo
     lines = []
     if deal.get("tiers"):
         lines = [normalize(t) for t in deal["tiers"] if t]
@@ -188,8 +219,8 @@ def draw_deal(c, g, deal):
         _markdown(c, g["PRICE"], normalize(deal["was"]), normalize(deal["now"]))
 
 
-def clear_logo(c, g):
+def clear_logo(c, g, template=None):
     """Plain tag with no deal: just remove the Smilez logo (inline templates)."""
     mode, box, _ = deal_box(g)
     if mode == "inline":
-        _white(c, box)
+        _white(c, _logo_mask(g, box, template))
