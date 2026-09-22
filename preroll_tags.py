@@ -11,6 +11,7 @@ import re
 import subprocess
 import tempfile
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import ArrayObject, NameObject
 
 
 # ── Strain-type routing ───────────────────────────────────────────────────────
@@ -222,9 +223,38 @@ def _fill_template(template_path, page_rows, tmpdir, tag):
         capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"pdftk fill failed: {r.stderr.strip()}")
+    _strip_markup(out_path)
     # The Smilez logo is removed from every tag design, so this runs on every
     # page — it clears the logo and draws any deal badges in the space it frees.
     return _finish_page(template_path, out_path, page_rows, tmpdir, tag)
+
+
+def _strip_markup(path):
+    """Drop review markup (comments, strikeouts, carets) left in a template.
+
+    The three hook templates carry 32 of these each, inherited from
+    master_template.pdf. flatten clears the form widgets but keeps markup, so
+    every hook sheet shipped with them: the popups show as comment bubbles in a
+    reader, and the strikeouts sit on the page with the print flag set.
+    """
+    reader = PdfReader(path)
+    dropped = 0
+    for page in reader.pages:
+        annots = page.get("/Annots")
+        if not annots:
+            continue
+        keep = [a for a in annots if str(a.get_object().get("/Subtype")) == "/Widget"]
+        dropped += len(annots) - len(keep)
+        if keep:
+            page[NameObject("/Annots")] = ArrayObject(keep)
+        else:
+            del page[NameObject("/Annots")]
+    if not dropped:
+        return
+    writer = PdfWriter()
+    writer.append(reader)
+    with open(path, "wb") as f:
+        writer.write(f)
 
 
 def _finish_page(template_path, filled_path, page_rows, tmpdir, tag):
