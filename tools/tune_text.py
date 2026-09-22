@@ -23,6 +23,9 @@ from pypdf.generic import ArrayObject, FloatObject, NameObject
 
 SINGLE = ["Sativa_Prerolls.pdf", "Hybrid_Prerolls.pdf", "Indica_Prerolls.pdf",
           "Sativa_Prerolls_4in.pdf", "Hybrid_Prerolls_4in.pdf", "Indica_Prerolls_4in.pdf"]
+# Retired: the static split templates are gone — split tags are generated at run
+# time by build_dual.py. Kept as a name list so a hand-passed path still tunes
+# with the split geometry.
 SPLIT = ["sativa_split_template.pdf", "hybrid_split_template.pdf", "indica_split_template.pdf",
          "Sativa_Split_4in.pdf", "Hybrid_Split_4in.pdf", "Indica_Split_4in.pdf"]
 
@@ -94,6 +97,6 @@ def tune(src, kind):
 
 
 if __name__ == "__main__":
-    targets = sys.argv[1:] or (SINGLE + SPLIT)
+    targets = sys.argv[1:] or SINGLE
     for t in targets:
         tune(t, "split" if t in SPLIT else "single")

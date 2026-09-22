@@ -9,6 +9,11 @@ from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.lib.colors import Color
+# Build-time tool: run from the repo root. Keep the root importable so
+# `build_split` / `combine_tags` resolve when this is run as tools/<name>.py.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 import build_split as bs            # reuse sample_border_color
 
 MASTER = "master_template.pdf"

@@ -5,3 +5,15 @@ __pycache__/
 
 # Local secrets — real keys live in Streamlit Cloud's secrets settings
 .streamlit/secrets.toml
+
+# Generated proofs, samples and mockups — never commit these
+*_SAMPLE.pdf
+DEALS_*.pdf
+MIXED_*.pdf
+SPLIT_*.pdf
+DUAL_*.pdf
+NO_LOGO_*.pdf
+proof_*.pdf
+*_preview.png
+*_variants.png
+mock_*.py

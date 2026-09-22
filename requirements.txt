@@ -3,5 +3,6 @@ pandas
 requests
 reportlab
 pypdf
+openpyxl
 supabase
 

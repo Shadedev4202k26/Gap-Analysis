@@ -23,6 +23,11 @@ from pypdf.generic import (ArrayObject, BooleanObject, DecodedStreamObject,
 
 from reportlab.pdfgen import canvas as rl_canvas
 
+# Build-time tool: run from the repo root. Keep the root importable so
+# `build_split` / `combine_tags` resolve when this is run as tools/<name>.py.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 import build_split as bs
 import combine_tags as ct
 
