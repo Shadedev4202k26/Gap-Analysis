@@ -224,8 +224,6 @@ def _fill_template(template_path, page_rows, tmpdir, tag):
     if r.returncode != 0:
         raise RuntimeError(f"pdftk fill failed: {r.stderr.strip()}")
     _strip_markup(out_path)
-    # The Smilez logo is removed from every tag design, so this runs on every
-    # page — it clears the logo and draws any deal badges in the space it frees.
     return _finish_page(template_path, out_path, page_rows, tmpdir, tag)
 
 
@@ -258,9 +256,14 @@ def _strip_markup(path):
 
 
 def _finish_page(template_path, filled_path, page_rows, tmpdir, tag):
-    """Clear the Smilez logo on every tag, and draw deal badges where present.
+    """Draw the deal badges. Pages with no deals pass straight through.
 
     Rows fill slots 1..n in order, so row i belongs to slot i+1.
+
+    This used to white out the Smilez logo on every tag as well. The templates
+    now ship without it (tools/strip_logo.py), which is the only way the hook
+    tags can be right: there the logo sat in the same band as the strain, so any
+    patch that hid it clipped large strain text.
     """
     import io as _io
     try:
@@ -285,9 +288,6 @@ def _finish_page(template_path, filled_path, page_rows, tmpdir, tag):
         deal = (row or {}).get("deal")
         if deal:
             sale_badges.draw_deal(c, g, deal, template_path)
-            drew += 1
-        elif row:
-            sale_badges.clear_logo(c, g, template_path)
             drew += 1
     if not drew:
         return filled_path
