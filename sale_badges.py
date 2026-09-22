@@ -107,16 +107,22 @@ def _logo_mask(g, box, template=None):
     logo, and stays clear of the coloured border at the tag's bottom edge. Never
     widened blindly into the THC/price boxes — that would clip their text.
     """
+    # Never reach up into the strain. On the hook templates the THC field runs
+    # about 10pt up behind the strain field, and the pocket inherits that top
+    # edge, so clearing it shaved the bottom off large strain text across the
+    # middle of the tag. The six preroll templates sit 2-3pt clear already, so
+    # this is a no-op for them.
+    ceiling = min(box[3], g["STRAIN"][1])
     off = LOGO_OFFSETS.get(os.path.basename(str(template or "")))
     if not off:
-        return box
+        return (box[0], box[1], box[2], ceiling)
     thc = g["THC"]
     lx0, ly0 = thc[0] + off[0], thc[1] + off[1]
     lx1, ly1 = thc[0] + off[2], thc[1] + off[3]
     # margins: enough to catch antialiased edges, not enough to reach the tag's
     # coloured border (which starts ~8pt above the cell, just below the logo)
     return (min(box[0], lx0 - 2), max(box[1], ly0 - 1.5),
-            max(box[2], lx1 + 2), min(box[3], ly1 + 2.5))
+            max(box[2], lx1 + 2), min(ceiling, ly1 + 2.5))
 
 
 def _white(c, rect, inset=1):
