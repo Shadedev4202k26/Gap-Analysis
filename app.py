@@ -56,6 +56,12 @@ try:
 except ImportError:
     DUAL_AVAILABLE = False
 
+try:
+    import deals as deals_mod
+    DEALS_AVAILABLE = True
+except ImportError:
+    DEALS_AVAILABLE = False
+
 st.set_page_config(page_title="ZiggyBot", page_icon="⚡", layout="wide")
 
 # ── Supabase client ───────────────────────────────────────────────────────────
@@ -1146,6 +1152,53 @@ def render_handoff_rows(target):
     return [dict(r) for r in rows]
 
 
+def deal_controls(key):
+    """Optional weekly-deals sheet. Returns parsed deals, or None when off.
+
+    Optional for now; the plan is to make it required once the workflow settles.
+    """
+    if not DEALS_AVAILABLE:
+        return None
+    with st.expander("🏷️  Weekly deals — add sale bubbles (optional)", expanded=False):
+        up = st.file_uploader(
+            "Drag in this week's deals sheet (CSV or Excel)",
+            type=["csv", "xlsx", "xls"], key=f"{key}_dealfile",
+            help="The weekly deals sheet. Multi-unit deals (3/$55), BOGO, "
+                 "percent-off and sale prices become red bubbles on matching tags.")
+        if not up:
+            st.caption("No sheet loaded — tags print without deal bubbles.")
+            return None
+        try:
+            parsed = deals_mod.load(up.getvalue())
+        except Exception as e:
+            st.error(f"Could not read that deals sheet: {e}")
+            return None
+        if not parsed:
+            st.warning("No product deals found in that sheet. Check it is the "
+                       "weekly deals export and not an inventory file.")
+            return None
+        on = st.toggle("Add deal bubbles to matching tags", value=True,
+                       key=f"{key}_dealon")
+        st.caption(f"Read **{len(parsed)}** product deals from that sheet.")
+        return parsed if on else None
+
+
+def apply_deals(rows, parsed, key):
+    """Attach deals to rows and report what matched."""
+    if not parsed or not rows:
+        return rows
+    n = deals_mod.attach(rows, parsed)
+    if n:
+        st.success(f"🏷️ {n} of {len(rows)} tags matched a deal.")
+        with st.expander("Which tags got a deal?", expanded=False):
+            for r in rows:
+                if r.get("deal_text"):
+                    st.caption(f"**{r.get('strain') or r.get('brand')}** — {r['deal_text']}")
+    else:
+        st.info("No tags matched a deal in that sheet.")
+    return rows
+
+
 def edit_tag_lines(chosen, key):
     """Editable table for the final tag text, pre-seeded with the imported data.
     Every line can be corrected, and each tag can be printed multiple times.
@@ -1262,6 +1315,7 @@ def render_hook_tags():
     if _recv and src_mode == _recv:
         received = render_handoff_rows("hook")
         received = edit_tag_lines(received, "hook_recv")
+        received = apply_deals(received, deal_controls("hook_recv"), "hook_recv")
         if not received:
             st.info("No tags left — clear the received batch or send a new one.")
             return
@@ -1458,6 +1512,7 @@ def render_hook_tags():
         return
 
     chosen = edit_tag_lines(chosen, "hook")
+    chosen = apply_deals(chosen, deal_controls("hook"), "hook")
 
     sel_counts = Counter(r["type"] for r in chosen)
     st.caption(f"Selected **{len(chosen)}** tags  ·  "
@@ -2581,6 +2636,7 @@ def render_preroll_tags():
     if _recvP and src_mode == _recvP:
         received = render_handoff_rows("preroll")
         received = edit_tag_lines(received, "preroll_recv")
+        received = apply_deals(received, deal_controls("preroll_recv"), "preroll_recv")
         if not received:
             st.info("No tags left — clear the received batch or send a new one.")
             return
@@ -2808,6 +2864,7 @@ def render_preroll_tags():
         return
 
     chosen = edit_tag_lines(chosen, "preroll")
+    chosen = apply_deals(chosen, deal_controls("preroll"), "preroll")
 
     sel_counts = Counter(r["type"] for r in chosen)
     n_out = (len(chosen) + 1) // 2 if split_mode else len(chosen)
