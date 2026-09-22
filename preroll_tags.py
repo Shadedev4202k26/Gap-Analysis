@@ -256,9 +256,13 @@ def _strip_markup(path):
 
 
 def _finish_page(template_path, filled_path, page_rows, tmpdir, tag):
-    """Draw the deal badges. Pages with no deals pass straight through.
+    """Draw the cut guides and the deal badges.
 
     Rows fill slots 1..n in order, so row i belongs to slot i+1.
+
+    The guides go on every page whether or not anything else does: the ones in
+    the template art are rows of Courier dashes in a dozen near-greys, so some
+    print too faint to cut against and some are missing.
 
     This used to white out the Smilez logo on every tag as well. The templates
     now ship without it (tools/strip_logo.py), which is the only way the hook
@@ -273,7 +277,12 @@ def _finish_page(template_path, filled_path, page_rows, tmpdir, tag):
     from reportlab.pdfgen import canvas as _canvas
 
     geom = sale_badges.slot_geometry(template_path)
-    if not geom:
+    try:
+        import combine_tags
+        cells = combine_tags.tag_cells(template_path)
+    except Exception:
+        cells = None
+    if not geom and not cells:
         return filled_path
     reader = PdfReader(filled_path)
     page = reader.pages[0]
@@ -281,8 +290,11 @@ def _finish_page(template_path, filled_path, page_rows, tmpdir, tag):
     buf = _io.BytesIO()
     c = _canvas.Canvas(buf, pagesize=(pw, ph))
     drew = 0
+    if cells:
+        sale_badges.draw_cut_guides(c, cells, pw, ph)
+        drew += 1
     for i, row in enumerate(page_rows, 1):
-        g = geom.get(i)
+        g = (geom or {}).get(i)
         if not g:
             continue
         deal = (row or {}).get("deal")

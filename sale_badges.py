@@ -24,6 +24,20 @@ INK = (0.05, 0.05, 0.08)
 GREY = (0.42, 0.42, 0.46)
 FONT = "Helvetica-Bold"
 
+# Bulk deals run every week on whole categories, so they sit in a dark violet
+# badge with light violet text. Red is kept for the weekly sale alone — a shopper
+# scanning the shelf should still spot the genuinely discounted tags first.
+BULK_FILL = (0.29, 0.16, 0.51)
+BULK_INK = (0.85, 0.80, 0.96)
+
+# Cut guides. The templates carry their own, drawn as rows of Courier dashes in
+# a dozen slightly different greys, so some lines print far too faint to cut
+# against and some are missing outright. These are drawn fresh over the top at
+# one weight and one tone, on every tag boundary.
+GUIDE = (0.32, 0.32, 0.36)
+GUIDE_WIDTH = 0.8
+GUIDE_DASH = (5, 3)
+
 # The approved "OG Kush" hook badge, at its real size. Every preroll tag has room
 # for it, so all tags share one physical badge rather than scaling per template.
 BADGE_H = 22.0           # single-line badge height (pt)
@@ -109,7 +123,7 @@ def _white(c, rect, inset=1):
            fill=1, stroke=0)
 
 
-def _badge(c, box, field_h, lines, align="center"):
+def _badge(c, box, field_h, lines, align="center", fill=RED, ink=(1, 1, 1)):
     x0, y0, x1, y1 = box
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     if len(lines) > 1:
@@ -128,9 +142,9 @@ def _badge(c, box, field_h, lines, align="center"):
     w = min((x1 - x0) - 5, max(BADGE_W, need))
     if align == "bottom":                          # keep clear of the strain above
         cy = y0 + 3 + h / 2
-    c.setFillColorRGB(*RED)
+    c.setFillColorRGB(*fill)
     c.roundRect(cx - w / 2, cy - h / 2, w, h, 4, fill=1, stroke=0)
-    c.setFillColorRGB(1, 1, 1)
+    c.setFillColorRGB(*ink)
     size = min(_fit(c, t, w - 6, size) for t in lines)
     c.setFont(FONT, size)
     if not stacked:
@@ -185,16 +199,46 @@ def _markdown(c, price_rect, was, now):
 
 
 def draw_deal(c, g, deal, template=None):
-    """Draw one tag's deal. `g` is that slot's geometry, `deal` a deal dict."""
+    """Draw one tag's deal. `g` is that slot's geometry, `deal` a deal dict.
+
+    A deal marked {"bulk": True} is a standing category offer and gets the pale
+    green badge; everything else is this week's sale and stays red.
+    """
     if not deal:
         return
     mode, box, field_h = deal_box(g)
+    bulk = bool(deal.get("bulk"))
     lines = []
     if deal.get("tiers"):
         lines = [normalize(t) for t in deal["tiers"] if t]
     elif deal.get("badge"):
         lines = [normalize(deal["badge"])]
     if lines:
-        _badge(c, box, field_h, lines, align="bottom" if mode == "above" else "center")
+        _badge(c, box, field_h, lines, align="bottom" if mode == "above" else "center",
+               fill=BULK_FILL if bulk else RED, ink=BULK_INK if bulk else (1, 1, 1))
     if deal.get("was") and deal.get("now"):
         _markdown(c, g["PRICE"], normalize(deal["was"]), normalize(deal["now"]))
+
+
+def draw_cut_guides(c, cells, page_w, page_h):
+    """Dashed cut lines on every tag boundary, running the width of the sheet.
+
+    `cells` is combine_tags.tag_cells(): {slot: (x0, y0, x1, y1)}. Tags tile edge
+    to edge, so a line on a shared boundary falls between two tags rather than
+    across either of them.
+    """
+    if not cells:
+        return
+    xs, ys = set(), set()
+    for x0, y0, x1, y1 in cells.values():
+        xs.update((round(x0, 2), round(x1, 2)))
+        ys.update((round(y0, 2), round(y1, 2)))
+    c.saveState()
+    c.setStrokeColorRGB(*GUIDE)
+    c.setLineWidth(GUIDE_WIDTH)
+    c.setDash(*GUIDE_DASH)
+    for x in sorted(xs):
+        c.line(x, 0, x, page_h)
+    for y in sorted(ys):
+        c.line(0, y, page_w, y)
+    c.restoreState()

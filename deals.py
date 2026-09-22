@@ -230,3 +230,48 @@ def attach(rows, deals):
         if d:
             n += 1
     return n
+
+
+# ── standing bulk deals ─────────────────────────────────────────────────────
+# Category-wide offers that run every week, unlike the weekly sheet. They fill
+# the badge space on tags that have no sale of their own, and render pale green
+# rather than red so this week's real discounts still stand out.
+#
+# Matched on the POS category by keyword, because the exports spell them several
+# ways ("Prepacked Flower Brands", "Multi Pack PreRolls"). First match wins, so
+# the more specific patterns come first.
+BULK_DEALS = [
+    (re.compile(r"edible|gumm|chocolate", re.I),            ("BUY 10", "15% OFF")),
+    (re.compile(r"concentrate|rosin|resin|badder|shatter|wax", re.I),
+                                                            ("BUY 10G", "15% OFF")),
+    (re.compile(r"cart|disposable|vape|510", re.I),         ("BUY 10G", "15% OFF")),
+    (re.compile(r"pre.?roll", re.I),                        ("BUY 5", "15% OFF")),
+    (re.compile(r"prepack|flower", re.I),                   ("BUY 5", "15% OFF")),
+]
+
+
+def bulk_for(row):
+    """Standing bulk deal for a row, as a badge dict, or None.
+
+    Reads the row's category, falling back to the product text — the tag rows
+    carry a category only when they came from a CSV import.
+    """
+    hay = f"{row.get('category', '')} {row.get('product', '')} {row.get('brand', '')}"
+    for pattern, lines in BULK_DEALS:
+        if pattern.search(hay):
+            return {"tiers": list(lines), "bulk": True}
+    return None
+
+
+def attach_bulk(rows):
+    """Give every row without a sale deal its category's bulk deal. Returns n."""
+    n = 0
+    for r in rows:
+        if r.get("deal"):
+            continue
+        b = bulk_for(r)
+        if b:
+            r["deal"] = b
+            r["deals_on"] = True
+            n += 1
+    return n

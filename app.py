@@ -1095,7 +1095,9 @@ def build_tag_rows(df):
         stype = scol if scol in ("sativa", "hybrid", "indica") else preroll_tags.classify_type(strain)
 
         raw.append({"brand": brand, "strain": strain, "thc": thc,
-                    "price": price, "type": stype, "product": product})
+                    "price": price, "type": stype, "product": product,
+                    # deals.bulk_for reads this to pick the standing category deal
+                    "category": str(row.get("Category", "")).strip('="').strip()})
 
     seen, rows = set(), []
     for r in raw:
@@ -1188,18 +1190,27 @@ def deal_controls(key):
 
 
 def apply_deals(rows, parsed, key):
-    """Attach deals to rows and report what matched."""
-    if not parsed or not rows:
+    """Attach this week's deals, then fill the rest with the standing bulk ones.
+
+    The bulk deals run every week whatever the sheet says, so they go on with or
+    without one loaded — they fill the badge space on every tag the weekly sale
+    missed, in violet rather than red so the real discounts still stand out.
+    """
+    if not rows or not DEALS_AVAILABLE:
         return rows
-    n = deals_mod.attach(rows, parsed)
-    if n:
-        st.success(f"🏷️ {n} of {len(rows)} tags matched a deal.")
-        with st.expander("Which tags got a deal?", expanded=False):
-            for r in rows:
-                if r.get("deal_text"):
-                    st.caption(f"**{r.get('strain') or r.get('brand')}** — {r['deal_text']}")
-    else:
-        st.info("No tags matched a deal in that sheet.")
+    n = deals_mod.attach(rows, parsed) if parsed else 0
+    b = deals_mod.attach_bulk(rows)
+    if parsed:
+        if n:
+            st.success(f"🏷️ {n} of {len(rows)} tags matched a deal.")
+            with st.expander("Which tags got a deal?", expanded=False):
+                for r in rows:
+                    if r.get("deal_text"):
+                        st.caption(f"**{r.get('strain') or r.get('brand')}** — {r['deal_text']}")
+        else:
+            st.info("No tags matched a deal in that sheet.")
+    if b:
+        st.caption(f"🟣 {b} tag(s) carry their category's standing bulk deal.")
     return rows
 
 
