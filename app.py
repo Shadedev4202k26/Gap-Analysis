@@ -1174,12 +1174,25 @@ def deal_controls(key):
         return None
 
     db = init_supabase() if DEAL_STORE_AVAILABLE else None
-    stored = []
-    if db is not None:
+    stored, why = [], None
+    if not DEAL_STORE_AVAILABLE:
+        why = "`deal_store.py` is missing from the repo root."
+    elif not SUPABASE_AVAILABLE:
+        why = "the `supabase` library is not installed — add it to requirements.txt."
+    elif db is None:
+        why = ("no Supabase connection. Check **SUPABASE_URL** and **SUPABASE_KEY** in "
+               "the app's secrets — on Streamlit Cloud that is ⋮ → Settings → Secrets.")
+    else:
         try:
             stored = deal_store.weeks(db)
-        except deal_store.StoreError:
-            db = None                      # table missing — fall back to upload-only
+        except deal_store.StoreError as e:
+            # Say what Supabase actually objected to. "Saving is off" with no
+            # reason sends people hunting through the app for a button that was
+            # never going to be there.
+            why = (f"Supabase refused the request — `{e}`. If that mentions "
+                   "`deal_sheets` the table has not been created yet; see "
+                   "**Weekly deals storage** in the README.")
+            db = None
 
     header = "🏷️  Weekly deals"
     if stored:
@@ -1188,10 +1201,9 @@ def deal_controls(key):
         header += " — drop this week's sheet here"
     with st.expander(header, expanded=not stored):
         if db is None:
-            st.caption(
-                "Deals are not being saved between visits — the `deal_sheets` table "
-                "is missing or unreadable. See **Weekly deals storage** in the README "
-                "to set it up. You can still upload a sheet for this session.")
+            st.warning(f"**Deals are not being saved between visits** — {why}\n\n"
+                       "A sheet uploaded now lasts for this browser session only, and "
+                       "no week can be stored or compared until this is fixed.")
         sheet = _deal_week_picker(key, db, stored)
         if sheet is None:
             st.caption("No sheet loaded — tags print without sale bubbles.")
