@@ -54,26 +54,48 @@ per-session upload and says so.
 
    alter table public.deal_sheets enable row level security;
 
-   -- The app signs in with the anon key, same as the checklist and messages
-   -- tables, so that role needs to be able to read and write this one.
-   create policy "anon reads deal sheets"
-       on public.deal_sheets for select to anon using (true);
-   create policy "anon writes deal sheets"
-       on public.deal_sheets for insert to anon with check (true);
-   create policy "anon updates deal sheets"
-       on public.deal_sheets for update to anon using (true) with check (true);
-   create policy "anon deletes deal sheets"
-       on public.deal_sheets for delete to anon using (true);
+   -- The app connects with the key in the Streamlit secrets, the same one the
+   -- checklist and messages tables use, so that role needs read and write here.
+   -- Granted to both roles so it works whichever key is in the secrets.
+   -- Dropped first so this whole block can be run again safely.
+   drop policy if exists "deal sheets read"   on public.deal_sheets;
+   drop policy if exists "deal sheets insert" on public.deal_sheets;
+   drop policy if exists "deal sheets update" on public.deal_sheets;
+   drop policy if exists "deal sheets delete" on public.deal_sheets;
+
+   create policy "deal sheets read"
+       on public.deal_sheets for select to anon, authenticated using (true);
+   create policy "deal sheets insert"
+       on public.deal_sheets for insert to anon, authenticated with check (true);
+   create policy "deal sheets update"
+       on public.deal_sheets for update to anon, authenticated
+       using (true) with check (true);
+   create policy "deal sheets delete"
+       on public.deal_sheets for delete to anon, authenticated using (true);
    ```
+
+   This lets anyone holding the app's key read and write the deals sheets, which
+   is the same posture as the checklist and messages tables already in the
+   project. There is nothing sensitive in a deals export.
 
 4. It should report success with no rows. Check it under **Table Editor** →
    `deal_sheets`.
 5. Reload the app. The deals panel should stop showing the "not being saved
    between visits" note.
 
-If your Streamlit secrets use the `service_role` key rather than `anon`, the
-policies above are unnecessary — that role bypasses row level security — but
-leaving them in does no harm.
+If your Streamlit secrets hold the `service_role` key, the policies are
+unnecessary — that role bypasses row level security — but running them anyway
+does no harm, and they are what makes the `anon` key work.
+
+To confirm it worked without touching the app, run this in the SQL Editor; it
+should return one row and then remove it again:
+
+```sql
+insert into public.deal_sheets (week_start, name, payload)
+values ('1999-01-04', 'connection test', '{}'::jsonb);
+select week_start, name from public.deal_sheets where week_start = '1999-01-04';
+delete from public.deal_sheets where week_start = '1999-01-04';
+```
 
 ### Using it
 
