@@ -93,6 +93,15 @@ def save(db, sheet):
     return prune(db)
 
 
+def delete(db, week):
+    """Remove one stored week. Returns True when a row went."""
+    try:
+        res = db.table(TABLE).delete().eq("week_start", week.isoformat()).execute()
+    except Exception as e:                                   # noqa: BLE001
+        raise StoreError(str(e)) from e
+    return bool(res.data)
+
+
 def prune(db, keep=KEEP):
     """Delete all but the newest `keep` weeks. Returns how many went."""
     stored = weeks(db)

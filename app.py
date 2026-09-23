@@ -692,13 +692,14 @@ with col_hdr:
     </div>""".replace("__SMILEZ_MARK__", _smilez_mark()), unsafe_allow_html=True)
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab9, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab9, tab4, tab5, tab7 = st.tabs([
     "⚡  STRAIN SNIFFER",
     "📊  INVENTORY BALANCING",
     "🏷️  SMALL HOOK TAGS",
     "🌿  PREROLL TAGS",
     "⏳  AGING STOCK",
     "🧰  STORE TOOLS",
+    "⚙️  SETTINGS",
 ])
 # DISABLED FOR NOW — Checklist, Comms, Crossword, Burn Down.
 # The render_* functions below are left intact; re-add the labels above and
@@ -2848,3 +2849,84 @@ def render_store_tools():
 
 with tab5:
     render_store_tools()
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 7 — SETTINGS
+# ════════════════════════════════════════════════════════════════════════════════
+def render_settings():
+    st.markdown('<div class="sec-head"><div class="sec-head-text">⚙️ Settings</div>'
+                '<div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    _settings_deals()
+
+
+def _settings_deals():
+    """Stored weekly deals: what is held, and getting rid of a week."""
+    st.markdown('<div class="cat-hdr">🏷️ Weekly deals storage</div>',
+                unsafe_allow_html=True)
+
+    if not (DEALS_AVAILABLE and DEAL_STORE_AVAILABLE):
+        st.error("`deals.py` or `deal_store.py` is missing from the repo root.")
+        return
+    db = init_supabase()
+    if db is None:
+        st.warning("No Supabase connection — check **SUPABASE_URL** and **SUPABASE_KEY** "
+                   "in the app's secrets. Weeks cannot be stored or deleted until that "
+                   "is fixed.")
+        return
+    try:
+        stored = deal_store.weeks(db)
+    except deal_store.StoreError as e:
+        st.error(f"Supabase refused the request — `{e}`")
+        return
+
+    if not stored:
+        st.info(f"No weeks stored. Upload a sheet in the tag tabs and press Save. "
+                f"The newest {deal_store.KEEP} are kept; older ones drop off on their own.")
+        return
+
+    st.caption(f"{len(stored)} of {deal_store.KEEP} slots used. A week uploaded again "
+               "replaces the one stored under that date rather than pushing the other out.")
+
+    for w in stored:
+        week = w["week"]
+        live = deal_store.is_current(week)
+        c1, c2, c3 = st.columns([3, 3, 1.4])
+        c1.markdown(f"**{deal_store.week_label(week)}**"
+                    + ("  ·  :green[covers today]" if live else "  ·  :grey[not this week]"))
+        c2.caption(f"`{w['name'] or 'unnamed'}`"
+                   + (f"  ·  saved {w['uploaded_at'][:10]}" if w["uploaded_at"] else ""))
+
+        key = f"set_del_{week.isoformat()}"
+        if st.session_state.get(f"{key}_armed"):
+            # Deleting is not undoable and the sheet may not be to hand, so the
+            # button asks once rather than going on the first click.
+            warn = (" This is the week that covers today — tags will print without "
+                    "sale bubbles until another is uploaded." if live else "")
+            st.warning(f"Delete **{deal_store.week_label(week)}**?{warn}")
+            d1, d2, _ = st.columns([1.2, 1.2, 4])
+            if d1.button("Yes, delete", type="primary", key=f"{key}_yes"):
+                try:
+                    deal_store.delete(db, week)
+                except deal_store.StoreError as e:
+                    st.error(f"Could not delete: {e}")
+                else:
+                    st.session_state.pop(f"{key}_armed", None)
+                    st.success(f"Deleted {deal_store.week_label(week)}.")
+                    st.rerun()
+            if d2.button("Cancel", key=f"{key}_no"):
+                st.session_state.pop(f"{key}_armed", None)
+                st.rerun()
+        elif c3.button("🗑️ Delete", key=key):
+            st.session_state[f"{key}_armed"] = True
+            st.rerun()
+
+    with st.expander("What is stored", expanded=False):
+        st.caption(
+            "The parsed store columns from the weekly export — roughly 24KB a week, "
+            "not the 2MB file. Each week keeps every store's column, so one upload "
+            "serves all locations and the tag tabs pick which column to read.")
+
+
+with tab7:
+    render_settings()
