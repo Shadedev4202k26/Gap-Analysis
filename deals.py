@@ -129,6 +129,157 @@ def parse_line(line):
     return None
 
 
+# ── sheet structure ─────────────────────────────────────────────────────────
+# Row 0 is a header of store names, one column each, and every later row holds
+# that store's wording for one deal. Section headers group the rows; the only
+# one that changes how a line is read is Brands of the Week, whose percentage
+# lives in the header and whose brands are listed bare underneath it.
+SECTION = re.compile(
+    r"^(bulk\s+flower|prepacked?\s+flower|edibles?|non[\s-]?infused\s+pre[\s-]?rolls?"
+    r"|infused\s+pre[\s-]?rolls?|concentrates?|disposable\b.*carts?|510\s+carts?"
+    r"|daily\s+deals?|new\s+customer|other\s+deals?|misc)\s*$", re.I)
+BOTW = re.compile(r"brands?\s+of\s+the\s+week.*?(\d{1,2})\s*%\s*off", re.I)
+
+
+def _is_bare_brand(text):
+    """A brand name alone on a line — no price, percentage, size or quantity."""
+    return 2 <= len(text) <= 40 and not re.search(r"[$%\d]", text)
+
+
+def parse_column(lines):
+    """Parse one store's column in order, so sectioned deals keep their context.
+
+    Order matters for Brands of the Week: the header carries the percentage and
+    the brands are listed bare beneath it, so they only mean anything read
+    together. parse_line() alone sees a header it skips and a run of names with
+    no price, and returns nothing for either.
+    """
+    deals, seen = [], set()
+    botw_pct = None
+    for raw in lines:
+        cell = re.sub(r"\s{2,}", " ", str(raw or "")).strip()
+        if not cell or cell.lower() == "nan":
+            continue
+        m = BOTW.search(cell)
+        if m:
+            botw_pct = int(m.group(1))
+            continue
+        if SECTION.match(cell):
+            botw_pct = None
+            continue
+        if botw_pct and _is_bare_brand(cell):
+            if cell.lower() not in seen:
+                seen.add(cell.lower())
+                deals.append(Deal(f"{cell} {botw_pct}% OFF", "pct", f"{botw_pct}% OFF",
+                                  [cell], None, pct=botw_pct))
+            continue
+        botw_pct = None                      # any priced line ends the brand list
+        if cell in seen:
+            continue
+        seen.add(cell)
+        d = parse_line(cell)
+        if d and d.brands:
+            deals.append(d)
+    return deals
+
+
+def week_from_name(name):
+    """Week-start date out of an export filename like '9-21-26 Weekly Deals'."""
+    import datetime
+    m = re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})", str(name or ""))
+    if not m:
+        return None
+    mo, day, yr = (int(x) for x in m.groups())
+    yr += 2000 if yr < 100 else 0
+    try:
+        return datetime.date(yr, mo, day)
+    except ValueError:
+        return None
+
+
+class Sheet:
+    """One weekly deals export: the store columns, and the week it covers."""
+
+    def __init__(self, stores, columns, week=None, name=""):
+        self.stores = list(stores)
+        self.columns = [list(c) for c in columns]
+        self.week = week
+        self.name = name
+
+    def deals(self, store=None):
+        """Deals for one store, or every store's merged when none is given."""
+        if store and store in self.stores:
+            return parse_column(self.columns[self.stores.index(store)])
+        out, seen = [], set()
+        for col in self.columns:
+            for d in parse_column(col):
+                if d.text not in seen:
+                    seen.add(d.text)
+                    out.append(d)
+        return out
+
+    def to_dict(self):
+        return {"name": self.name, "stores": self.stores,
+                "week": self.week.isoformat() if self.week else None,
+                "columns": self.columns}
+
+    @classmethod
+    def from_dict(cls, d):
+        import datetime
+        wk = d.get("week")
+        return cls(d.get("stores") or [], d.get("columns") or [],
+                   datetime.date.fromisoformat(wk) if wk else None,
+                   d.get("name") or "")
+
+
+def _rows(data):
+    """Raw cell rows from a CSV or XLSX export."""
+    if data[:2] == b"PK":
+        import pandas as pd
+        out = []
+        for sheet in pd.read_excel(io.BytesIO(data), sheet_name=None, header=None).values():
+            out.extend(sheet.astype(str).values.tolist())
+        return out
+    text = data.decode("utf-8", errors="replace")
+    csv.field_size_limit(10 ** 9)
+    return list(csv.reader(io.StringIO(text)))
+
+
+def load_sheet(file_or_bytes, name=""):
+    """Read an export into a Sheet, keeping the store columns apart."""
+    data = file_or_bytes.read() if hasattr(file_or_bytes, "read") else file_or_bytes
+    rows = _rows(data)
+    if not rows:
+        return Sheet([], [], week_from_name(name), name)
+    stores = []
+    for cell in rows[0]:
+        cell = str(cell).strip()
+        if not cell or cell.lower() == "nan":
+            break                       # the sheet pads thousands of empty columns
+        stores.append(cell)
+    if not stores:                      # no header row — treat it as one column
+        stores = ["All stores"]
+    columns = [[(str(r[j]).strip() if j < len(r) else "") for r in rows[1:]]
+               for j in range(len(stores))]
+    return Sheet(stores, columns, week_from_name(name), name)
+
+
+def changed(rows, previous, current):
+    """Rows whose deal differs between two weeks — new, changed or ended.
+
+    An ended deal counts: that shelf tag is still showing a discount the store
+    no longer honours, so it needs reprinting just as much as a new one does.
+    """
+    out = []
+    for r in rows:
+        was = for_row(r, previous or [])
+        now = for_row(r, current or [])
+        if (was.as_badge(r.get("price")) if was else None) != \
+           (now.as_badge(r.get("price")) if now else None):
+            out.append(r)
+    return out
+
+
 def load(file_or_bytes):
     """Read a deals sheet (CSV or XLSX) -> list of Deal, de-duplicated."""
     data = file_or_bytes.read() if hasattr(file_or_bytes, "read") else file_or_bytes

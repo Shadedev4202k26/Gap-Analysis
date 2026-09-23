@@ -57,6 +57,12 @@ except ImportError:
     DUAL_AVAILABLE = False
 
 try:
+    import deal_store
+    DEAL_STORE_AVAILABLE = True
+except ImportError:
+    DEAL_STORE_AVAILABLE = False
+
+try:
     import deals as deals_mod
     DEALS_AVAILABLE = True
 except ImportError:
@@ -1155,49 +1161,167 @@ def render_handoff_rows(target):
 
 
 def deal_controls(key):
-    """Optional weekly-deals sheet. Returns parsed deals, or None when off.
+    """Pick the week, the store, and what to print. Returns a context dict.
 
-    Optional for now; the plan is to make it required once the workflow settles.
+    The sheet is uploaded once and kept in Supabase, so whoever opens the app
+    next just picks a week instead of hunting for the export again. Two weeks
+    are held: the one being printed and the one before it, which is what makes
+    "only what changed" answerable.
+
+    Returns {"deals", "prev", "store", "week", "updates_only"} or None.
     """
     if not DEALS_AVAILABLE:
         return None
-    # Open until a sheet is loaded. Collapsed by default it reads as a thin
-    # strip of chrome and gets missed entirely.
-    loaded = st.session_state.get(f"{key}_dealfile") is not None
-    with st.expander("🏷️  Weekly deals sheet — drop it here for sale bubbles (optional)",
-                     expanded=not loaded):
-        up = st.file_uploader(
-            "Drag in this week's deals sheet (CSV or Excel)",
-            type=["csv", "xlsx", "xls"], key=f"{key}_dealfile",
-            help="The weekly deals sheet. Multi-unit deals (3/$55), BOGO, "
-                 "percent-off and sale prices become red bubbles on matching tags.")
-        if not up:
-            st.caption("No sheet loaded — tags print without deal bubbles.")
-            return None
+
+    db = init_supabase() if DEAL_STORE_AVAILABLE else None
+    stored = []
+    if db is not None:
         try:
-            parsed = deals_mod.load(up.getvalue())
-        except Exception as e:
-            st.error(f"Could not read that deals sheet: {e}")
+            stored = deal_store.weeks(db)
+        except deal_store.StoreError:
+            db = None                      # table missing — fall back to upload-only
+
+    header = "🏷️  Weekly deals"
+    if stored:
+        header += f" — {deal_store.week_label(stored[0]['week'])} loaded"
+    else:
+        header += " — drop this week's sheet here"
+    with st.expander(header, expanded=not stored):
+        if db is None:
+            st.caption(
+                "Deals are not being saved between visits — the `deal_sheets` table "
+                "is missing or unreadable. See **Weekly deals storage** in the README "
+                "to set it up. You can still upload a sheet for this session.")
+        sheet = _deal_week_picker(key, db, stored)
+        if sheet is None:
+            st.caption("No sheet loaded — tags print without sale bubbles.")
             return None
-        if not parsed:
-            st.warning("No product deals found in that sheet. Check it is the "
-                       "weekly deals export and not an inventory file.")
+
+        store = None
+        if sheet.stores and len(sheet.stores) > 1:
+            store = st.selectbox(
+                "Store", sheet.stores, key=f"{key}_dealstore",
+                help="Some deals differ by location. Tags use this store's column.")
+        current = sheet.deals(store)
+        if not current:
+            st.warning("No product deals found in that sheet. Check it is the weekly "
+                       "deals export and not an inventory file.")
             return None
-        on = st.toggle("Add deal bubbles to matching tags", value=True,
+
+        # The other stored week, for the diff.
+        prev = None
+        others = [w for w in stored if sheet.week and w["week"] != sheet.week]
+        if db is not None and others:
+            other = deal_store.get(db, others[0]["week"])
+            prev = other.deals(store) if other else None
+
+        updates_only = False
+        if prev:
+            updates_only = st.toggle(
+                f"Only what changed since {deal_store.week_label(others[0]['week'])}",
+                value=False, key=f"{key}_dealdiff",
+                help="Print only the tags whose deal is new, different, or has "
+                     "ended since that week — the ones on the shelf that are now "
+                     "wrong. Everything else keeps the tag it already has.")
+        on = st.toggle("Add sale bubbles to matching tags", value=True,
                        key=f"{key}_dealon")
-        st.caption(f"Read **{len(parsed)}** product deals from that sheet.")
-        return parsed if on else None
+        bits = f"**{len(current)}** deals"
+        if store:
+            bits += f" for **{store}**"
+        st.caption(bits + ".")
+        if not on:
+            return None
+        return {"deals": current, "prev": prev, "store": store,
+                "week": sheet.week, "updates_only": updates_only}
 
 
-def apply_deals(rows, parsed, key):
+def _deal_week_picker(key, db, stored):
+    """Week selector plus the uploader. Returns the chosen deals_mod.Sheet."""
+    chosen = None
+    if stored:
+        labels = {}
+        for w in stored:
+            mark = "" if deal_store.is_current(w["week"]) else "  ⚠️ not this week"
+            labels[f"{deal_store.week_label(w['week'])}{mark}"] = w["week"]
+        pick = st.radio("Week", list(labels), horizontal=True, key=f"{key}_dealweek")
+        week = labels[pick]
+        if not deal_store.is_current(week):
+            live = next((w["week"] for w in stored if deal_store.is_current(w["week"])), None)
+            st.warning(
+                f"**{deal_store.week_label(week)} is not the current week.** "
+                + (f"Today falls in {deal_store.week_label(live)} — switch above "
+                   "before printing shelf tags."
+                   if live else
+                   "No loaded week covers today; upload this week's sheet below."))
+        try:
+            chosen = deal_store.get(db, week)
+        except deal_store.StoreError as e:
+            st.error(f"Could not read that week back: {e}")
+
+    # Once a week is stored the uploader is a rare errand, so it folds away.
+    if stored:
+        box = st.expander("Upload a different week", expanded=False)
+    else:
+        box = st.container()
+        box.caption("Drag in the deals sheet (CSV or Excel)")
+    with box:
+        up = st.file_uploader(" ", type=["csv", "xlsx", "xls"], key=f"{key}_dealfile",
+                              label_visibility="collapsed")
+        if up is not None:
+            try:
+                sheet = deals_mod.load_sheet(up.getvalue(), up.name)
+            except Exception as e:                            # noqa: BLE001
+                st.error(f"Could not read that deals sheet: {e}")
+                return chosen
+            if not sheet.week:
+                st.error(f"`{up.name}` has no date in its name, so there is no week "
+                         "to file it under. Rename it like `9-28-26 Weekly Deals.csv`.")
+                return chosen
+            if db is None:
+                return sheet                                  # session-only fallback
+            if st.button(f"💾  Save {deal_store.week_label(sheet.week)}",
+                         type="primary", key=f"{key}_dealsave"):
+                try:
+                    dropped = deal_store.save(db, sheet)
+                except deal_store.StoreError as e:
+                    st.error(f"Could not save that week: {e}")
+                    return sheet
+                st.success(f"Saved {deal_store.week_label(sheet.week)}."
+                           + (f" Dropped {dropped} older week(s)." if dropped else ""))
+                st.rerun()
+            st.caption(f"Ready to save: **{deal_store.week_label(sheet.week)}** "
+                       f"from `{up.name}`.")
+            return sheet
+    return chosen
+
+
+def apply_deals(rows, ctx, key):
     """Attach this week's deals, then fill the rest with the standing bulk ones.
 
-    The bulk deals run every week whatever the sheet says, so they go on with or
-    without one loaded — they fill the badge space on every tag the weekly sale
-    missed, in violet rather than red so the real discounts still stand out.
+    `ctx` is what deal_controls() returned. The bulk deals run every week
+    whatever the sheet says, so they go on with or without one loaded — they
+    fill the badge space on every tag the weekly sale missed, in violet rather
+    than red so the real discounts still stand out.
+
+    With "only what changed" on, the rows are cut down to those whose deal is
+    new, different or ended since the other stored week, before any badge is
+    attached — those are the tags on the shelf that are now wrong.
     """
     if not rows or not DEALS_AVAILABLE:
         return rows
+    ctx = {"deals": ctx} if isinstance(ctx, list) else (ctx or {})
+    parsed = ctx.get("deals")
+
+    if ctx.get("updates_only") and parsed:
+        before = len(rows)
+        rows = deals_mod.changed(rows, ctx.get("prev") or [], parsed)
+        if not rows:
+            st.info(f"Nothing changed for these {before} items since "
+                    "the other stored week — no tags need reprinting.")
+            return rows
+        st.info(f"🔁 {len(rows)} of {before} tags changed since the other stored "
+                "week. The rest keep the tag already on the shelf.")
+
     n = deals_mod.attach(rows, parsed) if parsed else 0
     b = deals_mod.attach_bulk(rows)
     if parsed:
