@@ -52,6 +52,13 @@ per-session upload and says so.
        uploaded_at timestamptz not null default now()
    );
 
+   -- Privileges first. RLS policies decide WHICH ROWS a role may see; these
+   -- decide whether it may touch the table at all. Creating a table through
+   -- the Table Editor adds them for you, raw SQL does not, and without them
+   -- every request fails with "permission denied for table deal_sheets".
+   grant usage on schema public to anon, authenticated;
+   grant select, insert, update, delete on public.deal_sheets to anon, authenticated;
+
    alter table public.deal_sheets enable row level security;
 
    -- The app connects with the key in the Streamlit secrets, the same one the
