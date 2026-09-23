@@ -170,7 +170,7 @@ def parse_column(lines):
         if botw_pct and _is_bare_brand(cell):
             if cell.lower() not in seen:
                 seen.add(cell.lower())
-                deals.append(Deal(f"{cell} {botw_pct}% OFF", "pct", f"{botw_pct}% OFF",
+                deals.append(Deal(f"{cell} {botw_pct}% OFF", "botw", f"{botw_pct}% OFF",
                                   [cell], None, pct=botw_pct))
             continue
         botw_pct = None                      # any priced line ends the brand list
@@ -360,11 +360,21 @@ def matches(deal, row):
 
 
 def for_row(row, deals):
-    """Best deal for a row: the most specific match (brand + size beats brand)."""
+    """Best deal for a row.
+
+    Brand of the Week outranks everything. Those brands are the week's headline
+    and the 25% comes off a single unit, so it beats a multi-buy that happens to
+    name the same brand: a Society C 3.5G matches both "Brands of the Week 25%
+    OFF" and "3/$60 Giving Tree OR Society C 3.5G Bags", and the shopper should
+    see the 25%.
+
+    Below that it is the most specific match — brand + size beats brand alone.
+    """
     hits = [d for d in deals if matches(d, row)]
     if not hits:
         return None
-    hits.sort(key=lambda d: (d.size is not None, len(" ".join(d.brands))), reverse=True)
+    hits.sort(key=lambda d: (d.kind == "botw", d.size is not None,
+                             len(" ".join(d.brands))), reverse=True)
     return hits[0]
 
 
