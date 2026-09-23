@@ -16,7 +16,7 @@ Every selector below is a `data-testid`, checked against Streamlit 1.63. The
 """
 import streamlit as st
 
-SIDEBAR_W = 248
+SIDEBAR_W = 268   # 248 clipped "Inventory balance" before Inter loaded
 
 CSS = f"""
 <style>
@@ -83,6 +83,23 @@ div[data-testid="stPopover"] button{{background:var(--s3)!important;border:1px s
     box-shadow:none!important;width:auto!important}}
 
 .zb-page{{padding:26px 40px 0}}
+
+/* ── top bar ────────────────────────────────────────────────────────────── */
+/* Replaces the hero. It used to render above every page: an autoplaying 2.2MB
+   video and a title panel, roughly a third of the screen, repeated on all
+   seven pages. */
+.zb-topbar{{height:64px;box-sizing:border-box;background:var(--s2);
+    border-bottom:1px solid var(--border);padding:0 28px;display:flex;
+    align-items:center;gap:18px}}
+.zb-topbar .zb-av{{width:40px;height:40px;border-radius:50%;object-fit:cover;
+    flex-shrink:0;border:1px solid var(--b-purple)}}
+.zb-topbar .zb-mark{{height:17px;width:auto;display:block}}
+.zb-topbar .zb-build{{font-family:'JetBrains Mono',monospace;font-size:10px;
+    letter-spacing:1.4px;color:var(--dim);white-space:nowrap}}
+.zb-topbar .zb-live{{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}}
+.zb-topbar .zb-dot{{width:6px;height:6px;border-radius:50%;background:var(--green)}}
+.zb-topbar .zb-quote{{margin-left:auto;font-size:12px;color:var(--dim);font-style:italic;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46%}}
 </style>
 """
 
@@ -115,3 +132,24 @@ def sidebar(sections, trailing, current):
 def page_header(title):
     st.markdown(f'<div class="zb-page"><h2 style="margin:0 0 14px">{title}</h2></div>',
                 unsafe_allow_html=True)
+
+
+def _data_uri(path, mime):
+    import base64
+    try:
+        with open(path, "rb") as fh:
+            return f"data:{mime};base64," + base64.b64encode(fh.read()).decode()
+    except OSError:
+        return None
+
+
+def top_bar(mark_html, quote=None):
+    """The compact bar that replaced the hero. Renders once, above every page."""
+    av = _data_uri("ziggy-avatar.png", "image/png")
+    avatar = f'<img class="zb-av" src="{av}" alt="Ziggy">' if av else ""
+    q = (f'<span class="zb-quote">{quote}</span>') if quote else ""
+    st.markdown(
+        f'<div class="zb-topbar">{avatar}{mark_html}'
+        f'<span class="zb-build">ZIGGYBOT · v3.0</span>'
+        f'<span class="zb-build zb-live"><span class="zb-dot"></span>5 MODULES ONLINE</span>'
+        f'{q}</div>', unsafe_allow_html=True)

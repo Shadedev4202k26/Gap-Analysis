@@ -666,35 +666,14 @@ def _smilez_mark():
     return ('<img class="zb-mark" alt="Smilez" '
             'src="https://smilezdeli.netlify.app/brand/smilez-wordmark-white.webp?v=1">')
 
-# ── HEADER ────────────────────────────────────────────────────────────────────
-col_vid, col_hdr = st.columns([1, 1])
-with col_vid:
-    with open('video.mp4', 'rb') as vf:
-        st.video(vf.read(), loop=True, autoplay=True, muted=True)
-with col_hdr:
-    st.markdown("""
-    <div class="hub-wrap">
-      <span class="hub-scan"></span>
-      <span class="hub-tick tl"></span><span class="hub-tick tr"></span><span class="hub-tick bl"></span><span class="hub-tick br"></span>
-      <div class="hub-inner">
-      <div class="hub-status-row">
-        __SMILEZ_MARK__
-        <span class="hub-build">ZIGGYBOT · v2.0</span>
-      </div>
-      <div class="hub-coord">X:0042 / Y:0117 · <b>5 MODULES ONLINE</b></div>
-      <div class="hub-title">ZIGGY<em>BOT</em></div>
-      <div class="hub-sub">Dispensary Intelligence Platform</div>
-      <div class="hub-pills">
-        <span class="hpill hp-p">⚡ Strain AI</span>
-        <span class="hpill hp-c">📊 Inventory</span>
-        <span class="hpill hp-g">🏷️ Hook Tags</span>
-        <span class="hpill hp-g">🌿 Preroll Tags</span>
-        <span class="hpill hp-r">⏳ Aging Stock</span>
-      </div>
-    </div></div>
-    <div class="hub-quote">
-      <p>"Your attitude, not your aptitude, will determine your altitude." — <em>Zig Ziglar</em></p>
-    </div>""".replace("__SMILEZ_MARK__", _smilez_mark()), unsafe_allow_html=True)
+# ── TOP BAR ───────────────────────────────────────────────────────────────────
+# Was a hero: an autoplaying video beside a title panel, about a third of the
+# screen. With tabs it drew once; with pages it would draw above every one of
+# them, so it is a 64px bar now and video.mp4 is no longer loaded per session.
+shell.top_bar(
+    _smilez_mark(),
+    quote='"Your attitude, not your aptitude, will determine your altitude." '
+          '— Zig Ziglar')
 
 # Pages are wired up at the bottom of this file.
 
