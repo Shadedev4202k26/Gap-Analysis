@@ -56,6 +56,8 @@ try:
 except ImportError:
     DUAL_AVAILABLE = False
 
+import shell
+
 try:
     import deal_store
     DEAL_STORE_AVAILABLE = True
@@ -68,7 +70,10 @@ try:
 except ImportError:
     DEALS_AVAILABLE = False
 
-st.set_page_config(page_title="ZiggyBot", page_icon="⚡", layout="wide")
+# The sidebar is the navigation now, so it has to start open — the app
+# defaulted to collapsed back when everything lived in tabs.
+st.set_page_config(page_title="ZiggyBot", page_icon="⚡", layout="wide",
+                   initial_sidebar_state="expanded")
 
 # ── Supabase client ───────────────────────────────────────────────────────────
 @st.cache_resource
@@ -691,24 +696,12 @@ with col_hdr:
       <p>"Your attitude, not your aptitude, will determine your altitude." — <em>Zig Ziglar</em></p>
     </div>""".replace("__SMILEZ_MARK__", _smilez_mark()), unsafe_allow_html=True)
 
-# ── TABS ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab9, tab4, tab5, tab7 = st.tabs([
-    "⚡  STRAIN SNIFFER",
-    "📊  INVENTORY BALANCING",
-    "🏷️  SMALL HOOK TAGS",
-    "🌿  PREROLL TAGS",
-    "⏳  AGING STOCK",
-    "🧰  STORE TOOLS",
-    "⚙️  SETTINGS",
-])
-# DISABLED FOR NOW — Checklist, Comms, Crossword, Burn Down.
-# The render_* functions below are left intact; re-add the labels above and
-# un-comment the matching `with tabN:` blocks to bring any of them back.
+# Pages are wired up at the bottom of this file.
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 1 — STRAIN SNIFFER
 # ════════════════════════════════════════════════════════════════════════════════
-with tab1:
+def render_strain_ai():
     st.markdown('<div class="sec-head"><div class="sec-head-text">⚡ Verified AI Strain Profiler</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     with st.form("strain_form", clear_on_submit=True):
         c_strain, c_brand = st.columns([2, 1])
@@ -819,7 +812,7 @@ with tab1:
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 2 — INVENTORY INTEL
 # ════════════════════════════════════════════════════════════════════════════════
-with tab2:
+def render_inventory():
     st.markdown('<div class="sec-head"><div class="sec-head-text">📊 Live Room Balance Analyzer</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
@@ -1746,8 +1739,6 @@ def render_hook_tags():
     send_tags_to(chosen, "preroll", "hook")
 
 
-with tab3:
-    render_hook_tags()
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -1959,8 +1950,6 @@ def render_dead_stock():
     )
 
 
-with tab4:
-    render_dead_stock()
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -2846,8 +2835,6 @@ def render_preroll_tags():
     send_tags_to(chosen, "hook", "preroll")
 
 
-with tab9:
-    render_preroll_tags()
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -2886,8 +2873,6 @@ def render_store_tools():
                "so saved entries persist reliably.")
 
 
-with tab5:
-    render_store_tools()
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -2967,5 +2952,39 @@ def _settings_deals():
             "serves all locations and the tag tabs pick which column to read.")
 
 
-with tab7:
-    render_settings()
+# ════════════════════════════════════════════════════════════════════════════════
+# NAVIGATION
+# ════════════════════════════════════════════════════════════════════════════════
+# Routing is Streamlit's, the menu is ours — see shell.py for why the built-in
+# sidebar menu is not used. Each page needs an explicit url_path: Streamlit
+# infers one from the callable's name otherwise, and two pages that share a
+# name collide.
+st.markdown(shell.CSS, unsafe_allow_html=True)
+
+_SECTIONS = {
+    "Print": [
+        st.Page(render_hook_tags, title="Hook tags", icon=":material/sell:",
+                url_path="hook-tags", default=True),
+        st.Page(render_preroll_tags, title="Preroll tags", icon=":material/local_florist:",
+                url_path="preroll-tags"),
+    ],
+    "Stock": [
+        st.Page(render_inventory, title="Inventory balance", icon=":material/bar_chart:",
+                url_path="inventory"),
+        st.Page(render_dead_stock, title="Aging stock", icon=":material/schedule:",
+                url_path="aging-stock"),
+    ],
+    "Tools": [
+        st.Page(render_strain_ai, title="Strain lookup", icon=":material/bolt:",
+                url_path="strain"),
+        st.Page(render_store_tools, title="Store tools", icon=":material/handyman:",
+                url_path="store-tools"),
+    ],
+}
+_TRAILING = [st.Page(render_settings, title="Settings", icon=":material/settings:",
+                     url_path="settings")]
+
+_nav = st.navigation(
+    [pg for pages in _SECTIONS.values() for pg in pages] + _TRAILING, position="hidden")
+shell.sidebar(_SECTIONS, _TRAILING, _nav.url_path)
+_nav.run()
