@@ -30,6 +30,17 @@ FONT = "Helvetica-Bold"
 BULK_FILL = (0.29, 0.16, 0.51)
 BULK_INK = (0.85, 0.80, 0.96)
 
+# Deli flower is badged with the shelf it sits on, in that shelf's own colour:
+# (fill, ink, outline). The white shelf needs the outline and dark text — a
+# white pill on white card is invisible without it.
+SHELF_STYLES = {
+    "stash":   ((0.42, 0.20, 0.64), (1, 1, 1), None),
+    "blue":    ((0.13, 0.38, 0.76), (1, 1, 1), None),
+    "white":   ((1, 1, 1), (0.08, 0.09, 0.12), (0.45, 0.45, 0.50)),
+    "red":     ((0.82, 0.16, 0.14), (1, 1, 1), None),
+    "outdoor": ((0.09, 0.50, 0.27), (1, 1, 1), None),
+}
+
 # Cut guides. The templates carry their own, drawn as rows of Courier dashes in
 # a dozen slightly different greys, so some lines print far too faint to cut
 # against and some are missing outright. These are drawn fresh over the top at
@@ -123,7 +134,7 @@ def _white(c, rect, inset=1):
            fill=1, stroke=0)
 
 
-def _badge(c, box, field_h, lines, align="center", fill=RED, ink=(1, 1, 1)):
+def _badge(c, box, field_h, lines, align="center", fill=RED, ink=(1, 1, 1), outline=None):
     x0, y0, x1, y1 = box
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     if len(lines) > 1:
@@ -143,7 +154,10 @@ def _badge(c, box, field_h, lines, align="center", fill=RED, ink=(1, 1, 1)):
     if align == "bottom":                          # keep clear of the strain above
         cy = y0 + 3 + h / 2
     c.setFillColorRGB(*fill)
-    c.roundRect(cx - w / 2, cy - h / 2, w, h, 4, fill=1, stroke=0)
+    if outline:
+        c.setStrokeColorRGB(*outline)
+        c.setLineWidth(0.9)
+    c.roundRect(cx - w / 2, cy - h / 2, w, h, 4, fill=1, stroke=1 if outline else 0)
     c.setFillColorRGB(*ink)
     size = min(_fit(c, t, w - 6, size) for t in lines)
     c.setFont(FONT, size)
@@ -208,14 +222,20 @@ def draw_deal(c, g, deal, template=None):
         return
     mode, box, field_h = deal_box(g)
     bulk = bool(deal.get("bulk"))
+    shelf = SHELF_STYLES.get(deal.get("shelf"))
     lines = []
     if deal.get("tiers"):
         lines = [normalize(t) for t in deal["tiers"] if t]
     elif deal.get("badge"):
         lines = [normalize(deal["badge"])]
     if lines:
+        if shelf:
+            fill, ink, outline = shelf
+        else:
+            fill, ink, outline = ((BULK_FILL, BULK_INK, None) if bulk
+                                  else (RED, (1, 1, 1), None))
         _badge(c, box, field_h, lines, align="bottom" if mode == "above" else "center",
-               fill=BULK_FILL if bulk else RED, ink=BULK_INK if bulk else (1, 1, 1))
+               fill=fill, ink=ink, outline=outline)
     if deal.get("was") and deal.get("now"):
         _markdown(c, g["PRICE"], normalize(deal["was"]), normalize(deal["now"]))
 

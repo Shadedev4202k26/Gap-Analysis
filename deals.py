@@ -352,6 +352,44 @@ def is_deli(row):
                             f"{row.get('brand', '')}"))
 
 
+# Deli flower is priced by the shelf it sits on, and the POS names that shelf in
+# the product's category. Ordered: "Secret Stash" would otherwise be missed by a
+# bare colour match. A row whose category names no shelf gets no badge — a wrong
+# shelf colour on a shelf tag is worse than a blank one.
+SHELVES = [
+    (re.compile(r"secret\s*stash|\bstash\b", re.I), "STASH", "stash"),
+    (re.compile(r"\bblue\b", re.I), "BLUE", "blue"),
+    (re.compile(r"\bwhite\b", re.I), "WHITE", "white"),
+    (re.compile(r"\bred\b", re.I), "RED", "red"),
+    (re.compile(r"\boutdoor\b|\bgreen\b", re.I), "OUTDOOR", "outdoor"),
+]
+
+
+def shelf_for(row):
+    """Shelf badge for a deli flower row, or None when it is not deli / not named."""
+    if not is_deli(row):
+        return None
+    hay = f"{row.get('category', '')} {row.get('product', '')}"
+    for pattern, label, key in SHELVES:
+        if pattern.search(hay):
+            return {"badge": label, "shelf": key}
+    return None
+
+
+def attach_shelf(rows):
+    """Give deli rows their shelf badge. Returns how many got one."""
+    n = 0
+    for r in rows:
+        if r.get("deal"):
+            continue
+        s = shelf_for(r)
+        if s:
+            r["deal"] = s
+            r["deals_on"] = True
+            n += 1
+    return n
+
+
 def matches(deal, row):
     """Does this deal apply to this product row?"""
     if is_deli(row):
