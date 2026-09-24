@@ -411,6 +411,13 @@ BULK_DEALS = [
 ]
 
 
+# Deli / bulk flower is sold loose off a shelf and is NOT part of the prepack
+# offer. The flower pattern below matches any category with "flower" in it, so
+# without this a "Deli Flower" row took the prepack badge and printed an offer
+# the store does not honour on it.
+BULK_EXCLUDE = re.compile(r"\bdeli\b|\bbulk\b", re.I)
+
+
 def bulk_for(row):
     """Standing bulk deal for a row, as a badge dict, or None.
 
@@ -418,6 +425,8 @@ def bulk_for(row):
     carry a category only when they came from a CSV import.
     """
     hay = f"{row.get('category', '')} {row.get('product', '')} {row.get('brand', '')}"
+    if BULK_EXCLUDE.search(hay):
+        return None
     for pattern, lines in BULK_DEALS:
         if pattern.search(hay):
             return {"tiers": list(lines), "bulk": True}
