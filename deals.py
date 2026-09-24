@@ -338,8 +338,24 @@ def _brand_hit(brand, hay):
     return False
 
 
+# Loose flower off the deli shelf is priced by shelf, not by the product deals
+# on the weekly sheet — the sheet says so itself: "Brands of the Week 25% OFF
+# (Excludes Deli Flower)". It shares brand names with prepack, so without this
+# a "3/$36 Goldkine 3.5G Bags" prepack sale printed on a Goldkine deli package
+# whenever the package text carried no size to rule it out.
+DELI = re.compile(r"\bdeli\b|\bbulk\b", re.I)
+
+
+def is_deli(row):
+    """Is this row loose deli/bulk flower rather than a packaged product?"""
+    return bool(DELI.search(f"{row.get('category', '')} {row.get('product', '')} "
+                            f"{row.get('brand', '')}"))
+
+
 def matches(deal, row):
     """Does this deal apply to this product row?"""
+    if is_deli(row):
+        return False
     text = _norm(f"{row.get('product','')} {row.get('brand','')}")
     # Brands are matched against the brand field only, never the whole product
     # name. Several real brands double as ordinary product words, and _brand_hit
@@ -411,22 +427,15 @@ BULK_DEALS = [
 ]
 
 
-# Deli / bulk flower is sold loose off a shelf and is NOT part of the prepack
-# offer. The flower pattern below matches any category with "flower" in it, so
-# without this a "Deli Flower" row took the prepack badge and printed an offer
-# the store does not honour on it.
-BULK_EXCLUDE = re.compile(r"\bdeli\b|\bbulk\b", re.I)
-
-
 def bulk_for(row):
     """Standing bulk deal for a row, as a badge dict, or None.
 
     Reads the row's category, falling back to the product text — the tag rows
     carry a category only when they came from a CSV import.
     """
-    hay = f"{row.get('category', '')} {row.get('product', '')} {row.get('brand', '')}"
-    if BULK_EXCLUDE.search(hay):
+    if is_deli(row):
         return None
+    hay = f"{row.get('category', '')} {row.get('product', '')} {row.get('brand', '')}"
     for pattern, lines in BULK_DEALS:
         if pattern.search(hay):
             return {"tiers": list(lines), "bulk": True}
