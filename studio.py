@@ -179,11 +179,12 @@ def new_run():
 
 
 def _week_status(week):
+    """(dot for the week button, what it means) — the dot keeps the bar short."""
     if week is None:
-        return '<span class="zb-ctxwarn">No deals loaded</span>'
+        return ":orange[●]", "No deals sheet loaded — tags print without sale bubbles."
     if deal_store.is_current(week):
-        return '<span class="zb-ctxok">● Covers today</span>'
-    return '<span class="zb-ctxwarn">▲ Not this week</span>'
+        return ":green[●]", "This week covers today."
+    return ":orange[▲]", "Not this week — today falls outside it. Check before printing."
 
 
 def _pick_week(label_to_week):
@@ -271,15 +272,13 @@ def context_bar(mark_html):
     """The bar above every page: week, store, and the wordmark."""
     ctx = context()
     week_txt = deal_store.week_label(ctx["week"]) if ctx["week"] else "Load a week"
+    dot, status = _week_status(ctx["week"])
+    # Kept short — icons, no WEEK/STORE labels, the week's status as a dot.
     with st.container(key="zbctx", horizontal=True, vertical_alignment="center", gap="small"):
-        st.markdown('<span class="zb-ctxlab">WEEK</span>', unsafe_allow_html=True)
-        with st.popover(week_txt, icon=":material/calendar_month:"):
+        with st.popover(f"{dot} {week_txt}", icon=":material/calendar_month:", help=status):
             _week_panel(ctx)
-        st.markdown(_week_status(ctx["week"]), unsafe_allow_html=True)
-        st.markdown('<span class="zb-ctxsep"></span>', unsafe_allow_html=True)
-        st.markdown('<span class="zb-ctxlab">STORE</span>', unsafe_allow_html=True)
-        with st.popover(ctx["store"] or "—", icon=":material/storefront:",
-                        disabled=not ctx["stores"]):
+        with st.popover(ctx["store"] or "Store", icon=":material/storefront:",
+                        disabled=not ctx["stores"], help="Which store's deals the tags use"):
             st.markdown('<div class="zb-panel-h">Store</div>', unsafe_allow_html=True)
             st.session_state["zb_store_pills"] = ctx["store"]
             st.pills("Store", ctx["stores"], key="zb_store_pills",
@@ -287,9 +286,10 @@ def context_bar(mark_html):
                      on_change=_pick_store)
             if ctx["deals"]:
                 st.caption(f"{ctx['store']} runs {len(ctx['deals'])} deals this week.")
-        st.markdown('<span class="zb-grow"></span>', unsafe_allow_html=True)
-        st.markdown(f'<span class="zb-ctxmark">{mark_html}{_avatar()}</span>',
-                    unsafe_allow_html=True)
+        # Smilez × Ziggy, at the right end of the bar: the two names side by side.
+        st.markdown(f'<span class="zb-ctxmark" role="img" aria-label="Smilez × ZiggyBot">'
+                    f'{mark_html}<span class="zb-x" aria-hidden="true">×</span>{_avatar()}'
+                    f'</span>', unsafe_allow_html=True)
     return ctx
 
 
@@ -1099,13 +1099,27 @@ CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&display=swap');
 
 /* context bar */
-.st-key-zbctx{height:64px;background:var(--s2);border-bottom:1px solid var(--border);
+.st-key-zbctx{height:64px!important;min-height:64px;box-sizing:border-box;background:var(--s2);border-bottom:1px solid var(--border);
   margin:0 -40px!important;width:calc(100% + 80px)!important;max-width:none!important;padding:0 28px!important;gap:10px!important;flex-wrap:nowrap!important}
 .st-key-zbctx [data-testid="stElementContainer"]:has(.zb-grow){flex:1 1 auto!important}
 .st-key-zbctx [data-testid="stMarkdownContainer"] p{margin:0!important}
-.zb-ctxmark{display:flex;align-items:center;gap:14px}
-.zb-ctxmark img.zb-mark{height:17px;display:block;opacity:.9}
-.zb-ctxmark img.zb-av{width:36px;height:36px;border-radius:50%;object-fit:cover;border:1px solid var(--b-purple)}
+/* The Smilez × Ziggy lockup sits at the right end of the bar, on its vertical
+   centre line. Taken out of the flex row so the row's own alignment and
+   Streamlit's markdown margins cannot push it off that line. */
+.st-key-zbctx{position:relative}
+.st-key-zbctx [data-testid="stElementContainer"]:has(.zb-ctxmark){position:absolute!important;
+  right:28px;top:0;bottom:0;width:auto!important;margin:0!important;
+  display:flex!important;align-items:center}
+.st-key-zbctx [data-testid="stElementContainer"]:has(.zb-ctxmark) [data-testid="stMarkdown"],
+.st-key-zbctx [data-testid="stElementContainer"]:has(.zb-ctxmark) [data-testid="stMarkdownContainer"]{
+  margin:0!important}
+.st-key-zbctx [data-testid="stElementContainer"]:has(.zb-ctxmark) p{display:flex;margin:0!important}
+.zb-ctxmark{display:flex;align-items:center;gap:12px;white-space:nowrap}
+.zb-ctxmark img.zb-mark{height:19px;display:block}
+.zb-ctxmark .zb-x{font-family:'Inter',sans-serif;font-weight:300;font-size:20px;line-height:1;
+  color:var(--dim)}
+.zb-ctxmark img.zb-av{width:38px;height:38px;border-radius:50%;object-fit:cover;
+  border:1.5px solid var(--purple-l);box-shadow:0 0 14px rgba(139,92,246,.45)}
 /* Narrow screens: Streamlit collapses the sidebar and floats its reopen button
    top-left, over the start of this bar. */
 @media (max-width: 768px){.block-container{padding:0 16px 140px!important}
