@@ -273,9 +273,7 @@ def context_bar(mark_html):
     ctx = context()
     week_txt = deal_store.week_label(ctx["week"]) if ctx["week"] else "Load a week"
     dot, status = _week_status(ctx["week"])
-    # Kept short — icons, no WEEK/STORE labels, the week's status as a dot — so
-    # the Smilez × Ziggy lockup can sit on the centre line without the store
-    # picker running into it, even at "Sep 28 – Oct 4" and "Three Rivers".
+    # Kept short — icons, no WEEK/STORE labels, the week's status as a dot.
     with st.container(key="zbctx", horizontal=True, vertical_alignment="center", gap="small"):
         with st.popover(f"{dot} {week_txt}", icon=":material/calendar_month:", help=status):
             _week_panel(ctx)
@@ -288,7 +286,7 @@ def context_bar(mark_html):
                      on_change=_pick_store)
             if ctx["deals"]:
                 st.caption(f"{ctx['store']} runs {len(ctx['deals'])} deals this week.")
-        # Smilez × Ziggy, centred on the bar: the two names side by side.
+        # Smilez × Ziggy, at the right end of the bar: the two names side by side.
         st.markdown(f'<span class="zb-ctxmark" role="img" aria-label="Smilez × ZiggyBot">'
                     f'{mark_html}<span class="zb-x" aria-hidden="true">×</span>{_avatar()}'
                     f'</span>', unsafe_allow_html=True)
@@ -1105,11 +1103,12 @@ CSS = """
   margin:0 -40px!important;width:calc(100% + 80px)!important;max-width:none!important;padding:0 28px!important;gap:10px!important;flex-wrap:nowrap!important}
 .st-key-zbctx [data-testid="stElementContainer"]:has(.zb-grow){flex:1 1 auto!important}
 .st-key-zbctx [data-testid="stMarkdownContainer"] p{margin:0!important}
-/* The Smilez × Ziggy lockup sits on the bar's centre line, whatever the week and
-   store controls on the left measure. Taken out of the flex row for that. */
+/* The Smilez × Ziggy lockup sits at the right end of the bar, on its vertical
+   centre line. Taken out of the flex row so the row's own alignment and
+   Streamlit's markdown margins cannot push it off that line. */
 .st-key-zbctx{position:relative}
 .st-key-zbctx [data-testid="stElementContainer"]:has(.zb-ctxmark){position:absolute!important;
-  left:50%;top:0;bottom:0;transform:translateX(-50%);width:auto!important;margin:0!important;
+  right:28px;top:0;bottom:0;width:auto!important;margin:0!important;
   display:flex!important;align-items:center}
 .st-key-zbctx [data-testid="stElementContainer"]:has(.zb-ctxmark) [data-testid="stMarkdown"],
 .st-key-zbctx [data-testid="stElementContainer"]:has(.zb-ctxmark) [data-testid="stMarkdownContainer"]{
@@ -1121,9 +1120,6 @@ CSS = """
   color:var(--dim)}
 .zb-ctxmark img.zb-av{width:38px;height:38px;border-radius:50%;object-fit:cover;
   border:1.5px solid var(--purple-l);box-shadow:0 0 14px rgba(139,92,246,.45)}
-/* Too narrow to centre without sitting on the store picker: back to the right. */
-@media (max-width: 1180px){.st-key-zbctx [data-testid="stElementContainer"]:has(.zb-ctxmark){
-  left:auto;right:28px;transform:none}}
 /* Narrow screens: Streamlit collapses the sidebar and floats its reopen button
    top-left, over the start of this bar. */
 @media (max-width: 768px){.block-container{padding:0 16px 140px!important}
