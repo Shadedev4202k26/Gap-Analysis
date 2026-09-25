@@ -1114,6 +1114,26 @@ def build_tag_rows(df):
     return rows
 
 
+# Outdoor flower sells at a fixed price the backoffice does not hold — its
+# "Current price" is wrong and must never reach a tag. Keyed by the size in the
+# product name. An outdoor product of any other size (BULK rows carry none) gets
+# a blank price: a wrong price on a shelf tag is worse than none.
+OUTDOOR_PRICES = {"3.5G": "$4", "28G": "$17.50"}
+_OUTDOOR_SIZE = re.compile(r'(?<![\d.])(\d*\.?\d+)\s*g\b', re.IGNORECASE)
+
+
+def fix_outdoor_prices(rows):
+    """Replace the price on every outdoor row with its fixed price. Returns n."""
+    n = 0
+    for r in rows:
+        if "outdoor" not in str(r.get("category", "")).lower():
+            continue
+        m = _OUTDOOR_SIZE.search(r.get("product", ""))
+        r["price"] = OUTDOOR_PRICES.get(f"{m.group(1)}G" if m else "", "")
+        n += 1
+    return n
+
+
 # ── Hand tags between the Preroll and Hook tag builders ──────────────────────
 HANDOFF_LABEL = {"hook": "Small Hook Tags", "preroll": "Preroll Tags"}
 
@@ -1484,6 +1504,7 @@ def render_hook_tags():
     # ── 📥 Rows handed over from the Preroll builder ──────────────────────────
     if _recv and src_mode == _recv:
         received = render_handoff_rows("hook")
+        fix_outdoor_prices(received)
         received = edit_tag_lines(received, "hook_recv")
         received = apply_deals(received, tab_deals, "hook_recv")
         if not received:
@@ -1601,6 +1622,10 @@ def render_hook_tags():
     if not rows:
         st.error("No valid product rows found in the CSV.")
         return
+    n_outdoor = fix_outdoor_prices(rows)
+    if n_outdoor:
+        st.caption(f"🌤️ {n_outdoor} outdoor item(s) use the fixed outdoor price "
+                   "(3.5G $4 · 28G $17.50), not the backoffice price.")
 
     from collections import Counter
     counts = Counter(r["type"] for r in rows)
