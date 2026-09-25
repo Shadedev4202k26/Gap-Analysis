@@ -2,7 +2,8 @@
 
 Streamlit app for Smilez: shelf tags, inventory tools and store utilities.
 
-Runs on Streamlit Cloud from `app.py`. Templates, assets and the tag engine all
+Runs on Streamlit Cloud at https://ziggyz.streamlit.app, deployed from
+`app.py` on `main` — a change is not live until it is merged there. Templates, assets and the tag engine all
 live at the repo root because the app imports them by bare name.
 
 ```
