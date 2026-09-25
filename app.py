@@ -1116,8 +1116,9 @@ def build_tag_rows(df):
 
 # Outdoor flower sells at a fixed price the backoffice does not hold — its
 # "Current price" is wrong and must never reach a tag. Keyed by the size in the
-# product name. An outdoor product of any other size (BULK rows carry none) gets
-# a blank price: a wrong price on a shelf tag is worse than none.
+# product name. An outdoor product of any other size gets a blank price: a wrong
+# price on a shelf tag is worse than none. (BULK outdoor is sold from jars with
+# their own labels and never goes on a hook tag.)
 OUTDOOR_PRICES = {"3.5G": "$4", "28G": "$17.50"}
 _OUTDOOR_SIZE = re.compile(r'(?<![\d.])(\d*\.?\d+)\s*g\b', re.IGNORECASE)
 
