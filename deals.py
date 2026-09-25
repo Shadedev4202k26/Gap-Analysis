@@ -389,9 +389,15 @@ SHELVES = [
 def shelf_of(row):
     """(label, key) of the deli shelf this row's category names, or None.
 
-    Read from the CATEGORY alone. The product text is not consulted: an
-    ordinary packaged bag can easily mention a colour, and mislabelling its
-    shelf is worse than leaving it blank.
+    Read from the CATEGORY alone, which is authoritative: every deli/bulk
+    product is filed under one of the six tiers.
+
+    Do not be tempted to read the product text as well. In the 2026-09-25
+    export 535 rows that are not deli carry one of these words in their name —
+    376 "blue" alone, mostly Blue Dream — so matching there would turn every
+    Blue Dream preroll into deli flower and strip its deals. Restricting it to
+    a whole trailing segment is no better: that catches nine rows and all nine
+    are batteries and accessories whose colour is the product's own.
     """
     cat = row.get("category", "")
     for pattern, label, key in SHELVES:
