@@ -5,30 +5,22 @@ and how the app works; this is only what is in flight.
 
 ## Branches
 
-`main` is what the eight stores run. Everything below is off it.
+`main` is what the eight stores run. #1 (deals correctness — deli shelves,
+family matching, 28G) and #2 (week picker starts on the current week) merged
+2026-09-25.
 
 | branch | PR | what |
 |---|---|---|
-| `deli-fixes` | [#1](https://github.com/Shadedev4202k26/Gap-Analysis/pull/1) | deals correctness — deli shelves, family matching, 28G |
-| `week-default` | [#2](https://github.com/Shadedev4202k26/Gap-Analysis/pull/2) | week picker starts on the current week |
-| `ui-shell` | — | sidebar navigation + top bar, plus the deli commits |
-
-Both PRs are off `main` and touch different functions, so either can merge first.
-
-**`ui-shell` is behind.** It carries the deli commits but not `737610d`
-(family matching, bulk-by-category, 28G). After #1 and #2 merge, rebase
-`ui-shell` onto `main` — it will drop the duplicated deli commits and pick up
-the rest.
+| `ui-shell` | — | sidebar navigation + top bar, rebased onto `main` |
 
 ## Next actions, in order
 
-1. **Print one sheet from `deli-fixes`** before merging. Deli tags now show a
-   shelf badge where a deal bubble was, and a lot of tags lose badges they
-   should never have had. Both intended, both visible in every store.
-2. **Merge #1 and #2.** Every sheet printed until then carries the wrong deals.
-3. **Rebase `ui-shell`** onto the new `main`.
-4. Review the navigation rebuild on `ui-shell` — run it locally, it is only the
-   shell so far, every page keeps the content it had.
+1. **Review the navigation rebuild on `ui-shell`** — run it locally, it is only
+   the shell so far, every page keeps the content it had. If it is good, open a
+   PR and merge it.
+2. **Confirm the live app shows the merged deals.** A hook sheet should show
+   BUY 5 on Grown Rogue Orange Gummi and Glacier Heavy Z, no badge on Goldkine
+   28G, and shelf badges on deli flower.
 
 ## Open work, roughly by value
 
@@ -74,7 +66,12 @@ the rest.
 
 ## Verification on hand
 
-A headless smoke test covering all three builders × both sizes × mix on/off ×
-deals on/off lives in the session scratch, not the repo — worth moving in. The
-figures quoted in commit messages come from the 2026-09-15, 09-22 and 09-25
-inventory exports in `~/Downloads` against the 9/21 and 9/28 deals sheets.
+`tools/smoke_tags.py` builds all three builders × both sizes × mix on/off ×
+deals on/off, then checks tags that have printed the wrong deal before. It
+loads deals with `load_sheet(...).deals(store)` as the app does — `deals.load()`
+flattens the sheet and cannot catch a deal leaving its section. The figures
+quoted in commit messages come from the 2026-09-15, 09-22 and 09-25 inventory
+exports in `~/Downloads` against the 9/21 and 9/28 deals sheets.
+
+GitHub: the `gh` CLI must be on the `Shadedev4202k26` account to merge;
+`SmilezMedia` can only read this repo.

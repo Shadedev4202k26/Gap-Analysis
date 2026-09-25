@@ -3,19 +3,23 @@
     python tools/smoke_tags.py
 
 Builds each combination and reports page count and byte size, so a change to
-the deal rules or the templates cannot silently stop a sheet building. Needs
-pdftk and poppler (see README) and a weekly deals CSV in ~/Downloads.
+the deal rules or the templates cannot silently stop a sheet building. Then
+checks a few tags that have printed the wrong deal before. Needs pdftk and
+poppler (see README) and the 9/28 weekly deals CSV in ~/Downloads.
 """
 import os, sys, tempfile
-sys.path.insert(0, "/Users/chadhunter/Gap-Analysis")
-os.chdir("/Users/chadhunter/Gap-Analysis")
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+os.chdir(REPO)
 
 import deals as deals_mod, preroll_tags as pt, combine_tags as ct, build_dual
 from pypdf import PdfReader
 import io
 
-SHEET = "/Users/chadhunter/Downloads/9-21-26 Weekly Deals-Smilez(Sheet1).csv"
-DEALS = deals_mod.load(open(SHEET, "rb").read())
+SHEET = os.path.expanduser("~/Downloads/9-28-26 Weekly Deals-Smilez(Sheet1)-3.csv")
+# Loaded the way the app loads it. deals.load() flattens the sheet and loses the
+# section each deal sits under, so it cannot see a preroll deal land on flower.
+DEALS = deals_mod.load_sheet(open(SHEET, "rb").read(), os.path.basename(SHEET)).deals("Allegan")
 
 ROWS = [
     {"brand": "Goldkine",        "strain": "OG Kush",      "thc": "28.4%", "price": "$14", "type": "sativa"},
@@ -72,6 +76,30 @@ for with_deals in (False, True):
             results.append(f"  OK   {name}  pages={pages(b):2d}  bytes={len(b):7d}  deals_on_rows={n_deals}")
         except Exception as e:
             failures.append(f"  FAIL {name}  {type(e).__name__}: {e}")
+
+# Tags that printed the wrong deal on 2026-09-25 (HookTags_Ready-11.pdf): the
+# edibles deal from a strain called "Orange Gummi", and preroll deals on flower
+# from brands that also make prerolls. (product, category, expected badge text)
+KNOWN = [
+    ("Grown Rogue | Orange Gummi | 3.5G Bag", "Prepacked Flower Brands", "BUY 5 15% OFF"),
+    ("Goldkine | Biscotti Pancakes | 28G",    "Prepacked Flower Brands", None),
+    ("Glacier | Heavy Z | 3.5G Bag",          "Prepacked Flower Brands", "BUY 5 15% OFF"),
+    ("Common Citizen | Lemon Bar Smalls | 3.5G", "-RED TIER",            "RED"),
+]
+for product, category, want in KNOWN:
+    brand, strain = [p.strip() for p in product.split("|")][:2]
+    r = {"brand": brand.upper(), "strain": strain.upper(), "product": product,
+         "category": category, "price": "$20"}
+    deals_mod.attach([r], DEALS)
+    deals_mod.attach_bulk([r])
+    deals_mod.attach_shelf([r])
+    d = r.get("deal") or {}
+    got = r.get("deal_text") or " ".join(d.get("tiers", [])) or d.get("badge")
+    name = f"deal {strain[:24]:24s}"
+    if got == want:
+        results.append(f"  OK   {name}  {got or 'no badge'}")
+    else:
+        failures.append(f"  FAIL {name}  got {got or 'no badge'!r}, want {want or 'no badge'!r}")
 
 print("\n".join(results))
 if failures:
