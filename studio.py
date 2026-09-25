@@ -789,14 +789,6 @@ def _step2(ctx):
 
     left, right = st.columns([13, 10], gap="large")
     with left:
-        counts = {"All": len(rows),
-                  "On sale": sum(r["_kind"] == "sale" for r in rows),
-                  "Changed": sum(r["_changed"] for r in rows),
-                  "Outdoor": sum(r["_outdoor"] for r in rows),
-                  "Selected": sum(1 for r in rows if sel.get(r["rid"]))}
-        shown = [f for f in FILTERS if f in ("All", "On sale", "Selected") or counts[f]]
-        if ss.get("zb_filter") not in shown:
-            ss["zb_filter"] = "All"
         cats = pd.Series([r.get("category") or "—" for r in rows]).value_counts()
         s1, s2 = st.columns([1, 1], vertical_alignment="center")
         q = s1.text_input("Search", key="zb_q", placeholder="Search strain or brand…",
@@ -805,78 +797,94 @@ def _step2(ctx):
                            label_visibility="collapsed",
                            format_func=lambda c: c if c == "All categories"
                            else f"{c}  ({cats[c]:,})")
+        ql = (q or "").strip().lower()
+        # The rows the search and category leave. The filter counts are taken
+        # from these, so a pill never promises tags the grid then cannot show.
+        scope = [r for r in rows
+                 if (cat == "All categories" or (r.get("category") or "—") == cat)
+                 and (not ql or ql in f'{r.get("strain","")} {r.get("brand","")} '
+                                      f'{r.get("product","")}'.lower())]
+        test = {"All": lambda r: True,
+                "On sale": lambda r: r["_kind"] == "sale",
+                "Changed": lambda r: r["_changed"],
+                "Outdoor": lambda r: r["_outdoor"],
+                "Selected": lambda r: bool(sel.get(r["rid"]))}
+        counts = {f: sum(1 for r in scope if t(r)) for f, t in test.items()}
+        # Which pills exist is decided on every row, so they do not come and go
+        # as the category changes; only their counts do.
+        shown = [f for f in FILTERS if f in ("All", "On sale", "Selected")
+                 or any(test[f](r) for r in rows)]
+        if ss.get("zb_filter") not in shown:
+            ss["zb_filter"] = "All"
         st.segmented_control("Filter", shown, key="zb_filter", label_visibility="collapsed",
                              format_func=lambda f: f"{f}  {counts[f]:,}")
         filt = ss.get("zb_filter") or "All"
+        view_rows = [r for r in scope if test[filt](r)]
 
-        ql = (q or "").strip().lower()
-        view_rows = [r for r in rows
-                     if (filt == "All" or (filt == "On sale" and r["_kind"] == "sale")
-                         or (filt == "Changed" and r["_changed"])
-                         or (filt == "Outdoor" and r["_outdoor"])
-                         or (filt == "Selected" and sel.get(r["rid"])))
-                     and (cat == "All categories" or (r.get("category") or "—") == cat)
-                     and (not ql or ql in f'{r.get("strain","")} {r.get("brand","")} '
-                                          f'{r.get("product","")}'.lower())]
-
-        def val(r, f):
-            return edits.get(r["rid"], {}).get(f, r.get(f, ""))
-        view = pd.DataFrame(
-            {"Print": [bool(sel.get(r["rid"])) for r in view_rows],
-             "Qty": [sel.get(r["rid"], 1) or 1 for r in view_rows],
-             "Strain": [val(r, "strain") for r in view_rows],
-             "Brand line": [val(r, "brand") for r in view_rows],
-             "THC": [val(r, "thc") for r in view_rows],
-             "Price": [val(r, "price") for r in view_rows],
-             "Type": [val(r, "type") or "hybrid" for r in view_rows],
-             "Deal": [_badge_text(r.get("deal")) for r in view_rows]},
-            index=[r["rid"] for r in view_rows])
-        gkey = f"zbgrid_{fmt}_{filt}_{hash((ql, cat))}_{ss.get('zb_grid_v', 0)}"
-        out = st.data_editor(
-            view, key=gkey, hide_index=True, use_container_width=True, height=470,
-            disabled=["Deal"], num_rows="fixed",
-            column_config={
-                "Print": st.column_config.CheckboxColumn("", width=36),
-                "Qty": st.column_config.NumberColumn("Qty", min_value=0, max_value=60,
-                                                     step=1, width=52),
-                "Strain": st.column_config.TextColumn(width="medium"),
-                "Brand line": st.column_config.TextColumn(width="medium"),
-                "THC": st.column_config.TextColumn(width=64),
-                "Price": st.column_config.TextColumn(width=70),
-                "Type": st.column_config.SelectboxColumn(options=TYPES, width=86,
-                                                         required=True),
-                "Deal": st.column_config.TextColumn(width="small"),
-            })
-        if len(out):
-            diff = (out.astype(str) != view.astype(str)).any(axis=1)
-            base = {r["rid"]: r for r in view_rows}
-            membership = False
-            for rid in out.index[diff]:
-                row, r = out.loc[rid], base[rid]
-                qty = int(row["Qty"] or 0)
-                if bool(row["Print"]) != bool(view.loc[rid, "Print"]):
-                    want = bool(row["Print"])          # ticked or unticked
-                elif qty != int(view.loc[rid, "Qty"]):
-                    want = qty > 0                     # a quantity picks it too
-                else:
-                    want = rid in sel
-                if want:
-                    membership |= rid not in sel
-                    sel[rid] = max(1, qty)
-                elif rid in sel:
-                    membership = True
-                    sel.pop(rid)
-                e = {}
-                for col, f in EDITABLE.items():
-                    if str(row[col]) != str(r.get(f, "")):
-                        e[f] = row[col]
-                if e:
-                    edits[rid] = e
-                else:
-                    edits.pop(rid, None)
-            if membership and filt == "Selected":
-                ss["zb_grid_v"] = ss.get("zb_grid_v", 0) + 1
-                st.rerun(scope="fragment")
+        if not view_rows:
+            _no_matches(filt, cat, (q or "").strip())
+        else:
+            def val(r, f):
+                return edits.get(r["rid"], {}).get(f, r.get(f, ""))
+            view = pd.DataFrame(
+                {"Print": [bool(sel.get(r["rid"])) for r in view_rows],
+                 "Qty": [sel.get(r["rid"], 1) or 1 for r in view_rows],
+                 "Strain": [val(r, "strain") for r in view_rows],
+                 "Brand line": [val(r, "brand") for r in view_rows],
+                 "THC": [val(r, "thc") for r in view_rows],
+                 "Price": [val(r, "price") for r in view_rows],
+                 "Type": [val(r, "type") or "hybrid" for r in view_rows],
+                 "Deal": [_badge_text(r.get("deal")) for r in view_rows]},
+                index=[r["rid"] for r in view_rows])
+            # Typed explicitly: pandas guesses float for an all-empty column, and
+            # a checkbox column over floats is an error, not an empty grid.
+            view = view.astype({"Print": bool, "Qty": int})
+            gkey = f"zbgrid_{fmt}_{filt}_{hash((ql, cat))}_{ss.get('zb_grid_v', 0)}"
+            out = st.data_editor(
+                view, key=gkey, hide_index=True, use_container_width=True, height=470,
+                disabled=["Deal"], num_rows="fixed",
+                column_config={
+                    "Print": st.column_config.CheckboxColumn("", width=36),
+                    "Qty": st.column_config.NumberColumn("Qty", min_value=0, max_value=60,
+                                                         step=1, width=52),
+                    "Strain": st.column_config.TextColumn(width="medium"),
+                    "Brand line": st.column_config.TextColumn(width="medium"),
+                    "THC": st.column_config.TextColumn(width=64),
+                    "Price": st.column_config.TextColumn(width=70),
+                    "Type": st.column_config.SelectboxColumn(options=TYPES, width=86,
+                                                             required=True),
+                    "Deal": st.column_config.TextColumn(width="small"),
+                })
+            if len(out):
+                diff = (out.astype(str) != view.astype(str)).any(axis=1)
+                base = {r["rid"]: r for r in view_rows}
+                membership = False
+                for rid in out.index[diff]:
+                    row, r = out.loc[rid], base[rid]
+                    qty = int(row["Qty"] or 0)
+                    if bool(row["Print"]) != bool(view.loc[rid, "Print"]):
+                        want = bool(row["Print"])          # ticked or unticked
+                    elif qty != int(view.loc[rid, "Qty"]):
+                        want = qty > 0                     # a quantity picks it too
+                    else:
+                        want = rid in sel
+                    if want:
+                        membership |= rid not in sel
+                        sel[rid] = max(1, qty)
+                    elif rid in sel:
+                        membership = True
+                        sel.pop(rid)
+                    e = {}
+                    for col, f in EDITABLE.items():
+                        if str(row[col]) != str(r.get(f, "")):
+                            e[f] = row[col]
+                    if e:
+                        edits[rid] = e
+                    else:
+                        edits.pop(rid, None)
+                if membership and filt == "Selected":
+                    ss["zb_grid_v"] = ss.get("zb_grid_v", 0) + 1
+                    st.rerun(scope="fragment")
 
         b1, b2, b3 = st.columns([1, 1, 2], vertical_alignment="center")
         if b1.button(f"Select all {len(view_rows):,} shown", key="zb_selall",
@@ -919,6 +927,34 @@ def _preview(chosen, fmt, mix):
         if p and p != pg:
             ss["zb_pg"] = p
             st.rerun(scope="fragment")
+
+
+def _widen(**state):
+    st.session_state.update(state)
+
+
+def _no_matches(filt, cat, q):
+    """Say why the grid is empty, and offer the way back out."""
+    shelf = deals_mod.shelf_of({"category": cat}) if cat != "All categories" else None
+    where = "" if cat == "All categories" else f" in <b>{esc(cat)}</b>"
+    if shelf and filt in ("On sale", "Changed"):
+        what = "is on sale" if filt == "On sale" else "has a changed deal"
+        msg = (f"Nothing{where} {what}. Deli flower never takes a weekly deal — it "
+               f"is priced by the shelf it sits on, so these tags carry the "
+               f"<b>{esc(shelf[0])}</b> shelf badge instead.")
+    else:
+        bits = [f"<b>{esc(filt.lower())}</b>"] if filt != "All" else []
+        if q:
+            bits.append(f"matching <b>“{esc(q)}”</b>")
+        msg = f"No products{where}" + (" " + " and ".join(bits) if bits else "") + "."
+    st.markdown(f'<div class="zb-nomatch">{msg}</div>', unsafe_allow_html=True)
+    c1, c2, _ = st.columns([1, 1, 2])
+    if filt != "All":
+        c1.button(f"Show all{' of ' + cat if cat != 'All categories' else ''}",
+                  key="zb_nm_all", on_click=_widen, kwargs={"zb_filter": "All"})
+    if cat != "All categories" or q:
+        c2.button("Clear search & category", key="zb_nm_clear", on_click=_widen,
+                  kwargs={"zb_cat": "All categories", "zb_q": ""})
 
 
 def _step2_footer(chosen, fmt, mix, ctx):
@@ -1132,6 +1168,10 @@ CSS = """
 .st-key-zbfoot button:disabled{opacity:.4!important;box-shadow:none!important;filter:saturate(.4)}
 
 /* picker */
+.zb-nomatch{box-sizing:border-box;min-height:120px;margin:4px 0 12px;padding:22px 24px;border-radius:12px;
+  border:1.5px dashed rgba(139,92,246,.35);background:rgba(139,92,246,.05);font-size:14px;
+  color:var(--dim);line-height:1.55}
+.zb-nomatch b{color:var(--text)}
 .zb-prev-h{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin:2px 0 10px;font-size:13px;color:var(--dim)}
 .zb-prev-h > *{white-space:nowrap}
 .zb-prev-h b{font-family:'Syne',sans-serif;font-size:15px;color:var(--text)}
