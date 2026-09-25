@@ -67,15 +67,7 @@ section[data-testid="stSidebar"]{{background:var(--s1);border-right:1px solid va
 .zb-navsec{{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1.6px;
     color:var(--dim);text-transform:uppercase;margin:16px 0 4px;padding:0 12px}}
 
-/* ── context bar ────────────────────────────────────────────────────────── */
-.st-key-zbctx{{height:64px;background:var(--s2);border-bottom:1px solid var(--border);
-    padding:0 28px!important;margin-bottom:0!important}}
-.st-key-zbctx p{{margin:0!important}}
-.zb-ctxlab{{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1.6px;
-    color:var(--dim);white-space:nowrap}}
-.zb-ctxok{{font-size:11px;font-weight:700;color:var(--green-l);white-space:nowrap}}
-.zb-ctxwarn{{font-size:11px;font-weight:700;color:var(--amber);white-space:nowrap}}
-.zb-ctxsep{{width:1px;height:24px;background:rgba(139,92,246,.2)}}
+/* ── context bar (laid out in studio.CSS) ─────────────────────────────── */
 div[data-testid="stPopover"] button{{background:var(--s3)!important;border:1px solid var(--b-purple)!important;
     border-radius:9px!important;color:var(--text)!important;font-family:'Inter',sans-serif!important;
     font-weight:600!important;font-size:14px!important;text-transform:none!important;
