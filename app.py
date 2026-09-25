@@ -1337,6 +1337,8 @@ def apply_deals(rows, ctx, key):
 
     n = deals_mod.attach(rows, parsed) if parsed else 0
     b = deals_mod.attach_bulk(rows)
+    # Deli flower takes neither, so it gets the shelf it sits on instead.
+    s = deals_mod.attach_shelf(rows)
     if parsed:
         if n:
             st.success(f"🏷️ {n} of {len(rows)} tags matched a deal.")
@@ -1348,6 +1350,8 @@ def apply_deals(rows, ctx, key):
             st.info("No tags matched a deal in that sheet.")
     if b:
         st.caption(f"🟣 {b} tag(s) carry their category's standing bulk deal.")
+    if s:
+        st.caption(f"🗄️ {s} deli tag(s) show their shelf instead of a deal.")
     return rows
 
 

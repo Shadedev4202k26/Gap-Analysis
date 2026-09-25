@@ -41,10 +41,14 @@ BOGO = re.compile(r"\bbogo\b|buy\s+one\s+get\s+one", re.I)
 
 
 class Deal:
-    def __init__(self, text, kind, badge, brands, size, tiers=None, pct=None, unit=None):
+    def __init__(self, text, kind, badge, brands, size, tiers=None, pct=None, unit=None,
+                 family=None):
         self.text, self.kind, self.badge = text, kind, badge
         self.brands, self.size = brands, size
         self.tiers, self.pct, self.unit = tiers or [], pct, unit
+        # Which product family the sheet listed this deal under, so a preroll
+        # deal cannot land on flower that happens to share the brand.
+        self.family = family
 
     def as_badge(self, row_price=None):
         """The deal dict `sale_badges.draw_deal` expects."""
@@ -156,6 +160,7 @@ def parse_column(lines):
     """
     deals, seen = [], set()
     botw_pct = None
+    family = None
     for raw in lines:
         cell = re.sub(r"\s{2,}", " ", str(raw or "")).strip()
         if not cell or cell.lower() == "nan":
@@ -166,6 +171,7 @@ def parse_column(lines):
             continue
         if SECTION.match(cell):
             botw_pct = None
+            family = _family(SECTION_FAMILY, cell)
             continue
         if botw_pct and _is_bare_brand(cell):
             if cell.lower() not in seen:
@@ -179,6 +185,7 @@ def parse_column(lines):
         seen.add(cell)
         d = parse_line(cell)
         if d and d.brands:
+            d.family = family
             deals.append(d)
     return deals
 
@@ -338,8 +345,135 @@ def _brand_hit(brand, hay):
     return False
 
 
+# Loose flower off the deli shelf is priced by shelf, not by the product deals
+# on the weekly sheet — the sheet says so itself: "Brands of the Week 25% OFF
+# (Excludes Deli Flower)". It shares brand names with prepack, so without this
+# a "3/$36 Goldkine 3.5G Bags" prepack sale printed on a Goldkine deli package
+# whenever the package text carried no size to rule it out.
+#
+# What marks it in the data is the product name: every loose row in the
+# 2026-09-25 export reads "BULK | <brand> | <strain>", while the packaged bags
+# on the same shelf read "<brand> | <strain> | 3.5G". The tier categories
+# themselves say nothing about being loose, so this matches the product, not the
+# category. All 137 loose rows across the six tiers are caught.
+DELI = re.compile(r"\bdeli\b|\bbulk\b", re.I)
+
+
+# A sheet section, and a POS category, each belong to a product family. A deal
+# only applies within its own: "3/$5.50 Primo OR Traphouse OR Glacier" sits under
+# Non Infused Pre-Rolls, so it must not print on a Glacier flower bag just
+# because the brand matches and the line carries no size to rule it out.
+# Order matters — "Infused PreRoll" is a preroll, not flower.
+SECTION_FAMILY = [
+    (re.compile(r"pre[\s-]?roll", re.I), "preroll"),
+    (re.compile(r"edible", re.I), "edible"),
+    (re.compile(r"concentrate", re.I), "concentrate"),
+    (re.compile(r"cart|510|disposable", re.I), "cart"),
+    (re.compile(r"flower", re.I), "flower"),
+]
+CATEGORY_FAMILY = [
+    (re.compile(r"pre[\s-]?roll", re.I), "preroll"),
+    (re.compile(r"edible|gumm|chocolate|baked|beverage", re.I), "edible"),
+    (re.compile(r"concentrate|rosin|resin|badder|shatter|\bwax\b", re.I), "concentrate"),
+    (re.compile(r"cart|510|disposable|vape", re.I), "cart"),
+    (re.compile(r"flower|tier|stash|shake", re.I), "flower"),
+]
+
+
+def _family(table, text):
+    for pattern, name in table:
+        if pattern.search(text or ""):
+            return name
+    return None
+
+
+def is_deli(row):
+    """Is this row deli/bulk flower rather than a packaged product?
+
+    The shelf decides it, not the packaging. A pre-weighed bag on a tier shelf
+    is still deli flower and still priced by that shelf, so it takes no deal
+    either — which is why this asks the category first and treats the
+    "BULK | ..." product prefix as only a second signal, for anything sitting
+    outside a named tier.
+    """
+    if shelf_of(row):
+        return True
+    return bool(DELI.search(f"{row.get('category', '')} {row.get('product', '')} "
+                            f"{row.get('brand', '')}"))
+
+
+# Deli flower is priced by the shelf it sits on, and the POS names that shelf in
+# the product's category. Verified against the 2026-09-25 export, where the real
+# categories are "-BLUE TIER", "-RED TIER", "-WHITE TIER", "-Secret Stash",
+# "-Secret Stash Infused Flower" and "Outdoor Flower". Matching on the word
+# rather than the exact string, so a renamed tier still lands.
+#
+# Ordered: "Secret Stash" would otherwise be missed by a bare colour match, and
+# "-Secret Stash Infused Flower" would come out as a colour it is not. A row
+# whose category names no shelf gets no badge — a wrong shelf colour on a shelf
+# tag is worse than a blank one.
+SHELVES = [
+    (re.compile(r"secret\s*stash|\bstash\b", re.I), "STASH", "stash"),
+    (re.compile(r"\bblue\b", re.I), "BLUE", "blue"),
+    (re.compile(r"\bwhite\b", re.I), "WHITE", "white"),
+    (re.compile(r"\bred\b", re.I), "RED", "red"),
+    (re.compile(r"\boutdoor\b|\bgreen\b", re.I), "OUTDOOR", "outdoor"),
+]
+
+
+def shelf_of(row):
+    """(label, key) of the deli shelf this row's category names, or None.
+
+    Read from the CATEGORY alone, which is authoritative: every deli/bulk
+    product is filed under one of the six tiers.
+
+    Do not be tempted to read the product text as well. In the 2026-09-25
+    export 535 rows that are not deli carry one of these words in their name —
+    376 "blue" alone, mostly Blue Dream — so matching there would turn every
+    Blue Dream preroll into deli flower and strip its deals. Restricting it to
+    a whole trailing segment is no better: that catches nine rows and all nine
+    are batteries and accessories whose colour is the product's own.
+    """
+    cat = row.get("category", "")
+    for pattern, label, key in SHELVES:
+        if pattern.search(cat):
+            return label, key
+    return None
+
+
+def shelf_for(row):
+    """Shelf badge for a deli row, or None when it is not deli / not on a shelf."""
+    found = shelf_of(row)
+    if not found:
+        return None
+    label, key = found
+    return {"badge": label, "shelf": key}
+
+
+def attach_shelf(rows):
+    """Give deli rows their shelf badge. Returns how many got one."""
+    n = 0
+    for r in rows:
+        if r.get("deal"):
+            continue
+        s = shelf_for(r)
+        if s:
+            r["deal"] = s
+            r["deals_on"] = True
+            n += 1
+    return n
+
+
 def matches(deal, row):
     """Does this deal apply to this product row?"""
+    if is_deli(row):
+        return False
+    # A deal stays inside the family the sheet listed it under. Either side
+    # unknown means no opinion, so nothing is lost where the sheet or the POS
+    # uses wording we do not recognise.
+    row_family = _family(CATEGORY_FAMILY, row.get("category", ""))
+    if deal.family and row_family and deal.family != row_family:
+        return False
     text = _norm(f"{row.get('product','')} {row.get('brand','')}")
     # Brands are matched against the brand field only, never the whole product
     # name. Several real brands double as ordinary product words, and _brand_hit
@@ -411,15 +545,28 @@ BULK_DEALS = [
 ]
 
 
+# A pack size the buy-5 offer cannot apply to: only two may go in one
+# transaction, so the tag must not advertise five.
+TOO_BIG = re.compile(r"\b28\s*g\b|\b1\s*oz\b|\bounce\b", re.I)
+
+
 def bulk_for(row):
     """Standing bulk deal for a row, as a badge dict, or None.
 
-    Reads the row's category, falling back to the product text — the tag rows
-    carry a category only when they came from a CSV import.
+    Read from the CATEGORY alone. Matching the product text as well put the
+    wrong offer on 565 rows of the 2026-09-25 export: 316 infused prerolls
+    advertised the concentrate deal because their name says "Live Resin", 39
+    vape batteries did the same, and 18 flower bags advertised the edibles deal
+    because a strain is called "Orange Gummi". What a thing IS is its category;
+    its name is just words.
     """
-    hay = f"{row.get('category', '')} {row.get('product', '')} {row.get('brand', '')}"
+    if is_deli(row):
+        return None
+    if TOO_BIG.search(f"{row.get('product', '')} {row.get('brand', '')}"):
+        return None
+    cat = row.get("category", "")
     for pattern, lines in BULK_DEALS:
-        if pattern.search(hay):
+        if pattern.search(cat):
             return {"tiers": list(lines), "bulk": True}
     return None
 
