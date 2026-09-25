@@ -41,10 +41,14 @@ BOGO = re.compile(r"\bbogo\b|buy\s+one\s+get\s+one", re.I)
 
 
 class Deal:
-    def __init__(self, text, kind, badge, brands, size, tiers=None, pct=None, unit=None):
+    def __init__(self, text, kind, badge, brands, size, tiers=None, pct=None, unit=None,
+                 family=None):
         self.text, self.kind, self.badge = text, kind, badge
         self.brands, self.size = brands, size
         self.tiers, self.pct, self.unit = tiers or [], pct, unit
+        # Which product family the sheet listed this deal under, so a preroll
+        # deal cannot land on flower that happens to share the brand.
+        self.family = family
 
     def as_badge(self, row_price=None):
         """The deal dict `sale_badges.draw_deal` expects."""
@@ -156,6 +160,7 @@ def parse_column(lines):
     """
     deals, seen = [], set()
     botw_pct = None
+    family = None
     for raw in lines:
         cell = re.sub(r"\s{2,}", " ", str(raw or "")).strip()
         if not cell or cell.lower() == "nan":
@@ -166,6 +171,7 @@ def parse_column(lines):
             continue
         if SECTION.match(cell):
             botw_pct = None
+            family = _family(SECTION_FAMILY, cell)
             continue
         if botw_pct and _is_bare_brand(cell):
             if cell.lower() not in seen:
@@ -179,6 +185,7 @@ def parse_column(lines):
         seen.add(cell)
         d = parse_line(cell)
         if d and d.brands:
+            d.family = family
             deals.append(d)
     return deals
 
@@ -352,6 +359,34 @@ def _brand_hit(brand, hay):
 DELI = re.compile(r"\bdeli\b|\bbulk\b", re.I)
 
 
+# A sheet section, and a POS category, each belong to a product family. A deal
+# only applies within its own: "3/$5.50 Primo OR Traphouse OR Glacier" sits under
+# Non Infused Pre-Rolls, so it must not print on a Glacier flower bag just
+# because the brand matches and the line carries no size to rule it out.
+# Order matters — "Infused PreRoll" is a preroll, not flower.
+SECTION_FAMILY = [
+    (re.compile(r"pre[\s-]?roll", re.I), "preroll"),
+    (re.compile(r"edible", re.I), "edible"),
+    (re.compile(r"concentrate", re.I), "concentrate"),
+    (re.compile(r"cart|510|disposable", re.I), "cart"),
+    (re.compile(r"flower", re.I), "flower"),
+]
+CATEGORY_FAMILY = [
+    (re.compile(r"pre[\s-]?roll", re.I), "preroll"),
+    (re.compile(r"edible|gumm|chocolate|baked|beverage", re.I), "edible"),
+    (re.compile(r"concentrate|rosin|resin|badder|shatter|\bwax\b", re.I), "concentrate"),
+    (re.compile(r"cart|510|disposable|vape", re.I), "cart"),
+    (re.compile(r"flower|tier|stash|shake", re.I), "flower"),
+]
+
+
+def _family(table, text):
+    for pattern, name in table:
+        if pattern.search(text or ""):
+            return name
+    return None
+
+
 def is_deli(row):
     """Is this row deli/bulk flower rather than a packaged product?
 
@@ -433,6 +468,12 @@ def matches(deal, row):
     """Does this deal apply to this product row?"""
     if is_deli(row):
         return False
+    # A deal stays inside the family the sheet listed it under. Either side
+    # unknown means no opinion, so nothing is lost where the sheet or the POS
+    # uses wording we do not recognise.
+    row_family = _family(CATEGORY_FAMILY, row.get("category", ""))
+    if deal.family and row_family and deal.family != row_family:
+        return False
     text = _norm(f"{row.get('product','')} {row.get('brand','')}")
     # Brands are matched against the brand field only, never the whole product
     # name. Several real brands double as ordinary product words, and _brand_hit
@@ -504,17 +545,28 @@ BULK_DEALS = [
 ]
 
 
+# A pack size the buy-5 offer cannot apply to: only two may go in one
+# transaction, so the tag must not advertise five.
+TOO_BIG = re.compile(r"\b28\s*g\b|\b1\s*oz\b|\bounce\b", re.I)
+
+
 def bulk_for(row):
     """Standing bulk deal for a row, as a badge dict, or None.
 
-    Reads the row's category, falling back to the product text — the tag rows
-    carry a category only when they came from a CSV import.
+    Read from the CATEGORY alone. Matching the product text as well put the
+    wrong offer on 565 rows of the 2026-09-25 export: 316 infused prerolls
+    advertised the concentrate deal because their name says "Live Resin", 39
+    vape batteries did the same, and 18 flower bags advertised the edibles deal
+    because a strain is called "Orange Gummi". What a thing IS is its category;
+    its name is just words.
     """
     if is_deli(row):
         return None
-    hay = f"{row.get('category', '')} {row.get('product', '')} {row.get('brand', '')}"
+    if TOO_BIG.search(f"{row.get('product', '')} {row.get('brand', '')}"):
+        return None
+    cat = row.get("category", "")
     for pattern, lines in BULK_DEALS:
-        if pattern.search(hay):
+        if pattern.search(cat):
             return {"tiers": list(lines), "bulk": True}
     return None
 
