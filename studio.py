@@ -820,6 +820,7 @@ def _step2(ctx):
                              format_func=lambda f: f"{f}  {counts[f]:,}")
         filt = ss.get("zb_filter") or "All"
         view_rows = [r for r in scope if test[filt](r)]
+        _select_bar(view_rows, sel, filt, cat, ql, fmt)
 
         if not view_rows:
             _no_matches(filt, cat, (q or "").strip())
@@ -886,19 +887,7 @@ def _step2(ctx):
                     ss["zb_grid_v"] = ss.get("zb_grid_v", 0) + 1
                     st.rerun(scope="fragment")
 
-        b1, b2, b3 = st.columns([1, 1, 2], vertical_alignment="center")
-        if b1.button(f"Select all {len(view_rows):,} shown", key="zb_selall",
-                     disabled=not view_rows or len(view_rows) > 400,
-                     help="Up to 400 at a time — narrow it with search or a filter."):
-            for r in view_rows:
-                sel.setdefault(r["rid"], 1)
-            ss["zb_grid_v"] = ss.get("zb_grid_v", 0) + 1
-            st.rerun(scope="fragment")
-        if b2.button("Clear selection", key="zb_clear", disabled=not sel):
-            sel.clear()
-            ss["zb_grid_v"] = ss.get("zb_grid_v", 0) + 1
-            st.rerun(scope="fragment")
-        b3.caption("Tick a tag to print it. Every cell but Deal can be edited — "
+        st.caption("Tick a tag to print it. Every cell but Deal can be edited — "
                    "changes print exactly as typed.")
 
     chosen = _chosen(rows)
@@ -927,6 +916,39 @@ def _preview(chosen, fmt, mix):
         if p and p != pg:
             ss["zb_pg"] = p
             st.rerun(scope="fragment")
+
+
+# A sheet takes about this long to build, per format (seconds, measured).
+BUILD_S = {"hook": 2.5, "pr35": 0.6, "pr4": 0.9}
+
+
+def _select_bar(view_rows, sel, filt, cat, ql, fmt):
+    """Select all / clear, above the grid where they are always in reach."""
+    ss = st.session_state
+    n = len(view_rows)
+    narrowed = filt != "All" or cat != "All categories" or ql
+    todo = [r for r in view_rows if not sel.get(r["rid"])]
+    with st.container(key="zbselbar", horizontal=True, vertical_alignment="center"):
+        label = f"Select all {n:,}" + (" shown" if narrowed else "")
+        if n and st.button(label if todo else f"All {n:,} selected", key="zb_selall",
+                     icon=":material/done_all:", disabled=not todo):
+            for r in todo:
+                sel[r["rid"]] = 1
+            ss["zb_grid_v"] = ss.get("zb_grid_v", 0) + 1
+            st.rerun(scope="fragment")
+        if st.button("Clear selection", key="zb_clear", icon=":material/close:",
+                     disabled=not sel):
+            sel.clear()
+            ss["zb_grid_v"] = ss.get("zb_grid_v", 0) + 1
+            st.rerun(scope="fragment")
+    # Everything in one go is allowed — it is sometimes the job — but it should
+    # not be a surprise: the whole 9/25 export is 166 hook sheets.
+    total = sum(sel.values())
+    sheets = -(-total // per_page(fmt)) if total else 0
+    if sheets > 20:
+        mins = max(1, round(sheets * BUILD_S.get(fmt, 2.5) / 60))
+        st.caption(f"⚠️ {total:,} tags is about {sheets:,} sheets — building them in the "
+                   f"last step takes roughly {mins} min.")
 
 
 def _widen(**state):
@@ -1168,6 +1190,12 @@ CSS = """
 .st-key-zbfoot button:disabled{opacity:.4!important;box-shadow:none!important;filter:saturate(.4)}
 
 /* picker */
+.st-key-zbselbar{gap:8px!important;margin:-2px 0 2px}
+.st-key-zbselbar button{min-height:36px!important;padding:0 14px!important;font-size:12px!important;
+  background:rgba(139,92,246,.10)!important;border:1px solid rgba(139,92,246,.4)!important;
+  color:#C4B5FD!important;box-shadow:none!important}
+.st-key-zbselbar button:hover:not(:disabled){background:rgba(139,92,246,.2)!important;color:var(--text)!important}
+.st-key-zbselbar button:disabled{opacity:.38!important;background:transparent!important}
 .zb-nomatch{box-sizing:border-box;min-height:120px;margin:4px 0 12px;padding:22px 24px;border-radius:12px;
   border:1.5px dashed rgba(139,92,246,.35);background:rgba(139,92,246,.05);font-size:14px;
   color:var(--dim);line-height:1.55}
