@@ -5,7 +5,7 @@ and how the app works; this is only what is in flight.
 
 ## Branches
 
-`main` is what the eight stores run. #1 (deals correctness — deli shelves,
+`main` is what the eight stores run, at https://ziggyz.streamlit.app. #1 (deals correctness — deli shelves,
 family matching, 28G) and #2 (week picker starts on the current week) merged
 2026-09-25.
 
