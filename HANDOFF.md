@@ -66,6 +66,10 @@ family matching, 28G) and #2 (week picker starts on the current week) merged
   hand-built `st.page_link` nav in `shell.py`.
 - **Verify in the running app, not in a screenshot.** Five CSS bugs in this
   work were invisible to the eye and obvious to `getComputedStyle`.
+- **Saved weeks are live.** The `deal_sheets` table is set up and the live app
+  reads its keys from Streamlit Cloud's secrets. A local run has no keys unless
+  `.streamlit/secrets.toml` exists (gitignored), and then keeps uploaded weeks
+  for the session only — that is expected, not a regression.
 - `tools/check_supabase.py` diagnoses deals storage end to end without printing
   the key. `tools/strip_logo.py --check` reports whether a re-exported template
   has brought the Smilez wordmark back.
