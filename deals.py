@@ -353,7 +353,16 @@ DELI = re.compile(r"\bdeli\b|\bbulk\b", re.I)
 
 
 def is_deli(row):
-    """Is this row loose deli/bulk flower rather than a packaged product?"""
+    """Is this row deli/bulk flower rather than a packaged product?
+
+    The shelf decides it, not the packaging. A pre-weighed bag on a tier shelf
+    is still deli flower and still priced by that shelf, so it takes no deal
+    either — which is why this asks the category first and treats the
+    "BULK | ..." product prefix as only a second signal, for anything sitting
+    outside a named tier.
+    """
+    if shelf_of(row):
+        return True
     return bool(DELI.search(f"{row.get('category', '')} {row.get('product', '')} "
                             f"{row.get('brand', '')}"))
 
@@ -377,15 +386,27 @@ SHELVES = [
 ]
 
 
-def shelf_for(row):
-    """Shelf badge for a deli flower row, or None when it is not deli / not named."""
-    if not is_deli(row):
-        return None
-    hay = f"{row.get('category', '')} {row.get('product', '')}"
+def shelf_of(row):
+    """(label, key) of the deli shelf this row's category names, or None.
+
+    Read from the CATEGORY alone. The product text is not consulted: an
+    ordinary packaged bag can easily mention a colour, and mislabelling its
+    shelf is worse than leaving it blank.
+    """
+    cat = row.get("category", "")
     for pattern, label, key in SHELVES:
-        if pattern.search(hay):
-            return {"badge": label, "shelf": key}
+        if pattern.search(cat):
+            return label, key
     return None
+
+
+def shelf_for(row):
+    """Shelf badge for a deli row, or None when it is not deli / not on a shelf."""
+    found = shelf_of(row)
+    if not found:
+        return None
+    label, key = found
+    return {"badge": label, "shelf": key}
 
 
 def attach_shelf(rows):
