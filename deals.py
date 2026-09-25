@@ -343,6 +343,12 @@ def _brand_hit(brand, hay):
 # (Excludes Deli Flower)". It shares brand names with prepack, so without this
 # a "3/$36 Goldkine 3.5G Bags" prepack sale printed on a Goldkine deli package
 # whenever the package text carried no size to rule it out.
+#
+# What marks it in the data is the product name: every loose row in the
+# 2026-09-25 export reads "BULK | <brand> | <strain>", while the packaged bags
+# on the same shelf read "<brand> | <strain> | 3.5G". The tier categories
+# themselves say nothing about being loose, so this matches the product, not the
+# category. All 137 loose rows across the six tiers are caught.
 DELI = re.compile(r"\bdeli\b|\bbulk\b", re.I)
 
 
@@ -353,9 +359,15 @@ def is_deli(row):
 
 
 # Deli flower is priced by the shelf it sits on, and the POS names that shelf in
-# the product's category. Ordered: "Secret Stash" would otherwise be missed by a
-# bare colour match. A row whose category names no shelf gets no badge — a wrong
-# shelf colour on a shelf tag is worse than a blank one.
+# the product's category. Verified against the 2026-09-25 export, where the real
+# categories are "-BLUE TIER", "-RED TIER", "-WHITE TIER", "-Secret Stash",
+# "-Secret Stash Infused Flower" and "Outdoor Flower". Matching on the word
+# rather than the exact string, so a renamed tier still lands.
+#
+# Ordered: "Secret Stash" would otherwise be missed by a bare colour match, and
+# "-Secret Stash Infused Flower" would come out as a colour it is not. A row
+# whose category names no shelf gets no badge — a wrong shelf colour on a shelf
+# tag is worse than a blank one.
 SHELVES = [
     (re.compile(r"secret\s*stash|\bstash\b", re.I), "STASH", "stash"),
     (re.compile(r"\bblue\b", re.I), "BLUE", "blue"),
