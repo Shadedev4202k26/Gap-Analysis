@@ -1197,7 +1197,8 @@ def deal_controls(key):
 
     header = "🏷️  Weekly deals"
     if stored:
-        header += f" — {deal_store.week_label(stored[0]['week'])} loaded"
+        live = next((w for w in stored if deal_store.is_current(w["week"])), stored[0])
+        header += f" — {deal_store.week_label(live['week'])} loaded"
     else:
         header += " — drop this week's sheet here"
     with st.expander(header, expanded=not stored):
@@ -1256,7 +1257,15 @@ def _deal_week_picker(key, db, stored):
         for w in stored:
             mark = "" if deal_store.is_current(w["week"]) else "  ⚠️ not this week"
             labels[f"{deal_store.week_label(w['week'])}{mark}"] = w["week"]
-        pick = st.radio("Week", list(labels), horizontal=True, key=f"{key}_dealweek")
+        # Start on the week that covers today. Stored weeks come back newest
+        # first, so the default would otherwise be whichever was uploaded last —
+        # next week's sheet, once someone loads it early, on every tag printed
+        # for the rest of this week.
+        names = list(labels)
+        start = next((i for i, n in enumerate(names)
+                      if deal_store.is_current(labels[n])), 0)
+        pick = st.radio("Week", names, index=start, horizontal=True,
+                        key=f"{key}_dealweek")
         week = labels[pick]
         if not deal_store.is_current(week):
             live = next((w["week"] for w in stored if deal_store.is_current(w["week"])), None)
