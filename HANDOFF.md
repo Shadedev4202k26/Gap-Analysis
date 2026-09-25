@@ -24,10 +24,11 @@ family matching, 28G) and #2 (week picker starts on the current week) merged
 
 ## Open work, roughly by value
 
-- **The tag flow itself.** The mockup's three steps (source & format → pick tags
-  → review & print), the two-pane picker with a live sheet preview, and the
-  week/store controls in the top bar. This is the actual behaviour change users
-  asked for; only the shell exists.
+- **Finish the Shelf tags flow** (`studio.py`, on `ui-shell`). Home, the
+  week/store bar and the three steps are built and tested end to end against
+  the 9/25 export and the 9/21 + 9/28 sheets. Still missing: split tags (the
+  card points at Preroll tags · classic), handing tags to the classic pages, and
+  retiring the classic pages once staff have used the new flow for a week.
 - **Curbside and break/lunch trackers** shared across computers, per store.
   Both are standalone HTML using `localStorage`, so state never leaves one
   browser. Needs Supabase tables and a rewrite away from local storage. The
@@ -35,9 +36,6 @@ family matching, 28G) and #2 (week picker starts on the current week) merged
   as-is.
 - **A draft flag for a stored week.** A sheet still being written becomes the
   printing week automatically at midnight on its start date.
-- **Deep links to the default page 404.** Streamlit serves the default page at
-  `/` and does not route its own `url_path`. A small landing page as the default
-  would fix it and give the mockup's home screen somewhere to live.
 - `video.mp4` and `image.png` are unreferenced since the hero became a bar —
   4.3MB carried in every clone and deploy.
 
@@ -55,6 +53,14 @@ family matching, 28G) and #2 (week picker starts on the current week) merged
   matches nothing silently. `stAppDeployButton` and `stMainMenu` are real;
   `stToolbarActions` is not. Never `display:none` the header — it holds the
   button that reopens a collapsed sidebar.
+- **Streamlit drops a widget's state on the first run that does not draw it.**
+  A setting chosen in step 1 of Shelf tags is gone by step 2 unless it is
+  copied out of the widget (`studio._setting`). And a keyed widget keeps its old
+  value when its options change, so the Week radio is re-pointed at `zb_week`
+  every run rather than trusted.
+- **The picker grid's edits are positional.** `st.data_editor` records edits by
+  row position, so if the rows under a key change, old edits land on the wrong
+  rows. The grid's key changes with every filter, search and bulk action.
 - **`st.navigation`'s own menu renders collapsible groups**, drops the links
   from the DOM when collapsed, and persists that across reloads. Hence the
   hand-built `st.page_link` nav in `shell.py`.

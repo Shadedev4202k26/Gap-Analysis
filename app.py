@@ -57,6 +57,7 @@ except ImportError:
     DUAL_AVAILABLE = False
 
 import shell
+import studio
 
 try:
     import deal_store
@@ -666,14 +667,7 @@ def _smilez_mark():
     return ('<img class="zb-mark" alt="Smilez" '
             'src="https://smilezdeli.netlify.app/brand/smilez-wordmark-white.webp?v=1">')
 
-# ── TOP BAR ───────────────────────────────────────────────────────────────────
-# Was a hero: an autoplaying video beside a title panel, about a third of the
-# screen. With tabs it drew once; with pages it would draw above every one of
-# them, so it is a 64px bar now and video.mp4 is no longer loaded per session.
-shell.top_bar(
-    _smilez_mark(),
-    quote='"Your attitude, not your aptitude, will determine your altitude." '
-          '— Zig Ziglar')
+# ── TOP BAR ── is drawn by studio.context_bar(), at the bottom with the pages.
 
 # Pages are wired up at the bottom of this file.
 
@@ -2939,13 +2933,23 @@ def _settings_deals():
 # infers one from the callable's name otherwise, and two pages that share a
 # name collide.
 st.markdown(shell.CSS, unsafe_allow_html=True)
+st.markdown(studio.CSS, unsafe_allow_html=True)
 
+# Home is the default page, so it is the one served at "/". Streamlit does not
+# route a default page's own url_path, which is why a deep link to the old
+# default (hook-tags) used to 404; a page nobody links to by path avoids that.
+_HOME = st.Page(studio.page_home, title="Home", icon=":material/home:",
+                url_path="home", default=True)
+_STUDIO = st.Page(studio.page_studio, title="Shelf tags", icon=":material/sell:",
+                  url_path="shelf-tags")
 _SECTIONS = {
+    "": [_HOME],
     "Print": [
-        st.Page(render_hook_tags, title="Hook tags", icon=":material/sell:",
-                url_path="hook-tags", default=True),
-        st.Page(render_preroll_tags, title="Preroll tags", icon=":material/local_florist:",
-                url_path="preroll-tags"),
+        _STUDIO,
+        st.Page(render_hook_tags, title="Hook tags · classic", icon=":material/label:",
+                url_path="hook-tags"),
+        st.Page(render_preroll_tags, title="Preroll tags · classic",
+                icon=":material/local_florist:", url_path="preroll-tags"),
     ],
     "Stock": [
         st.Page(render_inventory, title="Inventory balance", icon=":material/bar_chart:",
@@ -2965,5 +2969,13 @@ _TRAILING = [st.Page(render_settings, title="Settings", icon=":material/settings
 
 _nav = st.navigation(
     [pg for pages in _SECTIONS.values() for pg in pages] + _TRAILING, position="hidden")
+_by_path = {pg.url_path: pg for pages in _SECTIONS.values() for pg in pages + _TRAILING}
+studio.configure(
+    init_db=init_supabase, build_rows=build_tag_rows, fix_outdoor=fix_outdoor_prices,
+    pages={"home": _HOME, "studio": _STUDIO, "aging": _by_path["aging-stock"],
+           "inventory": _by_path["inventory"], "strain": _by_path["strain"],
+           "tools": _by_path["store-tools"], "settings": _by_path["settings"]})
+studio.new_run()
 shell.sidebar(_SECTIONS, _TRAILING, _nav.url_path)
+studio.context_bar(_smilez_mark())
 _nav.run()
