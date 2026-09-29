@@ -33,12 +33,12 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 ### Windows
 
-pdftk-java needs a Java runtime; poppler ships as a zip you put on PATH. The
-least fiddly route is a package manager — in PowerShell:
+PDFtk Server on Windows is a native binary and needs **no Java** — that is only
+required for the pdftk-java port Homebrew installs on macOS. poppler ships as a
+zip you put on PATH yourself. In PowerShell:
 
 ```powershell
 winget install --id Python.Python.3.12 -e
-winget install --id EclipseAdoptium.Temurin.21.JRE -e
 winget install --id PDFtk.PDFtkServer -e
 ```
 
@@ -53,8 +53,10 @@ py -3.12 -m venv .venv
 .venv\Scripts\streamlit run app.py
 ```
 
-Check both tools are visible before running the app — this is the single most
-common cause of "it starts but tags fail":
+**pdftk is not optional.** `preroll_tags._fill_template` shells out to it to
+fill the template forms and there is no fallback, so every builder needs it.
+The app starts happily without it and fails only when you press Generate, which
+is why it is worth checking both tools are visible first:
 
 ```powershell
 pdftk --version
