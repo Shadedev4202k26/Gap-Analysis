@@ -3,6 +3,9 @@
 Thumbs.db
 desktop.ini
 
+# Local editor/agent config — machine-specific paths (.venv/bin vs .venv\Scripts)
+.claude/
+
 # Local Python environment
 .venv/
 __pycache__/
