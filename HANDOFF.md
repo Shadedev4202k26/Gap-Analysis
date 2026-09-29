@@ -23,10 +23,40 @@ There is no work in flight. Branches `deli-fixes`, `week-default`,
    `pdftk --version` and `pdftoppm -v` both answer before running the app.
 2. Create `.streamlit/secrets.toml` from Supabase → Project Settings → API.
    It is gitignored and does not travel with the repo.
-3. `python tools/check_supabase.py` — proves storage works end to end without
-   printing the key.
-4. `python tools/smoke_tags.py "<a weekly deals CSV>"` — builds every tag
-   combination. If this passes, the toolchain is sound.
+3. `.venv/bin/python tools/check_supabase.py` (`.venv\Scripts\python` on
+   Windows) — proves storage works end to end without printing the key.
+4. `.venv/bin/python tools/smoke_tags.py "<a weekly deals CSV>"` — builds every
+   tag combination. If this passes, the toolchain is sound. On Windows it passed
+   20/20 only with pdftk-java; PDFtk Server failed every build (see README).
+
+## Windows, as actually tested — 2026-09-29
+
+Set up from scratch on the Windows 11 laptop and verified: `check_supabase.py`
+passes, `smoke_tags.py` passes 20/20, and a 41-tag hook sheet generated and
+previewed in the running app. What that took, and what the earlier notes got
+wrong:
+
+- **pdftk must be pdftk-java, and it does need Java.** PDFtk Server 2.02 (the
+  winget package) failed every build with `java.io.CharConversionException` in
+  `create_output()` — even filling one field of the untouched
+  `Hybrid_Prerolls.pdf` with plain ASCII. pdftk-java 3.3.3 on Temurin 21 passes
+  everything. Setup is in README → Windows.
+- **`subprocess.run(["pdftk", …])` cannot find a `.cmd` wrapper on Windows**,
+  so `preroll_tags.PDFTK` resolves it with `shutil.which` first. No change on
+  macOS or Streamlit Cloud.
+- **`%-d` / `%-I` in strftime are glibc/BSD only; Windows raises
+  `ValueError: Invalid format string`.** Fixed in `deal_store.week_label`, the
+  aged-stock report date and `fmt_ts` in `app.py` by using `.day` / `.hour`.
+  Output is identical on every platform. Do not reintroduce `%-`.
+- **Smart App Control is on** and blocks Git for Windows' HTTPS helper
+  (`libcurl-4.dll`). Git uses SSH through Windows' own
+  `C:\Windows\System32\OpenSSH\ssh.exe` (`core.sshCommand`), with a key added
+  to the `Shadedev4202k26` account.
+- **Streamlit started from the Claude app inherits the PATH from before the
+  installs**, so pdftk/pdftoppm go missing at Generate until the app (or the
+  launcher) reloads PATH.
+- Unconfirmed: the two BULK · OG FARMS outdoor hook tags print no price. May be
+  intended — compare against a Mac print before calling it a bug.
 
 ## Open work, roughly by value
 

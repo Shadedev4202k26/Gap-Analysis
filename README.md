@@ -33,14 +33,29 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 ### Windows
 
-PDFtk Server on Windows is a native binary and needs **no Java** — that is only
-required for the pdftk-java port Homebrew installs on macOS. poppler ships as a
-zip you put on PATH yourself. In PowerShell:
+Use **pdftk-java**, the same pdftk as macOS and Streamlit Cloud. Do not install
+PDFtk Server (`PDFLabs.PDFtk.Server` in winget): it is the old 2.02 native build
+and cannot fill these templates at all — every builder fails with
+`Unhandled Java Exception in create_output(): java.io.CharConversionException`,
+even for plain ASCII text. pdftk-java is not in winget, so it needs a Java
+runtime plus the jar. In PowerShell:
 
 ```powershell
 winget install --id Python.Python.3.12 -e
-winget install --id PDFtk.PDFtkServer -e
+winget install --id EclipseAdoptium.Temurin.21.JRE -e
 ```
+
+Download `pdftk-all.jar` from the latest
+[pdftk-java release](https://gitlab.com/pdftk-java/pdftk/-/releases) into
+`C:\pdftk-java`, create `C:\pdftk-java\pdftk.cmd` containing
+
+```bat
+@echo off
+java -jar "%~dp0pdftk-all.jar" %*
+```
+
+and add `C:\pdftk-java` to PATH. `preroll_tags.py` looks pdftk up with
+`shutil.which`, which is what lets it find a `.cmd` wrapper at all.
 
 poppler is not in winget. Download the latest `Release-*.zip` from
 [oschwartz10612/poppler-windows](https://github.com/oschwartz10612/poppler-windows/releases),
