@@ -18,14 +18,59 @@ live at the repo root because the app imports them by bare name.
 
 ## Running it locally
 
-Needs Python 3.10+ (`streamlit` requires it), plus `pdftk` and `poppler` for the
-tag builders:
+Needs Python 3.10+ (`streamlit` requires it), plus two command-line tools the
+tag builders shell out to: **pdftk** fills the template forms and **pdftoppm**
+(from poppler) rasterises pages for the mixed-type sheets. Both must be on PATH
+or the builders fail at the point of generating a PDF, not at startup.
+
+### macOS
 
 ```bash
 brew install python@3.12 pdftk-java poppler
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/streamlit run app.py
 ```
+
+### Windows
+
+pdftk-java needs a Java runtime; poppler ships as a zip you put on PATH. The
+least fiddly route is a package manager — in PowerShell:
+
+```powershell
+winget install --id Python.Python.3.12 -e
+winget install --id EclipseAdoptium.Temurin.21.JRE -e
+winget install --id PDFtk.PDFtkServer -e
+```
+
+poppler is not in winget. Download the latest `Release-*.zip` from
+[oschwartz10612/poppler-windows](https://github.com/oschwartz10612/poppler-windows/releases),
+unzip it somewhere permanent such as `C:\poppler`, and add its `Library\bin`
+folder to PATH. Then:
+
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\streamlit run app.py
+```
+
+Check both tools are visible before running the app — this is the single most
+common cause of "it starts but tags fail":
+
+```powershell
+pdftk --version
+pdftoppm -v
+```
+
+Note the venv layout differs: `.venv\Scripts\` on Windows against
+`.venv/bin/` on macOS. Every command in this README that starts `.venv/bin/`
+becomes `.venv\Scripts\` on Windows.
+
+### Local secrets
+
+`streamlit run` reads `.streamlit/secrets.toml`, which is gitignored and must be
+created by hand on each machine — see **Weekly deals storage** below. Without it
+the app still runs; the deals panel says storage is unavailable and explains
+why.
 
 ## Weekly deals storage
 

@@ -1,3 +1,8 @@
+# OS clutter — .DS_Store was tracked and churned on every Mac commit
+.DS_Store
+Thumbs.db
+desktop.ini
+
 # Local Python environment
 .venv/
 __pycache__/

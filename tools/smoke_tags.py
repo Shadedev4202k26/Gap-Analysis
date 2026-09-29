@@ -7,7 +7,8 @@ the deal rules or the templates cannot silently stop a sheet building. Then
 checks a few tags that have printed the wrong deal before. Needs pdftk and
 poppler (see README) and the 9/28 weekly deals CSV in ~/Downloads.
 """
-import os, sys, tempfile
+import os
+import sys, sys, tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 os.chdir(REPO)
@@ -16,7 +17,11 @@ import deals as deals_mod, preroll_tags as pt, combine_tags as ct, build_dual
 from pypdf import PdfReader
 import io
 
-SHEET = os.path.expanduser("~/Downloads/9-28-26 Weekly Deals-Smilez(Sheet1)-3.csv")
+# Pass a deals sheet as the first argument, or set ZIGGY_DEALS_SHEET. The
+# fallback is only a convenience for whoever exported one to Downloads today.
+SHEET = (sys.argv[1] if len(sys.argv) > 1
+         else os.environ.get("ZIGGY_DEALS_SHEET")
+         or os.path.expanduser("~/Downloads/9-28-26 Weekly Deals-Smilez(Sheet1)-3.csv"))
 # Loaded the way the app loads it. deals.load() flattens the sheet and loses the
 # section each deal sits under, so it cannot see a preroll deal land on flower.
 DEALS = deals_mod.load_sheet(open(SHEET, "rb").read(), os.path.basename(SHEET)).deals("Allegan")
