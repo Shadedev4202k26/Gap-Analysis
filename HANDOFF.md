@@ -48,10 +48,20 @@ wrong:
   `ValueError: Invalid format string`.** Fixed in `deal_store.week_label`, the
   aged-stock report date and `fmt_ts` in `app.py` by using `.day` / `.hour`.
   Output is identical on every platform. Do not reintroduce `%-`.
-- **Smart App Control is on** and blocks Git for Windows' HTTPS helper
-  (`libcurl-4.dll`). Git uses SSH through Windows' own
-  `C:\Windows\System32\OpenSSH\ssh.exe` (`core.sshCommand`), with a key added
-  to the `Shadedev4202k26` account.
+- **Smart App Control is now off** on the laptop. On 2026-09-30, after a
+  Windows update, it began blocking pandas' own `.pyd` files, so the app could
+  not start at all; it has no per-file allow-list. Before that it had blocked
+  Git for Windows' HTTPS helper (`libcurl-4.dll`), which is why Git uses SSH
+  through Windows' own `C:\Windows\System32\OpenSSH\ssh.exe`
+  (`core.sshCommand`), with a key added to the `Shadedev4202k26` account.
+- **Checking out a commit older than `863fe80` deletes your local
+  `secrets.toml`.** Those commits still track the file, and Git overwrites an
+  ignored file without asking — it happened on 2026-09-30 switching back to a
+  stale local `main`. Pull `main` rather than checking out old history, and
+  keep the key somewhere else too.
+- **`gh` has two accounts on the laptop.** `SmilezMedia` is the active one and
+  can only read this repo; pushing, opening and merging PRs need
+  `gh auth switch -u Shadedev4202k26`.
 - **Streamlit started from the Claude app inherits the PATH from before the
   installs**, so pdftk/pdftoppm go missing at Generate until the app (or the
   launcher) reloads PATH.
@@ -95,14 +105,21 @@ wrong:
 - `tools/strip_logo.py --check` reports whether a re-exported template has
   brought the Smilez wordmark back.
 
-## One thing to settle
+## Settled: the leaked key
 
-The Supabase **anon** key was committed to this public repo on 2026-09-25
-(`f93ab28`) and emptied again in `786392a`. Emptying the file does not remove it
-from history: it is still readable at that commit by anyone.
+The Supabase **anon** key committed on 2026-09-25 (`f93ab28`, emptied in
+`786392a`) is still readable in this public repo's history, but it was rotated
+before the move to Windows, so it no longer opens anything. The app now uses a
+publishable key, which is meant to be public.
 
-It is the anon key, which Supabase intends to be public — but this project's
-policies give `anon` full read, write and delete on `deal_sheets`, so anyone who
-finds it can tamper with or wipe the stored weekly deals. No customer data is
-exposed. Decide between rotating the key, tightening the policies, or accepting
-it; see the note in the session that raised it.
+Two things follow from that key being public:
+
+- `deal_sheets` still lets it read, write and delete, so anyone who pulls the
+  key out of the break tracker's page could wipe the stored weeks. They are
+  re-uploadable, so this was accepted rather than locked down.
+- The break tracker tables were designed for it: history is insert-only and the
+  database stamps the time. See README → Break & lunch tracker.
+
+If the key is rotated again, update Streamlit Cloud's secrets and each
+machine's `.streamlit/secrets.toml`, and re-download the break tracker on every
+tablet that runs a downloaded copy — the key is baked in at download time.
