@@ -18,14 +18,76 @@ live at the repo root because the app imports them by bare name.
 
 ## Running it locally
 
-Needs Python 3.10+ (`streamlit` requires it), plus `pdftk` and `poppler` for the
-tag builders:
+Needs Python 3.10+ (`streamlit` requires it), plus two command-line tools the
+tag builders shell out to: **pdftk** fills the template forms and **pdftoppm**
+(from poppler) rasterises pages for the mixed-type sheets. Both must be on PATH
+or the builders fail at the point of generating a PDF, not at startup.
+
+### macOS
 
 ```bash
 brew install python@3.12 pdftk-java poppler
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/streamlit run app.py
 ```
+
+### Windows
+
+Use **pdftk-java**, the same pdftk as macOS and Streamlit Cloud. Do not install
+PDFtk Server (`PDFLabs.PDFtk.Server` in winget): it is the old 2.02 native build
+and cannot fill these templates at all — every builder fails with
+`Unhandled Java Exception in create_output(): java.io.CharConversionException`,
+even for plain ASCII text. pdftk-java is not in winget, so it needs a Java
+runtime plus the jar. In PowerShell:
+
+```powershell
+winget install --id Python.Python.3.12 -e
+winget install --id EclipseAdoptium.Temurin.21.JRE -e
+```
+
+Download `pdftk-all.jar` from the latest
+[pdftk-java release](https://gitlab.com/pdftk-java/pdftk/-/releases) into
+`C:\pdftk-java`, create `C:\pdftk-java\pdftk.cmd` containing
+
+```bat
+@echo off
+java -jar "%~dp0pdftk-all.jar" %*
+```
+
+and add `C:\pdftk-java` to PATH. `preroll_tags.py` looks pdftk up with
+`shutil.which`, which is what lets it find a `.cmd` wrapper at all.
+
+poppler is not in winget. Download the latest `Release-*.zip` from
+[oschwartz10612/poppler-windows](https://github.com/oschwartz10612/poppler-windows/releases),
+unzip it somewhere permanent such as `C:\poppler`, and add its `Library\bin`
+folder to PATH. Then:
+
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\streamlit run app.py
+```
+
+**pdftk is not optional.** `preroll_tags._fill_template` shells out to it to
+fill the template forms and there is no fallback, so every builder needs it.
+The app starts happily without it and fails only when you press Generate, which
+is why it is worth checking both tools are visible first:
+
+```powershell
+pdftk --version
+pdftoppm -v
+```
+
+Note the venv layout differs: `.venv\Scripts\` on Windows against
+`.venv/bin/` on macOS. Every command in this README that starts `.venv/bin/`
+becomes `.venv\Scripts\` on Windows.
+
+### Local secrets
+
+`streamlit run` reads `.streamlit/secrets.toml`, which is gitignored and must be
+created by hand on each machine — see **Weekly deals storage** below. Without it
+the app still runs; the deals panel says storage is unavailable and explains
+why.
 
 ## Weekly deals storage
 

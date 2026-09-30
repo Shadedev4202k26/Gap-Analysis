@@ -118,7 +118,8 @@ def prune(db, keep=KEEP):
 def week_label(week):
     """'Sep 21 - Sep 27' for a week starting on `week`."""
     end = week + datetime.timedelta(days=6)
-    return f"{week:%b %-d} – {end:%b %-d}"
+    # .day, not %-d: the no-padding flag is glibc/BSD only and Windows rejects it.
+    return f"{week:%b} {week.day} – {end:%b} {end.day}"
 
 
 def is_current(week, today=None):

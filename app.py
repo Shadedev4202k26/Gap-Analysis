@@ -328,7 +328,7 @@ def build_aging_pdf(watch_items, summary, today_date, watch_days=45, exp_soon_da
         return colors.HexColor('#2563EB')                 # blue
 
     story = [Paragraph("Ziggyz Aging Stock Watch List", ts),
-             Paragraph(f"PRODUCTS AGED {watch_days}+ DAYS &nbsp;·&nbsp; GENERATED {today_date.strftime('%B %-d, %Y')}", ss)]
+             Paragraph(f"PRODUCTS AGED {watch_days}+ DAYS &nbsp;·&nbsp; GENERATED {today_date:%B} {today_date.day}, {today_date.year}", ss)]
 
     # Summary band
     md = [[Paragraph(f"<b>Aging SKUs:</b> {summary['watch_count']}", cs),
@@ -400,7 +400,7 @@ def fmt_ts(ts_str):
     """Format Supabase ISO timestamp → friendly local-ish time string."""
     try:
         dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-        return dt.strftime("%-I:%M %p · %b %-d")
+        return f"{dt.hour % 12 or 12}:{dt:%M %p} · {dt:%b} {dt.day}"
     except Exception:
         return ts_str or ""
 
