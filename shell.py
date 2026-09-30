@@ -1,4 +1,4 @@
-"""The app shell: sidebar navigation, the week/store context bar, styling.
+"""The app shell: sidebar navigation and store picker, the week bar, styling.
 
 Why the navigation is hand-built rather than st.navigation's own menu:
 that menu renders each section as a COLLAPSIBLE group, it removes the links
@@ -64,6 +64,9 @@ section[data-testid="stSidebar"]{{background:var(--s1);border-right:1px solid va
     color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15}}
 .zb-brand-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1.4px;
     color:var(--dim);margin-top:3px;white-space:nowrap}}
+.st-key-zbside_top{{margin:14px 0 2px;padding:0 4px}}
+.st-key-zbside_top label p{{font-family:'JetBrains Mono',monospace!important;font-size:10px!important;
+    letter-spacing:1.6px!important;color:var(--dim)!important;text-transform:uppercase!important}}
 .zb-navsec{{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1.6px;
     color:var(--dim);text-transform:uppercase;margin:16px 0 4px;padding:0 12px}}
 
@@ -92,10 +95,14 @@ def nav_link(page, current):
         st.page_link(page, label=page.title, icon=page.icon, use_container_width=True)
 
 
-def sidebar(sections, trailing, current):
-    """sections: {label: [Page]}. trailing: [Page] pinned at the bottom."""
+def sidebar(sections, trailing, current, top=None):
+    """sections: {label: [Page]}. trailing: [Page] pinned at the bottom.
+    top: drawn under the brand, above the links (the store picker)."""
     with st.sidebar:
         brand()
+        if top:
+            with st.container(key="zbside_top"):
+                top()
         for label, pages in sections.items():
             if label:
                 st.markdown(f'<div class="zb-navsec">{label}</div>', unsafe_allow_html=True)

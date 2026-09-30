@@ -145,16 +145,24 @@
   .modal-cancel{background:#fff; color:var(--ink)}
   .modal-ok{background:var(--over); color:#fff; border-color:var(--over)}
 
-  .pin-box{max-width:320px; width:100%; text-align:center}
-  .pin-title{font-size:17px; font-weight:800; margin-bottom:12px}
-  .pin-dots{font-size:30px; letter-spacing:8px; min-height:38px; color:var(--ink); font-weight:800}
-  .pin-err{color:var(--over); font-size:13px; font-weight:700; min-height:18px; margin:4px 0 10px}
-  .keypad{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px}
-  .keypad button{font-family:inherit; font-size:22px; font-weight:700; padding:16px 0; border-radius:12px; border:1px solid var(--line); background:#FBFAF8; color:var(--ink); cursor:pointer}
-  .keypad button:active{background:#EDEAE3}
-  .keypad .kp-enter{background:var(--ok); color:#fff; border-color:var(--ok)}
-  .pin-cancel{width:100%; background:#fff; border:1px solid var(--line); color:var(--ink); font-weight:700; font-size:15px; padding:12px; border-radius:11px; cursor:pointer; font-family:inherit}
-  .changepin{display:block; width:100%; margin:18px 0 0; background:#fff; border:1px solid var(--line); color:var(--ink); font-weight:700; font-size:15px; padding:14px; border-radius:12px; cursor:pointer; font-family:inherit}
+  /* manager sign-in (gates the Admin tab) */
+  .who-box{max-width:360px; width:100%}
+  .who-title{font-size:17px; font-weight:800; margin-bottom:4px}
+  .who-sub{font-size:13px; color:var(--muted); font-weight:600; margin-bottom:14px}
+  .who-list{display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow-y:auto; margin-bottom:12px}
+  .who-list button{font-family:inherit; font-size:17px; font-weight:700; text-align:left; padding:14px; border-radius:12px; border:1px solid var(--line); background:#FBFAF8; color:var(--ink); cursor:pointer}
+  .who-list button:active{background:#EDEAE3}
+  .who-msg{font-size:14px; color:var(--muted); font-weight:600; line-height:1.45; padding:6px 2px 14px}
+  .who-new{border-top:1px solid var(--line); padding-top:12px; margin-bottom:12px}
+  .who-new-row{display:flex; gap:8px; align-items:stretch}
+  .who-new-row input.text{margin:0; font-size:16px; padding:11px}
+  .who-new-row button{flex:0 0 auto; white-space:nowrap}
+  .who-err{color:var(--over); font-size:13px; font-weight:700; min-height:18px; margin-top:6px}
+  .who-cancel{width:100%; background:#fff; border:1px solid var(--line); color:var(--ink); font-weight:700; font-size:15px; padding:12px; border-radius:11px; cursor:pointer; font-family:inherit}
+  .signedin{display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); padding:10px 12px; margin-bottom:14px; font-size:14px; font-weight:600; color:var(--muted)}
+  .signedin b{color:var(--ink)}
+  .signedin .pending{color:var(--warn); font-weight:700}
+  .signedin button{margin-left:auto}
   .tab .lock{font-size:11px; opacity:.7}
 
   .tabbar{position:fixed; left:0; right:0; bottom:0; z-index:20; background:rgba(255,255,255,.92); -webkit-backdrop-filter:saturate(180%) blur(10px); backdrop-filter:saturate(180%) blur(10px); border-top:1px solid var(--line); display:flex; gap:6px; padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
@@ -200,6 +208,11 @@
 
   <!-- PAGE 3: ADMIN (setup + full edit) -->
   <section id="viewAdmin" class="hidden">
+    <div class="signedin">
+      <span>Signed in as <b id="signedName"></b> &middot; changes are recorded</span>
+      <span class="pending hidden" id="pendingNote"></span>
+      <button type="button" class="mini" id="signOut">Sign out</button>
+    </div>
     <form class="add" id="addForm" autocomplete="off">
       <label for="name">Add associate</label>
       <input class="text" id="name" placeholder="Name" maxlength="80">
@@ -218,7 +231,6 @@
       <div class="big">No one on the roster yet</div>
       <div>Add each associate above. After adding, you can edit every detail here.</div>
     </div>
-    <button class="changepin" id="changePin">Change Admin PIN</button>
     <button class="clear" id="clearDay">Clear day &amp; start fresh</button>
   </section>
 </div>
@@ -239,26 +251,21 @@
   </div>
 </div>
 
-<div class="modal hidden" id="pinModal">
-  <div class="modal-box pin-box">
-    <div class="pin-title" id="pinTitle">Enter Admin PIN</div>
-    <div class="pin-dots" id="pinDots"></div>
-    <div class="pin-err" id="pinErr"></div>
-    <div class="keypad" id="keypad">
-      <button type="button" data-k="1">1</button>
-      <button type="button" data-k="2">2</button>
-      <button type="button" data-k="3">3</button>
-      <button type="button" data-k="4">4</button>
-      <button type="button" data-k="5">5</button>
-      <button type="button" data-k="6">6</button>
-      <button type="button" data-k="7">7</button>
-      <button type="button" data-k="8">8</button>
-      <button type="button" data-k="9">9</button>
-      <button type="button" data-k="back">&#9003;</button>
-      <button type="button" data-k="0">0</button>
-      <button type="button" data-k="enter" class="kp-enter">&#10003;</button>
-    </div>
-    <button type="button" class="pin-cancel" id="pinCancel">Cancel</button>
+<div class="modal hidden" id="whoModal">
+  <div class="modal-box who-box">
+    <div class="who-title">Who&rsquo;s making changes?</div>
+    <div class="who-sub" id="whoSub"></div>
+    <div class="who-list" id="whoList"></div>
+    <div class="who-msg hidden" id="whoMsg"></div>
+    <form class="who-new hidden" id="whoNew" autocomplete="off">
+      <label for="whoName">Not on the list? Add your name</label>
+      <div class="who-new-row">
+        <input class="text" id="whoName" maxlength="40" placeholder="e.g. Jess M.">
+        <button type="submit" class="mini go" id="whoAdd">Add &amp; sign in</button>
+      </div>
+      <div class="who-err" id="whoErr"></div>
+    </form>
+    <button type="button" class="who-cancel" id="whoCancel">Cancel</button>
   </div>
 </div>
 
@@ -282,9 +289,81 @@
   let tab = "schedule";
   let pendingConfirm = null;
   let adminUnlocked = false;
-  const PIN_KEY = "break_lunch_pin_v1";
-  function getPin(){ try{ return localStorage.getItem(PIN_KEY) || "715"; }catch(e){ return "715"; } }
-  function setPin(p){ try{ localStorage.setItem(PIN_KEY, p); }catch(e){} }
+  let manager = null;                       // name of the manager signed in to Admin
+
+  // ZiggyBot's Store tools page replaces the next line with the Supabase URL,
+  // key and store, both in the embedded view and in a downloaded copy. Left as
+  // null (the file opened straight from the repo) there is no manager list, so
+  // Admin stays locked.
+  const CONFIG = null; // ZB_CONFIG
+
+  const MANAGERS_KEY = "break_lunch_managers_v1:" + (CONFIG ? CONFIG.store : "");
+  const OUTBOX_KEY = "break_lunch_outbox_v1";
+  const DEVICE_KEY = "break_lunch_device_v1";
+  try { localStorage.removeItem("break_lunch_pin_v1"); } catch (e) {}   // the old shared PIN
+
+  function lsGet(k, fallback){ try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? fallback : v; } catch (e) { return fallback; } }
+  function lsSet(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function deviceName(){
+    let d = lsGet(DEVICE_KEY, null);
+    if (!d) { d = "Tablet " + Math.random().toString(36).slice(2, 6).toUpperCase(); lsSet(DEVICE_KEY, d); }
+    return d;
+  }
+
+  // ---- Supabase (plain REST, no library) ----
+  function sbHeaders(extra){
+    const h = Object.assign({ apikey: CONFIG.key, "Content-Type": "application/json" }, extra || {});
+    if (CONFIG.key.startsWith("eyJ")) h.Authorization = "Bearer " + CONFIG.key;  // legacy JWT keys only
+    return h;
+  }
+  async function fetchManagers(){
+    const q = "select=name&active=is.true&store=eq." + encodeURIComponent(CONFIG.store);
+    const r = await fetch(CONFIG.url + "/rest/v1/break_managers?" + q, { headers: sbHeaders() });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const names = (await r.json()).map(m => m.name).sort((a, b) => a.localeCompare(b));
+    lsSet(MANAGERS_KEY, names);
+    return names;
+  }
+
+  // Every Admin change goes into an outbox first and is sent from there, so a
+  // dropped connection delays the history instead of losing it. The database
+  // stamps the real time on arrival; device_at keeps the tablet's own clock.
+  function record(action, detail){
+    if (!CONFIG || !manager) return;
+    const box = lsGet(OUTBOX_KEY, []);
+    box.push({ device_at: new Date().toISOString(), store: CONFIG.store, manager,
+               action, detail: detail || "", device: deviceName() });
+    lsSet(OUTBOX_KEY, box);
+    flush();
+  }
+  let flushing = false;
+  async function flush(){
+    if (!CONFIG || flushing) return;
+    const box = lsGet(OUTBOX_KEY, []);
+    if (!box.length) { showPending(); return; }
+    flushing = true;
+    try {
+      const r = await fetch(CONFIG.url + "/rest/v1/break_audit", {
+        method: "POST", headers: sbHeaders({ Prefer: "return=minimal" }), body: JSON.stringify(box) });
+      if (r.ok) lsSet(OUTBOX_KEY, lsGet(OUTBOX_KEY, []).slice(box.length));
+    } catch (e) { /* offline — try again on the next change, tick or reconnect */ }
+    flushing = false;
+    showPending();
+  }
+  function showPending(){
+    const n = lsGet(OUTBOX_KEY, []).length, el = $("pendingNote");
+    el.textContent = n ? `· ${n} change${n > 1 ? "s" : ""} waiting for internet` : "";
+    el.classList.toggle("hidden", !n);
+  }
+  window.addEventListener("online", flush);
+
+  // What a slot is called in the history: "Jess · Lunch 2" when there are two.
+  function slotName(a, s){
+    const same = a.slots.filter(x => x.kind === s.kind);
+    const kind = s.kind === "lunch" ? "Lunch" : "Break";
+    return `${a.name} · ${kind}${same.length > 1 ? " " + (same.indexOf(s) + 1) : ""}`;
+  }
+  const SHIFT_NAME = { under7: "Under 7 hrs", h7: "7+ hrs", h10: "10+ hrs", double: "Double" };
 
   function load(){
     try { const s = JSON.parse(localStorage.getItem(STORE)) || {};
@@ -320,43 +399,83 @@
   function removeAssoc(id){ state.roster=state.roster.filter(a=>a.id!==id); save(); renderAll(); }
   function addSlot(assocId, kind){ const a=findAssoc(assocId); if(!a) return; a.slots.push({id:uid(),kind,durationMin:kind==="lunch"?30:10,scheduledAt:null,startedAt:null,status:"pending",doneAt:null}); save(); renderAll(); }
   function removeSlot(id){ for(const a of state.roster){ const i=a.slots.findIndex(s=>s.id===id); if(i>=0){ a.slots.splice(i,1); break; } } save(); renderAll(); }
-  function clearDay(){ askConfirm("Clear the whole day? This removes everyone and all break & lunch records.", ()=>{ state.roster=[]; save(); renderAll(); }); }
+  function clearDay(){ askConfirm("Clear the whole day? This removes everyone and all break & lunch records.", ()=>{
+    const c=counts(), n=state.roster.length;
+    record("Cleared the day", `${n} associate${n===1?"":"s"}: ${state.roster.map(a=>a.name).join(", ")||"none"} · lunches ${c.ld}/${c.lt} done, breaks ${c.bd}/${c.bt} done`);
+    state.roster=[]; save(); renderAll(); }); }
 
   function askConfirm(msg, onOk){ $("confirmMsg").textContent=msg; pendingConfirm=onOk; $("confirmModal").classList.remove("hidden"); }
   $("confirmOk").addEventListener("click", ()=>{ $("confirmModal").classList.add("hidden"); const fn=pendingConfirm; pendingConfirm=null; if(fn) fn(); });
   $("confirmCancel").addEventListener("click", ()=>{ $("confirmModal").classList.add("hidden"); pendingConfirm=null; });
 
-  // ---- PIN (gates the Admin tab) ----
-  let pinMode=null, pinOnDone=null, pinEntry="", pinStep=1, pinFirst="";
-  function updateDots(){ $("pinDots").textContent = pinEntry.replace(/./g,"\u2022"); }
-  function openPin(mode, onDone){
-    pinMode=mode; pinOnDone=onDone||null; pinEntry=""; pinStep=1; pinFirst="";
-    $("pinTitle").textContent = mode==="change" ? "Set a new PIN (3\u20136 digits)" : "Enter Admin PIN";
-    $("pinErr").textContent=""; updateDots();
-    $("pinModal").classList.remove("hidden");
+  // ---- manager sign-in (gates the Admin tab) ----
+  let whoOnDone = null;
+  function whoMessage(msg){
+    $("whoList").innerHTML = "";
+    $("whoMsg").textContent = msg; $("whoMsg").classList.toggle("hidden", !msg);
   }
-  function closePin(){ $("pinModal").classList.add("hidden"); pinMode=null; pinOnDone=null; pinEntry=""; }
-  function submitPin(){
-    if(pinEntry.length<3 || pinEntry.length>6){ $("pinErr").textContent="PIN must be 3\u20136 digits"; return; }
-    if(pinMode==="unlock"){
-      if(pinEntry===getPin()){ const cb=pinOnDone; closePin(); if(cb) cb(); }
-      else { $("pinErr").textContent="Incorrect PIN"; pinEntry=""; updateDots(); }
-    } else { // change
-      if(pinStep===1){ pinFirst=pinEntry; pinEntry=""; pinStep=2; $("pinErr").textContent=""; $("pinTitle").textContent="Re-enter to confirm"; updateDots(); }
-      else if(pinEntry===pinFirst){ setPin(pinFirst); $("pinErr").textContent=""; $("pinTitle").textContent="PIN updated \u2713"; setTimeout(closePin, 800); }
-      else { $("pinErr").textContent="PINs didn't match \u2014 start over"; pinStep=1; pinFirst=""; pinEntry=""; $("pinTitle").textContent="Set a new PIN (3\u20136 digits)"; updateDots(); }
+  function whoNames(names, note){
+    whoNamesSeen = names;
+    if (!names.length) { whoMessage(note || `No one has signed in at ${CONFIG.store} yet \u2014 add your name below.`); return; }
+    $("whoList").innerHTML = names.map(n => `<button type="button" data-name="${esc(n)}">${esc(n)}</button>`).join("");
+    $("whoMsg").textContent = note || ""; $("whoMsg").classList.toggle("hidden", !note);
+  }
+  let whoNamesSeen = [];
+  const cleanName = (s) => s.replace(/\s+/g, " ").trim().slice(0, 40);
+  function signIn(name, detail){
+    manager = name;
+    const cb = whoOnDone; closeWho();
+    record("Signed in", detail || "");
+    if (cb) cb();
+  }
+  // Managers add themselves: there is no central list to start from. A name
+  // that matches one already there (ignoring case) signs in as that person, so
+  // "jess" does not become a second Jess in the history.
+  async function addOwnName(e){
+    e.preventDefault();
+    const name = cleanName($("whoName").value);
+    if (name.length < 2) { $("whoErr").textContent = "Type your name \u2014 first name and last initial."; return; }
+    const known = whoNamesSeen.concat(lsGet(MANAGERS_KEY, [])).find(n => n.toLowerCase() === name.toLowerCase());
+    if (known) { signIn(known, ""); return; }
+    $("whoAdd").disabled = true; $("whoErr").textContent = "";
+    try {
+      const r = await fetch(CONFIG.url + "/rest/v1/break_managers", { method: "POST",
+        headers: sbHeaders({ Prefer: "return=minimal" }), body: JSON.stringify({ store: CONFIG.store, name }) });
+      if (r.ok || r.status === 409) {                   // 409: the same name landed first from another tablet
+        lsSet(MANAGERS_KEY, lsGet(MANAGERS_KEY, []).concat([name]).sort((a, b) => a.localeCompare(b)));
+        signIn(name, "first sign-in \u2014 added own name to the list");
+      } else {
+        $("whoErr").textContent = `ZiggyBot refused that name (HTTP ${r.status}). Try again, or ask the office.`;
+      }
+    } catch (err) {
+      // Offline: still let them in. The history says the name never reached the list.
+      signIn(name, "first sign-in \u2014 offline, name not added to the list yet");
+    } finally { $("whoAdd").disabled = false; }
+  }
+  $("whoNew").addEventListener("submit", addOwnName);
+  function openWho(onDone){
+    whoOnDone = onDone;
+    $("whoModal").classList.remove("hidden");
+    $("whoNew").classList.toggle("hidden", !CONFIG);
+    $("whoName").value = ""; $("whoErr").textContent = "";
+    if (!CONFIG) {
+      $("whoSub").textContent = "";
+      whoMessage("This copy isn\u2019t connected to ZiggyBot, so there is no manager list to sign in with. Open the tracker from ZiggyBot \u2192 Store tools, or download a fresh copy there.");
+      return;
     }
+    $("whoSub").textContent = `${CONFIG.store} \u00b7 tap your name. Everything you change is recorded with your name and the time.`;
+    const cached = lsGet(MANAGERS_KEY, null);
+    if (cached) whoNames(cached); else whoMessage("Loading managers\u2026");
+    fetchManagers().then(names => { if (!$("whoModal").classList.contains("hidden")) whoNames(names); })
+      .catch(() => whoNames(cached || [], "Offline \u2014 showing the last list this tablet saw. You can still type your name below."));
   }
-  $("keypad").addEventListener("click",(e)=>{
-    const b=e.target.closest("button[data-k]"); if(!b) return;
-    const k=b.dataset.k;
-    if(k==="back"){ pinEntry=pinEntry.slice(0,-1); $("pinErr").textContent=""; updateDots(); return; }
-    if(k==="enter"){ submitPin(); return; }
-    if(pinEntry.length>=6) return;
-    pinEntry+=k; $("pinErr").textContent=""; updateDots();
+  function closeWho(){ $("whoModal").classList.add("hidden"); whoOnDone = null; }
+  $("whoList").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-name]"); if (!b) return;
+    signIn(b.dataset.name, "");
   });
-  $("pinCancel").addEventListener("click", closePin);
-  $("changePin").addEventListener("click", ()=> openPin("change"));
+  $("whoCancel").addEventListener("click", closeWho);
+  $("signOut").addEventListener("click", () => setTab("schedule"));
 
   // relock Admin if the app is backgrounded or the iPad is locked
   document.addEventListener("visibilitychange", ()=>{
@@ -550,6 +669,9 @@
     const name=$("name").value.trim(); if(!name){ $("name").focus(); return; }
     const times=[...$("schedFields").querySelectorAll('input[data-idx]')].map(inp=>inp.value||null);
     addAssoc(name, pickedShift, times);
+    const a=state.roster[state.roster.length-1];
+    const set=a.slots.filter(s=>s.scheduledAt).map(s=>`${slotName(a,s).split(" · ")[1]} ${clockTime(s.scheduledAt)}`);
+    record("Added associate", `${name} · ${SHIFT_NAME[pickedShift]}${set.length?" · "+set.join(", "):""}`);
     $("name").value=""; renderSchedFields(); $("name").focus();
   }
   $("addBtn").addEventListener("click", submitAdd);
@@ -568,39 +690,51 @@
   $("viewAdmin").addEventListener("click",(e)=>{
     const btn=e.target.closest("button[data-act]"); if(!btn) return;
     const act=btn.dataset.act;
-    if(act==="removeAssoc"){ removeAssoc(Number(btn.closest("[data-assoc]").dataset.assoc)); return; }
-    if(act==="addLunch"){ addSlot(Number(btn.closest("[data-assoc]").dataset.assoc),"lunch"); return; }
-    if(act==="addBreak"){ addSlot(Number(btn.closest("[data-assoc]").dataset.assoc),"break"); return; }
-    const id=slotIdFrom(btn);
-    if(act==="removeSlot") removeSlot(id);
-    else if(act==="done") doneSlot(id);
-    else if(act==="undo") undoSlot(id);
+    const assoc = btn.closest("[data-assoc]") ? findAssoc(Number(btn.closest("[data-assoc]").dataset.assoc)) : null;
+    if(act==="removeAssoc"){ if(assoc){ record("Removed associate", `${assoc.name} · ${progressText(assoc)}`); removeAssoc(assoc.id); } return; }
+    if(act==="addLunch"||act==="addBreak"){
+      if(!assoc) return;
+      addSlot(assoc.id, act==="addLunch"?"lunch":"break");
+      record(act==="addLunch"?"Added lunch":"Added break", slotName(assoc, assoc.slots[assoc.slots.length-1])); return;
+    }
+    const id=slotIdFrom(btn), f=findSlot(id); if(!f) return;
+    const what=slotName(f.a,f.s);
+    if(act==="removeSlot"){ record("Removed "+f.s.kind, `${what} · was ${f.s.status==="done"?"done "+clockTime(f.s.doneAt):f.s.status}`); removeSlot(id); }
+    else if(act==="done"){ record("Marked done", what + (f.s.status==="active" ? ` · started ${clockTime(f.s.startedAt)}` : " · never started")); doneSlot(id); }
+    else if(act==="undo"){ record("Undid done", `${what} · was done ${f.s.doneAt?clockTime(f.s.doneAt):""}`); undoSlot(id); }
   });
   $("viewAdmin").addEventListener("change",(e)=>{
     const t=e.target;
     if(t.matches('input[data-act="time"]')){
       const f=findSlot(Number(t.closest("[data-slot]").dataset.slot)); if(!f) return;
+      const was=f.s.scheduledAt;
       f.s.scheduledAt=schedToMs(t.value); save();
+      if(was!==f.s.scheduledAt) record("Changed time", `${slotName(f.a,f.s)}: ${was?clockTime(was):"none"} → ${f.s.scheduledAt?clockTime(f.s.scheduledAt):"none"}`);
       renderSchedule(); renderManage(); updateChrome(); return;
     }
     if(t.matches('input[data-act="dur"]')){
       const slotEl=t.closest("[data-slot]"); const f=findSlot(Number(slotEl.dataset.slot)); if(!f) return;
       let v=parseInt(t.value,10); if(!v||v<1) v=1; if(v>120) v=120; t.value=v;
+      const was=f.s.durationMin;
       f.s.durationMin=v; save();
+      if(was!==v) record("Changed length", `${slotName(f.a,f.s)}: ${was} → ${v} min`);
       const tg=slotEl.querySelector(".slot-tag"); if(tg) tg.textContent=(f.s.kind==="lunch"?"Lunch ":"Break ")+v;
       renderSchedule(); renderManage(); updateChrome(); return;
     }
     if(t.matches('input[data-act="rename"]')){
       const a=findAssoc(Number(t.closest("[data-assoc]").dataset.assoc)); if(!a) return;
-      const v=t.value.trim(); if(v) a.name=v; else t.value=a.name; save();
+      const v=t.value.trim(), was=a.name; if(v) a.name=v; else t.value=a.name; save();
+      if(a.name!==was) record("Renamed associate", `${was} → ${a.name}`);
       renderSchedule(); renderManage(); updateChrome(); return;
     }
   });
   $("clearDay").addEventListener("click", clearDay);
 
   function setTab(t){
-    if(t!=="admin") adminUnlocked=false;   // relock Admin whenever you leave it
+    if(t!=="admin"){ adminUnlocked=false; manager=null; }   // relock Admin whenever you leave it
     tab=t;
+    $("signedName").textContent = manager || "";
+    if(t==="admin") showPending();
     $("viewSchedule").classList.toggle("hidden", t!=="schedule");
     $("viewManage").classList.toggle("hidden", t!=="manage");
     $("viewAdmin").classList.toggle("hidden", t!=="admin");
@@ -610,7 +744,7 @@
     updateChrome();
   }
   function requestTab(t){
-    if(t==="admin" && !adminUnlocked){ openPin("unlock", ()=>{ adminUnlocked=true; setTab("admin"); }); return; }
+    if(t==="admin" && !adminUnlocked){ openWho(()=>{ adminUnlocked=true; setTab("admin"); }); return; }
     setTab(t);
   }
   $("tabSchedule").addEventListener("click",()=>requestTab("schedule"));
@@ -622,6 +756,7 @@
   setTab("schedule");
   renderAll();
   setInterval(tick, 1000);
+  flush(); setInterval(flush, 30000);         // send anything left over from an offline spell
 </script>
 </body>
 </html>
