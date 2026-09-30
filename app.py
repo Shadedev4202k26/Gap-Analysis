@@ -56,6 +56,7 @@ try:
 except ImportError:
     DUAL_AVAILABLE = False
 
+import break_store
 import shell
 import studio
 
@@ -77,15 +78,13 @@ st.set_page_config(page_title="ZiggyBot", page_icon="⚡", layout="wide",
                    initial_sidebar_state="expanded")
 
 # ── Supabase client ───────────────────────────────────────────────────────────
-@st.cache_resource
-def init_supabase():
-    if not SUPABASE_AVAILABLE:
-        return None
+def supabase_creds():
+    """(url, key) from the secrets, cleaned up, or (None, None)."""
     try:
         url = st.secrets["SUPABASE_URL"]
         key = st.secrets["SUPABASE_KEY"]
     except (KeyError, FileNotFoundError):
-        return None
+        return None, None
     # Normalise the URL: the client appends /rest/v1/... itself, so the secret
     # must be the bare project origin. Strip whitespace, trailing slashes, and any
     # accidentally-included path (e.g. a pasted /rest/v1) that would corrupt the
@@ -96,7 +95,15 @@ def init_supabase():
             url = url.rstrip("/")[: -len(suffix)]
     url = url.rstrip("/")
     key = (key or "").strip()
-    if not url or not key:
+    return (url, key) if url and key else (None, None)
+
+
+@st.cache_resource
+def init_supabase():
+    if not SUPABASE_AVAILABLE:
+        return None
+    url, key = supabase_creds()
+    if not url:
         return None
     try:
         return create_client(url, key)
@@ -1200,9 +1207,11 @@ def deal_controls(key):
 
         store = None
         if sheet.stores and len(sheet.stores) > 1:
-            store = st.selectbox(
-                "Store", sheet.stores, key=f"{key}_dealstore",
-                help="Some deals differ by location. Tags use this store's column.")
+            # Some deals differ by location; tags use the sidebar store's column.
+            store = studio.context()["store"]
+            if store not in sheet.stores:
+                store = sheet.stores[0]
+            st.caption(f"Deals for **{store}** — change the store at the top of the sidebar.")
         current = sheet.deals(store)
         if not current:
             st.warning("No product deals found in that sheet. Check it is the weekly "
@@ -2837,6 +2846,15 @@ def render_store_tools():
         st.error(f"`{fname}` isn't in the repo yet — commit it to your repo root next to app.py.")
         return
 
+    if fname == "break-lunch-tracker.html":
+        html, store = _connect_break_tracker(html)
+        if store:
+            st.caption(f"Managers sign in from the **{store}** list, adding their own name "
+                       "the first time; every Admin change is "
+                       "recorded under **Settings → Break & lunch tracker**. Switch store "
+                       "at the top of the sidebar.")
+            fname = f"break-lunch-tracker-{re.sub(r'[^a-z0-9]+', '-', store.lower())}.html"
+
     components.html(html, height=height, scrolling=True)
 
     st.download_button(f"⬇️  Download {choice.strip()} (standalone)", data=html,
@@ -2844,6 +2862,28 @@ def render_store_tools():
     st.caption("Tip: the embedded view and a downloaded copy keep their data separately. "
                "On an iPad/tablet, download the file and open it (or host it on a static site) "
                "so saved entries persist reliably.")
+
+
+def _connect_break_tracker(html):
+    """Give the tracker the store and the Supabase connection it signs managers
+    in with and records Admin changes to. Returns (html, store or None).
+
+    The key ends up in the page, which is why the break tables only let it add
+    history rows and never change or delete them — see README.
+    """
+    url, key = supabase_creds()
+    store = studio.context()["store"]
+    if not url:
+        st.warning("Managers can't sign in to Admin here: there is no Supabase "
+                   "connection in the app's secrets.")
+        return html, None
+    cfg = json.dumps({"url": url, "key": key, "store": store}).replace("</", "<\\/")
+    marker = "const CONFIG = null; // ZB_CONFIG"
+    if marker not in html:
+        st.error("break-lunch-tracker.html has lost its `ZB_CONFIG` line, so it can't be "
+                 "connected.")
+        return html, None
+    return html.replace(marker, f"const CONFIG = {cfg}; // ZB_CONFIG"), store
 
 
 
@@ -2855,6 +2895,119 @@ def render_settings():
     st.markdown('<div class="sec-head"><div class="sec-head-text">⚙️ Settings</div>'
                 '<div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     _settings_deals()
+    _settings_break()
+
+
+STORE_TZ = "America/Detroit"   # every store is in Michigan; history shows their local time
+
+
+def _settings_break():
+    """Who can sign in to the break tracker's Admin tab, and what they changed."""
+    from zoneinfo import ZoneInfo
+    from datetime import timedelta
+
+    st.markdown('<div class="cat-hdr">☕ Break & lunch tracker</div>', unsafe_allow_html=True)
+    db = init_supabase()
+    if db is None:
+        st.warning("No Supabase connection — managers and the edit history live there.")
+        return
+    try:
+        everyone = break_store.managers(db, include_inactive=True)
+    except break_store.StoreError as e:
+        st.error("The break tracker tables aren't set up in Supabase yet — run the SQL in "
+                 f"README → **Break & lunch tracker**. (`{e}`)")
+        return
+
+    ctx_store = studio.context()["store"]
+    stores = sorted(set(studio.context()["stores"]) | {m["store"] for m in everyone})
+
+    # ── Managers ──
+    st.markdown("**Managers** — the names on each store's sign-in list. Managers add "
+                "their own name the first time they open Admin, so this is mostly for "
+                "tidying up: removing a typo or someone who has left takes them off the "
+                "list, and what they changed stays in the history.")
+    if not stores:
+        st.info("No stores known yet. Save a weekly deals sheet so the store list is available.")
+        return
+    store = st.selectbox("Store", stores, key="brk_mgr_store",
+                         index=stores.index(ctx_store) if ctx_store in stores else 0)
+    active = [m for m in everyone if m["store"] == store and m["active"]]
+    if not active:
+        st.caption(f"Nobody has signed in at {store} yet.")
+    for m in active:
+        c1, c2 = st.columns([5, 1.2])
+        c1.markdown(m["name"])
+        if c2.button("Remove", key=f"brk_rm_{m['id']}"):
+            try:
+                break_store.remove_manager(db, m)
+            except break_store.StoreError as e:
+                st.error(f"Could not remove {m['name']}: {e}")
+            else:
+                st.rerun()
+    with st.form("brk_add", clear_on_submit=True, border=False):
+        a1, a2 = st.columns([5, 1.2], vertical_alignment="bottom")
+        new = a1.text_input(f"Add a name to {store} yourself", max_chars=break_store.NAME_MAX,
+                            placeholder="Name as it should appear in the history")
+        if a2.form_submit_button("Add", width="stretch") and new.strip():
+            try:
+                outcome = break_store.add_manager(db, store, new)
+            except break_store.StoreError as e:
+                st.error(str(e))
+            else:
+                st.success(f"{break_store.clean_name(new)} {outcome}.")
+                st.rerun()
+
+    # ── History ──
+    st.markdown("**Edit history** — every change made in the tracker's Admin tab, and "
+                "every change to the manager lists above. It can be added to but not "
+                "edited or deleted.")
+    tz = ZoneInfo(STORE_TZ)
+    today = datetime.now(tz).date()
+    h1, h2 = st.columns([2, 3])
+    pick = h1.selectbox("Store", ["All stores"] + stores, key="brk_hist_store")
+    span = h2.date_input("Dates", (today - timedelta(days=6), today), max_value=today,
+                         key="brk_hist_dates")
+    span = tuple(span) if isinstance(span, (list, tuple)) else (span,)
+    first, last = span[0], span[-1]          # a half-picked range is one day
+    since = datetime.combine(first, datetime.min.time(), tz)
+    until = datetime.combine(last + timedelta(days=1), datetime.min.time(), tz)
+    try:
+        rows = break_store.history(db, None if pick == "All stores" else pick, since, until)
+    except break_store.StoreError as e:
+        st.error(f"Could not read the history: {e}")
+        return
+    if not rows:
+        st.caption("Nothing recorded for that store and those dates.")
+        return
+
+    def when(ts):
+        t = ts.astimezone(tz)
+        return f"{t:%b} {t.day}, {t.hour % 12 or 12}:{t:%M %p}"
+
+    table = []
+    for r in rows:
+        got, dev = break_store.parse_ts(r["at"]), break_store.parse_ts(r["device_at"])
+        note = ""
+        # The database stamps "Received" itself. A tablet clock set wrong, or a
+        # change that sat in the outbox while the tablet was offline, shows up
+        # as a gap between the two.
+        if dev and got:
+            gap = (got - dev).total_seconds()
+            if gap < -120:
+                note = "⚠️ tablet clock was ahead"
+            elif gap > 600:
+                note = f"sent {int(gap // 60)} min late (offline)"
+        table.append({"When": when(dev or got), "Received": when(got) if got else "",
+                      "Store": r["store"], "Manager": r["manager"], "Action": r["action"],
+                      "Detail": r["detail"], "Device": r["device"], "Note": note})
+    df = pd.DataFrame(table)
+    st.caption(f"{len(df)} change{'s' if len(df) != 1 else ''}, newest first. Times are "
+               "Michigan time. **When** is the tablet's clock; **Received** is the "
+               "database's, which the tablet can't change.")
+    st.dataframe(df, hide_index=True, width="stretch")
+    st.download_button("⬇️  Download as CSV", df.to_csv(index=False).encode("utf-8"),
+                       file_name=f"break-history-{first}-to-{last}.csv", mime="text/csv",
+                       key="brk_hist_csv")
 
 
 def _settings_deals():
@@ -2976,6 +3129,6 @@ studio.configure(
            "inventory": _by_path["inventory"], "strain": _by_path["strain"],
            "tools": _by_path["store-tools"], "settings": _by_path["settings"]})
 studio.new_run()
-shell.sidebar(_SECTIONS, _TRAILING, _nav.url_path)
-studio.context_bar(_smilez_mark())
+shell.sidebar(_SECTIONS, _TRAILING, _nav.url_path, top=studio.store_picker)
+studio.context_bar(_smilez_mark(), _nav.url_path)
 _nav.run()

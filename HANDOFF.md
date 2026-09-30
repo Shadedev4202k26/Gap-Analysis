@@ -60,11 +60,12 @@ wrong:
 
 ## Open work, roughly by value
 
-- **Curbside and break/lunch trackers**, shared across computers and separated
-  by store. Both are standalone HTML using `localStorage`, so state never
-  leaves one browser. Needs Supabase tables and a rewrite away from local
-  storage. The break/lunch one keeps a manager PIN in local storage that should
-  not move across as-is.
+- **Curbside and break/lunch rosters**, shared across computers and separated
+  by store. Both are standalone HTML using `localStorage`, so the roster never
+  leaves one browser. The break tracker's PIN is gone: managers sign in by name
+  (adding themselves the first time) and every Admin change goes to an
+  append-only history in Supabase — README → Break & lunch tracker. The roster
+  itself is still per tablet.
 - **A draft flag for a stored week.** A sheet still being written becomes the
   printing week automatically at midnight on its start date.
 - **Deep links to the default page 404.** Streamlit serves the default page at

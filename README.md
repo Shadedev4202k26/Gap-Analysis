@@ -182,6 +182,101 @@ delete from public.deal_sheets where week_start = '1999-01-04';
   whose deal is new, different, or has ended. An ended deal counts: that shelf
   tag is still advertising a discount the store no longer honours.
 
+## Break & lunch tracker
+
+`break-lunch-tracker.html` runs under **Store tools**. Its **Admin** tab — adding
+associates and changing their breaks — opens only after a manager taps their
+name from that store's list. The first time, they type it in and it is added to
+the list. There is no PIN: every Admin change is recorded with the manager's
+name and the time instead, and reviewed under **Settings → Break & lunch
+tracker**, which is also where a typo or a leaver is taken off a store's list.
+
+The roster itself still lives in the tablet's browser; only the manager lists
+and the history are in Supabase.
+
+### Creating the tables
+
+Run this in the Supabase **SQL Editor**, the same way as the deals table above.
+It is safe to run again.
+
+```sql
+create table if not exists public.break_managers (
+    id         bigint generated always as identity primary key,
+    store      text        not null check (length(store) between 1 and 60),
+    name       text        not null check (length(name) between 1 and 40),
+    active     boolean     not null default true,
+    created_at timestamptz not null default now(),
+    unique (store, name)
+);
+
+create table if not exists public.break_audit (
+    id        bigint generated always as identity primary key,
+    at        timestamptz not null default now(),   -- set by the database, never the tablet
+    device_at timestamptz,                          -- the tablet's own clock, for comparison
+    store     text not null check (length(store)   between 1 and 60),
+    manager   text not null check (length(manager) between 1 and 60),
+    action    text not null check (length(action)  between 1 and 60),
+    detail    text not null default '' check (length(detail) <= 2000),
+    device    text not null default '' check (length(device) <= 60)
+);
+create index if not exists break_audit_store_at on public.break_audit (store, at desc);
+
+-- The app's key is in every tracker page, so it gets the least that works.
+-- Managers: read, add, and switch active on or off — never delete, so a
+-- removed manager's name still matches their history.
+-- History: read and add only. No update, no delete, and `at` and `id` are not
+-- insertable, so nothing holding the key can rewrite or backdate a change.
+grant usage on schema public to anon, authenticated;
+revoke all on public.break_managers, public.break_audit from anon, authenticated;
+grant select on public.break_managers, public.break_audit to anon, authenticated;
+grant insert (store, name) on public.break_managers to anon, authenticated;
+grant update (active)      on public.break_managers to anon, authenticated;
+grant insert (device_at, store, manager, action, detail, device)
+      on public.break_audit to anon, authenticated;
+
+alter table public.break_managers enable row level security;
+alter table public.break_audit    enable row level security;
+
+drop policy if exists "break managers read"   on public.break_managers;
+drop policy if exists "break managers insert" on public.break_managers;
+drop policy if exists "break managers update" on public.break_managers;
+drop policy if exists "break audit read"      on public.break_audit;
+drop policy if exists "break audit insert"    on public.break_audit;
+
+create policy "break managers read"   on public.break_managers
+    for select to anon, authenticated using (true);
+create policy "break managers insert" on public.break_managers
+    for insert to anon, authenticated with check (true);
+create policy "break managers update" on public.break_managers
+    for update to anon, authenticated using (true) with check (true);
+create policy "break audit read"      on public.break_audit
+    for select to anon, authenticated using (true);
+create policy "break audit insert"    on public.break_audit
+    for insert to anon, authenticated with check (true);
+```
+
+Nothing else to set up: each store's list fills in as its managers sign in.
+
+### What the history can and can't tell you
+
+* **When** is the tablet's clock and **Received** is the database's. The tablet
+  can't change Received, so a tablet clock set wrong shows up as "tablet clock
+  was ahead", and a change made offline shows as "sent N min late" — the tracker
+  holds changes while offline and sends them when the connection is back.
+* Signing in is picking or typing a name, not proving it. Anyone at the tablet
+  can tap any manager's name or add a new one, and removing someone in Settings
+  only takes them off the list — they can type their name again. The history
+  makes all of that visible afterwards rather than preventing it.
+* A typed name that matches one on the list, ignoring case, signs in as that
+  person, so "jess" doesn't become a second Jess. "Jessica" still would.
+* The Break tab's **Start** and **Back** buttons are floor actions and are not
+  signed in or recorded. Marking a break done or undoing it from **Admin** is.
+* The key in the page can add history rows as well as read them, so a row could
+  be forged by someone who pulls the key out of the page source. It cannot
+  remove or change a real one.
+* Clearing the tablet's browser data loses the roster and anything still
+  waiting to be sent. Everything already received stays.
+
 ## Tags
 
 Three builders, all filling the same nine templates through `pdftk`:

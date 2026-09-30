@@ -6,9 +6,10 @@ live sheet preview, then review the real pages and print.
 
 Two things make it feel less like a script re-running top to bottom:
 
-- The week and store are chosen once, in the bar at the top of every page,
-  rather than in an expander inside each tag tab. They live in session state
-  and everything reads them through context().
+- The week and store are chosen once rather than in an expander inside each
+  tag tab: the store at the top of the sidebar, for every page, and the week
+  in the bar above the pages that print against it. They live in session
+  state and everything reads them through context().
 - The picker runs inside an st.fragment, so ticking a tag re-runs the picker
   alone — not the sidebar, the context bar or the rest of the page — and the
   preview beside it is HTML drawn from the same rows, not a PDF build. A real
@@ -47,6 +48,11 @@ def _page(name):
 
 
 esc = html.escape
+
+# The eight stores, for pages that need a store without a deals sheet loaded
+# (Store tools, Settings). A loaded sheet's own store columns come first.
+KNOWN_STORES = ["Allegan", "Burton", "Corunna", "Quincy", "Reading", "Sturgis",
+                "Three Rivers", "Wayne"]
 
 # ── formats ─────────────────────────────────────────────────────────────────
 FORMATS = {
@@ -146,12 +152,17 @@ def context():
             except deal_store.StoreError as e:
                 why = f"could not read {deal_store.week_label(week)} back — {e}"
 
-    stores = list(sheet.stores) if sheet else []
-    store = ss.get("zb_store")
-    if stores and store not in stores:
+    sheet_stores = list(sheet.stores) if sheet else []
+    stores = sheet_stores + [s for s in KNOWN_STORES if s not in sheet_stores]
+    # One store for the whole app, picked in the sidebar. It rides in the URL
+    # too, so a store's tablet opened from a bookmark starts on that store.
+    store = ss.get("zb_store") or st.query_params.get("store")
+    if store not in stores:
         store = stores[0]
-        ss["zb_store"] = store
-    current = sheet.deals(store) if sheet else []
+    ss["zb_store"] = store
+    if st.query_params.get("store") != store:
+        st.query_params["store"] = store
+    current = sheet.deals(store) if store in sheet_stores else []
 
     prev, prev_week = None, None
     others = [w["week"] for w in weeks if w["week"] != week]
@@ -162,7 +173,7 @@ def context():
                 other = deals_mod.Sheet.from_dict(local[prev_week.isoformat()])
             else:
                 other = _sheet_for(db, prev_week) if db is not None else None
-            prev = other.deals(store) if other else None
+            prev = other.deals(store) if other and store in other.stores else None
         except deal_store.StoreError:
             prev = None
 
@@ -252,9 +263,21 @@ def _week_panel(ctx):
 
 
 def _pick_store():
-    v = st.session_state.get("zb_store_pills")
+    v = st.session_state.get("zb_store_pick")
     if v:
         st.session_state["zb_store"] = v
+        st.query_params["store"] = v
+
+
+def store_picker():
+    """The app-wide store, at the top of the sidebar. Tags read its deals column,
+    Store tools signs managers in to it, Settings opens on it."""
+    ctx = context()
+    st.session_state["zb_store_pick"] = ctx["store"]
+    st.selectbox("Store", ctx["stores"], key="zb_store_pick", on_change=_pick_store)
+
+
+WEEK_PAGES = {"", "home", "shelf-tags"}   # pages that print against the top bar's week
 
 
 @st.cache_data(show_spinner=False)
@@ -268,24 +291,19 @@ def _avatar():
     return f'<img class="zb-av" src="data:image/png;base64,{b}" alt="">'
 
 
-def context_bar(mark_html):
-    """The bar above every page: week, store, and the wordmark."""
+def context_bar(mark_html, current):
+    """The bar above every page: the deals week where tags are printed, and the
+    wordmark. The store lives in the sidebar because every page uses it."""
     ctx = context()
-    week_txt = deal_store.week_label(ctx["week"]) if ctx["week"] else "Load a week"
-    dot, status = _week_status(ctx["week"])
-    # Kept short — icons, no WEEK/STORE labels, the week's status as a dot.
+    # Kept short — an icon, no WEEK label, the week's status as a dot.
     with st.container(key="zbctx", horizontal=True, vertical_alignment="center", gap="small"):
-        with st.popover(f"{dot} {week_txt}", icon=":material/calendar_month:", help=status):
-            _week_panel(ctx)
-        with st.popover(ctx["store"] or "Store", icon=":material/storefront:",
-                        disabled=not ctx["stores"], help="Which store's deals the tags use"):
-            st.markdown('<div class="zb-panel-h">Store</div>', unsafe_allow_html=True)
-            st.session_state["zb_store_pills"] = ctx["store"]
-            st.pills("Store", ctx["stores"], key="zb_store_pills",
-                     selection_mode="single", label_visibility="collapsed",
-                     on_change=_pick_store)
-            if ctx["deals"]:
-                st.caption(f"{ctx['store']} runs {len(ctx['deals'])} deals this week.")
+        if current in WEEK_PAGES:
+            week_txt = deal_store.week_label(ctx["week"]) if ctx["week"] else "Load a week"
+            dot, status = _week_status(ctx["week"])
+            with st.popover(f"{dot} {week_txt}", icon=":material/calendar_month:", help=status):
+                _week_panel(ctx)
+                if ctx["deals"]:
+                    st.caption(f"{ctx['store']} runs {len(ctx['deals'])} deals this week.")
         # Smilez × Ziggy, at the right end of the bar: the two names side by side.
         st.markdown(f'<span class="zb-ctxmark" role="img" aria-label="Smilez × ZiggyBot">'
                     f'{mark_html}<span class="zb-x" aria-hidden="true">×</span>{_avatar()}'
