@@ -19,9 +19,8 @@ https://ziggyz.streamlit.app:
 - #8 — Mix types / Sale bubbles / Only what changed also on Shelf tags' Pick
   tags step; the pinned action bar kept clear of Streamlit Cloud's corner
 
-There is no work in flight. Every remote branch except `main` is merged and can
-be deleted: `deli-fixes`, `week-default`, `outdoor-price`, `ui-shell`,
-`collab-banner`, `windows-handoff`, `break-managers`, `shelf-tags-step2-options`.
+There is no work in flight, and `main` is the only branch — the eight merged
+ones were deleted on 2026-10-01.
 
 ## Waiting on people, not code
 
