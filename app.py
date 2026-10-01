@@ -59,6 +59,7 @@ except ImportError:
 import break_store
 import shell
 import studio
+import support
 
 try:
     import deal_store
@@ -2896,6 +2897,7 @@ def render_settings():
                 '<div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     _settings_deals()
     _settings_break()
+    support.settings_inbox(STORE_TZ)
 
 
 STORE_TZ = "America/Detroit"   # every store is in Michigan; history shows their local time
@@ -3131,6 +3133,9 @@ studio.configure(
            "inventory": _by_path["inventory"], "strain": _by_path["strain"],
            "tools": _by_path["store-tools"], "settings": _by_path["settings"]})
 studio.new_run()
-shell.sidebar(_SECTIONS, _TRAILING, _nav.url_path, top=studio.store_picker)
+support.configure(init_db=init_supabase, context=studio.context,
+                  page_title=lambda: _nav.title)
+shell.sidebar(_SECTIONS, _TRAILING, _nav.url_path, top=studio.store_picker,
+              bottom=support.button)
 studio.context_bar(_smilez_mark(), _nav.url_path)
 _nav.run()
