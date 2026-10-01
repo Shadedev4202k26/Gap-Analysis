@@ -5,7 +5,7 @@ state of play. Work moved from the Mac to the Windows laptop on 2026-09-29.
 
 ## Everything is merged
 
-PRs #1–#8 are all in `main`, which is what the eight stores run at
+PRs #1–#10 are all in `main`, which is what the eight stores run at
 https://ziggyz.streamlit.app:
 
 - #1–#5 — deals correctness (deli shelf badges, family matching, 28G), week
@@ -18,9 +18,13 @@ https://ziggyz.streamlit.app:
   whole app, kept in the URL (`?store=Wayne`)
 - #8 — Mix types / Sale bubbles / Only what changed also on Shelf tags' Pick
   tags step; the pinned action bar kept clear of Streamlit Cloud's corner
+- #9 — Melted Diamonds is a brand-line descriptor, like Live Resin
+- #10 — **Request support** under Settings in the sidebar: a window that sends
+  a request into ZiggyBot (read under Settings → Support requests, marked done
+  or reopened there) or opens a pre-filled email to chad@shopsmilez.com
 
-There is no work in flight, and `main` is the only branch — the eight merged
-ones were deleted on 2026-10-01.
+There is no work in flight, and `main` is the only branch: each branch is
+deleted once its PR merges.
 
 ## Waiting on people, not code
 
@@ -32,6 +36,10 @@ ones were deleted on 2026-10-01.
   it always opens on that store. Any tablet running a *downloaded* copy of the
   break tracker still has the old PIN version — download a fresh one from
   Store tools.
+- **The first support request.** Also never sent against the live table (it
+  can be marked done but not deleted). On the live app: Request support →
+  send one → Settings → Support requests → Mark done. Try *Email Chad instead*
+  once on a store device to be sure it opens a mail app there.
 
 ## First thing on a new machine
 
@@ -95,6 +103,9 @@ wrong:
 - **Streamlit's `use_container_width` is deprecated** and logs a warning on
   every use; new code uses `width="stretch"`. The old calls will break on a
   future Streamlit upgrade.
+- **Being told about new support requests.** Today they wait in Settings until
+  someone looks. An email per request needs an email-sending service (none is
+  set up); a count on the Settings link would be the cheap version.
 - **A draft flag for a stored week.** A sheet still being written becomes the
   printing week automatically at midnight on its start date.
 - **Deep links to the default page 404.** Streamlit serves the default page at
@@ -135,6 +146,16 @@ wrong:
   that line exactly as it is; the page says so if it goes missing.
 - **Editing `studio.py` or `shell.py` needs a server restart locally** — a
   browser reload re-runs `app.py` but keeps the old imported modules.
+- **Brand-line descriptors live in one list**, `BRAND_DESCRIPTORS` in
+  `build_tag_rows` (`app.py`). An entry matches singular or plural and any
+  spacing ("Melted Diamond", "Melted-Diamonds"). Before adding one, run every
+  local export through `build_tag_rows` before and after and diff: Melted
+  Diamonds changed exactly 14 of 4,520 tags, and a too-short word ("melted")
+  would have hit the strain "Melted Strawberries".
+- **Checking a new Supabase table without leaving rows:** send a request
+  that's refused for permissions (`42501`) or for bad data (`23514`). Data is
+  only checked once the permission has passed, so `23514` proves the insert is
+  allowed without saving anything. Used for the break and support tables.
 - **Testing the CSV upload without a person:** serve the file from a local
   port with CORS for `localhost:8501`, then `fetch` it in the page and set it
   on the uploader's `input[type=file]` with a `DataTransfer`. Streamlit's
@@ -156,6 +177,10 @@ Two things follow from that key being public:
   re-uploadable, so this was accepted rather than locked down.
 - The break tracker tables were designed for it: history is insert-only and the
   database stamps the time. See README → Break & lunch tracker.
+- `support_requests` follows the same rules (add, mark done; no edit, delete
+  or backdating), but anyone with the key can *read* it — so the form asks
+  people to leave out passwords and customer details, and the reply contact is
+  optional. See README → Support requests.
 
 If the key is rotated again, update Streamlit Cloud's secrets and each
 machine's `.streamlit/secrets.toml`, and re-download the break tracker on every
