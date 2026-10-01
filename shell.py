@@ -64,6 +64,17 @@ section[data-testid="stSidebar"]{{background:var(--s1);border-right:1px solid va
     color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15}}
 .zb-brand-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1.4px;
     color:var(--dim);margin-top:3px;white-space:nowrap}}
+/* Request support: a button dressed as a nav link, so it sits in the list */
+.st-key-zbsupport button{{background:transparent!important;border:none!important;
+    box-shadow:none!important;justify-content:flex-start!important;min-height:48px!important;
+    padding:10px 12px!important;border-radius:8px!important;gap:11px!important}}
+.st-key-zbsupport button > div{{justify-content:flex-start!important;gap:11px!important}}
+.st-key-zbsupport button:hover{{background:rgba(139,92,246,.08)!important}}
+.st-key-zbsupport button p{{font-family:'Inter',sans-serif!important;font-size:14px!important;
+    font-weight:600!important;letter-spacing:0!important;text-transform:none!important;
+    color:var(--dim)!important;margin:0 0 0 3px!important}}
+.st-key-zbsupport button [data-testid="stIconMaterial"]{{font-size:19px!important;
+    color:var(--dim)!important}}
 .st-key-zbside_top{{margin:14px 0 2px;padding:0 4px}}
 .st-key-zbside_top label p{{font-family:'JetBrains Mono',monospace!important;font-size:10px!important;
     letter-spacing:1.6px!important;color:var(--dim)!important;text-transform:uppercase!important}}
@@ -95,9 +106,10 @@ def nav_link(page, current):
         st.page_link(page, label=page.title, icon=page.icon, use_container_width=True)
 
 
-def sidebar(sections, trailing, current, top=None):
+def sidebar(sections, trailing, current, top=None, bottom=None):
     """sections: {label: [Page]}. trailing: [Page] pinned at the bottom.
-    top: drawn under the brand, above the links (the store picker)."""
+    top: drawn under the brand, above the links (the store picker).
+    bottom: drawn under the trailing links (Request support)."""
     with st.sidebar:
         brand()
         if top:
@@ -111,6 +123,8 @@ def sidebar(sections, trailing, current, top=None):
         st.markdown('<div style="flex-grow:1;min-height:20px"></div>', unsafe_allow_html=True)
         for page in trailing:
             nav_link(page, current)
+        if bottom:
+            bottom()
 
 
 def page_header(title):

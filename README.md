@@ -277,6 +277,63 @@ Nothing else to set up: each store's list fills in as its managers sign in.
 * Clearing the tablet's browser data loses the roster and anything still
   waiting to be sent. Everything already received stays.
 
+## Support requests
+
+**Request support**, under Settings at the bottom of the sidebar, opens a window
+that invites anyone using the app to report a problem, suggest something or ask
+a question. It offers two ways, and both reach Chad:
+
+* **Send in ZiggyBot** — saved to Supabase with the store and page it came
+  from, and read under **Settings → Support requests**, where each can be
+  marked done (or reopened). Nothing there can be edited or deleted.
+* **Email Chad instead** — opens the person's email app addressed to
+  chad@shopsmilez.com, with what they typed already in it.
+
+If the table below is missing, the form says so and points people to email.
+
+### Creating the table
+
+Run this in the Supabase **SQL Editor**. It is safe to run again.
+
+```sql
+create table if not exists public.support_requests (
+    id      bigint generated always as identity primary key,
+    at      timestamptz not null default now(),
+    kind    text not null check (length(kind) between 1 and 40),
+    message text not null check (length(message) between 1 and 4000),
+    name    text not null default '' check (length(name)    <= 80),
+    contact text not null default '' check (length(contact) <= 120),
+    store   text not null default '' check (length(store)   <= 60),
+    page    text not null default '' check (length(page)    <= 80),
+    status  text not null default 'open' check (status in ('open', 'done'))
+);
+
+-- Add requests and mark them done; never edit or delete one, never set its time.
+grant usage on schema public to anon, authenticated;
+revoke all on public.support_requests from anon, authenticated;
+grant select on public.support_requests to anon, authenticated;
+grant insert (kind, message, name, contact, store, page)
+      on public.support_requests to anon, authenticated;
+grant update (status) on public.support_requests to anon, authenticated;
+
+alter table public.support_requests enable row level security;
+
+drop policy if exists "support read"   on public.support_requests;
+drop policy if exists "support insert" on public.support_requests;
+drop policy if exists "support update" on public.support_requests;
+
+create policy "support read"   on public.support_requests
+    for select to anon, authenticated using (true);
+create policy "support insert" on public.support_requests
+    for insert to anon, authenticated with check (true);
+create policy "support update" on public.support_requests
+    for update to anon, authenticated using (true) with check (true);
+```
+
+The app's key is public, so anyone who pulls it out of a page could read these
+requests — that is why the form asks people to leave out passwords and customer
+details, and why the reply contact is optional.
+
 ## Tags
 
 Three builders, all filling the same nine templates through `pdftk`:
