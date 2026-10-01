@@ -1,20 +1,38 @@
-# Picking this up on another machine — 2026-09-29
+# Where this is up to — 2026-10-01
 
 `README.md` covers setup (macOS and Windows) and how the app works. This is the
-state of play.
+state of play. Work moved from the Mac to the Windows laptop on 2026-09-29.
 
 ## Everything is merged
 
-PRs #1–#5 are all in `main`, which is what the eight stores run:
+PRs #1–#8 are all in `main`, which is what the eight stores run at
+https://ziggyz.streamlit.app:
 
-- deals correctness — deli shelf badges, family matching, 28G
-- week picker starts on the current week
-- fixed outdoor price on hook tags
-- the new navigation, Home dashboard and three-step Shelf tags flow
-- the Smilez × Ziggy lockup in the top bar
+- #1–#5 — deals correctness (deli shelf badges, family matching, 28G), week
+  picker on the current week, fixed outdoor price on hook tags, the new
+  navigation / Home / three-step Shelf tags flow, the Smilez × Ziggy lockup
+- #6 — Windows: pdftk-java, portable date formatting, secrets.toml untracked
+- #7 — break tracker: managers sign in by name (adding themselves the first
+  time), every Admin change goes to an append-only history in Supabase,
+  reviewed in Settings; one store picker at the top of the sidebar for the
+  whole app, kept in the URL (`?store=Wayne`)
+- #8 — Mix types / Sale bubbles / Only what changed also on Shelf tags' Pick
+  tags step; the pinned action bar kept clear of Streamlit Cloud's corner
 
-There is no work in flight. Branches `deli-fixes`, `week-default`,
-`outdoor-price`, `ui-shell` and `collab-banner` are merged and can be deleted.
+There is no work in flight. Every remote branch except `main` is merged and can
+be deleted: `deli-fixes`, `week-default`, `outdoor-price`, `ui-shell`,
+`collab-banner`, `windows-handoff`, `break-managers`, `shelf-tags-step2-options`.
+
+## Waiting on people, not code
+
+- **A real manager's first sign-in.** Never done against the live tables (it
+  writes a permanent row). Have one manager open Store tools → Break & Lunch
+  Tracker → Admin and add their name, then check Settings → Break & lunch
+  tracker shows the name and the sign-in.
+- **Each store's tablet:** pick the store in the sidebar, then bookmark it, so
+  it always opens on that store. Any tablet running a *downloaded* copy of the
+  break tracker still has the old PIN version — download a fresh one from
+  Store tools.
 
 ## First thing on a new machine
 
@@ -70,12 +88,14 @@ wrong:
 
 ## Open work, roughly by value
 
-- **Curbside and break/lunch rosters**, shared across computers and separated
-  by store. Both are standalone HTML using `localStorage`, so the roster never
-  leaves one browser. The break tracker's PIN is gone: managers sign in by name
-  (adding themselves the first time) and every Admin change goes to an
-  append-only history in Supabase — README → Break & lunch tracker. The roster
-  itself is still per tablet.
+- **Curbside and break/lunch rosters**, shared across computers. Both are
+  standalone HTML using `localStorage`, so the roster never leaves one
+  browser. The break tracker's sign-in and history are already in Supabase
+  (README → Break & lunch tracker); the roster itself is still per tablet, and
+  its Break tab's Start / Back are not recorded.
+- **Streamlit's `use_container_width` is deprecated** and logs a warning on
+  every use; new code uses `width="stretch"`. The old calls will break on a
+  future Streamlit upgrade.
 - **A draft flag for a stored week.** A sheet still being written becomes the
   printing week automatically at midnight on its start date.
 - **Deep links to the default page 404.** Streamlit serves the default page at
@@ -102,6 +122,24 @@ wrong:
   hand-built `st.page_link` nav in `shell.py`.
 - **Verify in the running app, not in a screenshot.** Five CSS bugs in this
   work were invisible to the eye and obvious to `getComputedStyle`.
+- **Streamlit Cloud covers the bottom-right corner** with its own controls —
+  "Manage app" for the owner, a badge and avatar (137 × 46px) for everyone
+  else — outside the app's frame, so app CSS cannot move or hide them. Pinned
+  UI has to keep out of that corner; `studio.CLOUD_CSS` does, applied only when
+  `st.context.url` is on `*.streamlit.app`. It only shows once deployed.
+- **The store is app-wide state.** `studio.context()` owns it (session state
+  plus the `?store=` query param); pages read `ctx["store"]` rather than
+  drawing their own store picker. `KNOWN_STORES` lists all eight so pages that
+  don't need deals still have them with no sheet loaded.
+- **The break tracker is configured by string replacement.** Store tools swaps
+  the line `const CONFIG = null; // ZB_CONFIG` for the URL, key and store. Keep
+  that line exactly as it is; the page says so if it goes missing.
+- **Editing `studio.py` or `shell.py` needs a server restart locally** — a
+  browser reload re-runs `app.py` but keeps the old imported modules.
+- **Testing the CSV upload without a person:** serve the file from a local
+  port with CORS for `localhost:8501`, then `fetch` it in the page and set it
+  on the uploader's `input[type=file]` with a `DataTransfer`. Streamlit's
+  toggles respond to `input.click()`, not to clicking their label from script.
 - `tools/strip_logo.py --check` reports whether a re-exported template has
   brought the Smilez wordmark back.
 
