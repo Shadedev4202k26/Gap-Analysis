@@ -717,6 +717,35 @@ def _setting(where, key, default, label, help_, disabled=False):
                  disabled=disabled)
 
 
+MIX_HELP = ("Put sativa, hybrid and indica on the same sheet instead of a page "
+            "per type. Saves paper; every tag keeps its own colour.")
+BUBBLES_HELP = "Standing bulk deals and deli shelf badges print either way."
+CHANGED_HELP = ("Show only the tags whose deal is new, different or ended — the ones "
+                "on the shelf that are now wrong.")
+
+
+def _step2_options(ctx, changed):
+    """Step 1's settings again on step 2, where their effect shows in the preview.
+
+    They share step 1's settings, so either step can change them. "Only what
+    changed" here is the Changed filter: switching it on picks that pill, and
+    picking another pill switches it off.
+    """
+    ss = st.session_state
+    o1, o2, o3 = st.columns(3, gap="small")
+    _setting(o1, "zb_mix", False, "Mix types on one page", MIX_HELP)
+    _setting(o2, "zb_bubbles", True, "Sale bubbles", BUBBLES_HELP, disabled=not ctx["deals"])
+    if changed:
+        ss["zb_changed_view"] = ss.get("zb_filter") == "Changed"
+
+        def flip():
+            on = ss["zb_changed_view"]
+            ss["zb_filter"] = "Changed" if on else "All"
+            ss["zb_changed_only"] = on
+        o3.toggle("Only what changed", key="zb_changed_view", on_change=flip,
+                  help=f"Since {deal_store.week_label(ctx['prev_week'])}. {CHANGED_HELP}")
+
+
 def _step1(ctx):
     ss = st.session_state
     fmt = ss.setdefault("zb_fmt", "hook")
@@ -755,17 +784,13 @@ def _step1(ctx):
             st.rerun()
 
     o1, o2, o3 = st.columns(3, gap="small")
-    _setting(o1, "zb_mix", False, "Mix types on one page",
-             "Put sativa, hybrid and indica on the same sheet instead of a page "
-             "per type. Saves paper; every tag keeps its own colour.")
-    _setting(o2, "zb_bubbles", True, "Sale bubbles from this week's deals",
-             "Standing bulk deals and deli shelf badges print either way.",
+    _setting(o1, "zb_mix", False, "Mix types on one page", MIX_HELP)
+    _setting(o2, "zb_bubbles", True, "Sale bubbles from this week's deals", BUBBLES_HELP,
              disabled=not ctx["deals"])
     if ctx["prev"] is not None:
         _setting(o3, "zb_changed_only", False,
                  f"Only what changed since {deal_store.week_label(ctx['prev_week'])}",
-                 "Start the picker on the tags whose deal is new, different or "
-                 "ended — the ones on the shelf that are now wrong.")
+                 CHANGED_HELP)
 
     ready = True
     if src == "csv":
@@ -807,6 +832,7 @@ def _step2(ctx):
 
     left, right = st.columns([13, 10], gap="large")
     with left:
+        _step2_options(ctx, ctx["prev"] is not None and any(r["_changed"] for r in rows))
         cats = pd.Series([r.get("category") or "—" for r in rows]).value_counts()
         s1, s2 = st.columns([1, 1], vertical_alignment="center")
         q = s1.text_input("Search", key="zb_q", placeholder="Search strain or brand…",
@@ -1015,6 +1041,7 @@ def _step2_hand(ctx):
     fmt, mix = ss["zb_fmt"], ss.get("zb_mix", False)
     left, right = st.columns([13, 10], gap="large")
     with left:
+        _step2_options(ctx, False)
         st.markdown('<div class="zb-h2">Type your tags</div>', unsafe_allow_html=True)
         seed = ss.setdefault("zb_hand_seed", pd.DataFrame(
             [{"Qty": 1, "Brand line": "", "Strain": "", "THC": "", "Price": "",
@@ -1335,6 +1362,23 @@ CSS = """
 [data-testid="stImage"] img{border-radius:6px;box-shadow:0 12px 36px rgba(0,0,0,.5)}
 </style>
 """
+
+
+# Streamlit Community Cloud draws its own controls over the bottom-right corner
+# of the page — "Manage app" for the owner, a badge and avatar for everyone
+# else, about 140 × 46px — outside the app, where CSS here cannot reach them.
+# The pinned action bar keeps its buttons out of that corner instead.
+CLOUD_CSS = """<style>
+.st-key-zbfoot{padding-right:184px!important}
+@media (max-width: 900px){.st-key-zbfoot{padding-right:16px!important;padding-bottom:58px!important}}
+</style>"""
+
+
+def on_cloud():
+    try:
+        return ".streamlit.app" in (st.context.url or "")
+    except Exception:                                       # noqa: BLE001
+        return False
 
 
 def page_home():
