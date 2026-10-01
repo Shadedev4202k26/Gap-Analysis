@@ -983,7 +983,7 @@ def build_tag_rows(df):
     # Descriptors that get appended to the brand line when present in a product.
     # Add new ones here (lowercase) and they'll flow to every tag automatically.
     BRAND_DESCRIPTORS = ["single", "hashbone", "tarantula", "moonrocks", "snowballs",
-                         "live resin"]
+                         "live resin", "melted diamonds"]
     def _desc_pat(kw):
         # match a descriptor whether the product spells it singular or plural,
         # and allow any spacing/hyphen between words ("live resin", "Live-Resin")
