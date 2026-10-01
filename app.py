@@ -3087,6 +3087,8 @@ def _settings_deals():
 # name collide.
 st.markdown(shell.CSS, unsafe_allow_html=True)
 st.markdown(studio.CSS, unsafe_allow_html=True)
+if studio.on_cloud():
+    st.markdown(studio.CLOUD_CSS, unsafe_allow_html=True)
 
 # Home is the default page, so it is the one served at "/". Streamlit does not
 # route a default page's own url_path, which is why a deep link to the old
