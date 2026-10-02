@@ -33,6 +33,15 @@ NOISE = re.compile(
 SIZE = re.compile(r"(?<![a-z0-9.])(\d*\.?\d+)\s*(g|mg|oz|pk)\b", re.I)
 PAREN = re.compile(r"\([^)]*\)")
 DATES = re.compile(r"\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b")
+# "Oct 1-31", "Oct 5-11", "Sept 28 - Oct 4": the 10/5 sheet dates its Brands of
+# the Week lines, and left in, "Jungle Juice Oct 1-31" was read as the brand.
+_MON = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+MONTH_DATES = re.compile(rf"\b{_MON}\s*\d{{1,2}}(?:\s*[-–]\s*(?:{_MON}\s*)?\d{{1,2}})?\b", re.I)
+# "(Excludes Ratio)", "(Excludes Nightime)": products the line does not cover.
+EXCLUDES = re.compile(r"\(\s*excludes?\s+([^)]*)\)", re.I)
+# A ratio edible carries a second cannabinoid: "200mg: 100mg CBN",
+# "200MG THC:50MG CBN", "Recover + CBD".
+RATIO = re.compile(r"\bratio\b|\b(?:cbn|cbd|cbg|thcv)\b|\d\s*mg\s*:|:\s*\d+\s*mg", re.I)
 
 MULTI = re.compile(r"(\d+)\s*/\s*\$\s*(\d+(?:\.\d{1,2})?)")
 FIXED = re.compile(r"^\s*\$\s*(\d+(?:\.\d{1,2})?)\b")
@@ -49,6 +58,24 @@ class Deal:
         # Which product family the sheet listed this deal under, so a preroll
         # deal cannot land on flower that happens to share the brand.
         self.family = family
+        # What the line says it does not cover, from "(Excludes …)".
+        self.excludes = [t.strip() for t in re.split(r",|/|\s+or\s+|\s+and\s+",
+                                                      " ".join(EXCLUDES.findall(text)),
+                                                      flags=re.I) if t.strip()]
+
+    def excluded(self, product):
+        """Does this line's "(Excludes …)" rule out the product?"""
+        for term in self.excludes:
+            if term.lower() == "ratio":
+                if RATIO.search(product):
+                    return True
+            else:
+                # Stem on the first word: the sheet writes "Nightime" for
+                # products named "Nighttime".
+                stem = re.sub(r"[^a-z]", "", term.split()[0].lower())[:5]
+                if len(stem) >= 4 and re.search(rf"\b{stem}", product, re.I):
+                    return True
+        return False
 
     def as_badge(self, row_price=None):
         """The deal dict `sale_badges.draw_deal` expects."""
@@ -85,6 +112,7 @@ def _brands_and_size(rest):
         num = m.group(1).rstrip(".")
         size = f"{num}{m.group(2).upper()}"
     txt = PAREN.sub(" ", rest)
+    txt = MONTH_DATES.sub(" ", txt)
     txt = DATES.sub(" ", txt)
     txt = SIZE.sub(" ", txt)
     txt = NOISE.sub(" ", txt)
@@ -142,7 +170,12 @@ SECTION = re.compile(
     r"^(bulk\s+flower|prepacked?\s+flower|edibles?|non[\s-]?infused\s+pre[\s-]?rolls?"
     r"|infused\s+pre[\s-]?rolls?|concentrates?|disposable\b.*carts?|510\s+carts?"
     r"|daily\s+deals?|new\s+customer|other\s+deals?|misc)\s*$", re.I)
-BOTW = re.compile(r"brands?\s+of\s+the\s+week.*?(\d{1,2})\s*%\s*off", re.I)
+# Two layouts, both seen. 9/28: "Brands of the Week 25% OFF (Excludes Deli
+# Flower)" with bare brand names under it. 10/5: "Brands of the Week (Excludes
+# Deli Flower)" with no percentage, and each line carrying its own — "50% OFF
+# Jungle Juice Oct 1-31", "30% OFF Amnesia Oct 5-11".
+BOTW = re.compile(r"brands?\s+of\s+the\s+week", re.I)
+BOTW_PCT = re.compile(r"(\d{1,2})\s*%\s*off", re.I)
 
 
 def _is_bare_brand(text):
@@ -159,27 +192,36 @@ def parse_column(lines):
     no price, and returns nothing for either.
     """
     deals, seen = [], set()
-    botw_pct = None
+    in_botw, botw_pct = False, None
     family = None
     for raw in lines:
         cell = re.sub(r"\s{2,}", " ", str(raw or "")).strip()
         if not cell or cell.lower() == "nan":
             continue
-        m = BOTW.search(cell)
-        if m:
-            botw_pct = int(m.group(1))
+        if BOTW.search(cell):
+            m = BOTW_PCT.search(cell)
+            in_botw, botw_pct = True, (int(m.group(1)) if m else None)
             continue
         if SECTION.match(cell):
-            botw_pct = None
+            in_botw, botw_pct = False, None
             family = _family(SECTION_FAMILY, cell)
             continue
-        if botw_pct and _is_bare_brand(cell):
-            if cell.lower() not in seen:
-                seen.add(cell.lower())
-                deals.append(Deal(f"{cell} {botw_pct}% OFF", "botw", f"{botw_pct}% OFF",
-                                  [cell], None, pct=botw_pct))
-            continue
-        botw_pct = None                      # any priced line ends the brand list
+        if in_botw:
+            # Brands of the Week cover the brand's whole range, whatever section
+            # the block sits in, so these carry no family.
+            if botw_pct and _is_bare_brand(cell):
+                if cell.lower() not in seen:
+                    seen.add(cell.lower())
+                    deals.append(Deal(f"{cell} {botw_pct}% OFF", "botw", f"{botw_pct}% OFF",
+                                      [cell], None, pct=botw_pct))
+                continue
+            d = parse_line(cell)
+            if d and d.kind == "pct" and d.brands:
+                if cell not in seen:
+                    seen.add(cell)
+                    deals.append(Deal(cell, "botw", d.badge, d.brands, d.size, pct=d.pct))
+                continue
+        in_botw, botw_pct = False, None      # any other priced line ends the list
         if cell in seen:
             continue
         seen.add(cell)
@@ -421,16 +463,37 @@ NOT_510 = re.compile(r"dispos|\bpods?\b|all[\s-]?in[\s-]?one|\baio\b|stylus", re
 IS_510 = re.compile(r"\bcarts?\b|\bcartridges?\b", re.I)
 
 
+PREROLLS = {"preroll", "infused preroll"}
+
+
 def row_families(row):
-    """The families whose deals may apply to a product row, from its POS
-    category. Empty when the category is not one we recognise."""
+    """The families whose deals may apply to a product row. Empty when nothing
+    says what the product is.
+
+    Imported rows answer from their POS category. Custom tags have none — only
+    what was typed — so they answer from the page they were made on
+    (`family_hint`, e.g. every tag on the Preroll page is a preroll), narrowed
+    by a product word typed on the brand line ("1.2G Infused Preroll", "Cart").
+    Never the strain line: strains are called "Orange Gummi".
+    """
     cat = row.get("category", "")
     fam = _family(CATEGORY_FAMILY, cat)
     if fam == "disposable cart" and MISC_VAPE.search(cat):
         form = str(row.get("product", "")).split("|")[-1]    # "1G FS Live Resin Cart"
         if IS_510.search(form) and not NOT_510.search(form):
             return {"510 cart", "disposable cart"}
-    return {fam} if fam else set()
+    if fam:
+        return {fam}
+    hint = set(row.get("family_hint") or ())
+    brand = row.get("brand", "")
+    typed = _family(CATEGORY_FAMILY, brand)
+    if typed == "disposable cart" and not NOT_510.search(brand):
+        typed = {"510 cart", "disposable cart"}               # a bare "Cart" is either
+    elif typed:
+        typed = {typed}
+    if typed and (not hint or typed & hint):
+        return typed & hint if hint else typed
+    return hint
 
 
 def is_deli(row):
@@ -520,6 +583,9 @@ def matches(deal, row):
     fams = row_families(row)
     if deal.family and fams and deal.family not in fams:
         return False
+    if deal.excludes and deal.excluded(f"{row.get('product', '')} {row.get('brand', '')} "
+                                       f"{row.get('strain', '')}"):
+        return False
     text = _norm(f"{row.get('product','')} {row.get('brand','')}")
     # Brands are matched against the brand field only, never the whole product
     # name. Several real brands double as ordinary product words, and _brand_hit
@@ -553,6 +619,21 @@ def for_row(row, deals):
     hits = [d for d in deals if matches(d, row)]
     if not hits:
         return None
+    # Nothing on the tag says what it is — a custom tag with no category, typed
+    # on a page that takes any product, with no product word on it. A custom
+    # "MAGIC" tag matched both "10/$15 Magic 1.2G" (their infused prerolls) and
+    # "5/$22 Mr Vapor OR Magic 1G" (their carts) and the longer brand list won;
+    # at a store without the preroll line it took the cart deal unopposed. Only
+    # a deal whose size is also on the tag is safe to print then, and Brands of
+    # the Week, which cover every section. No bubble beats a guessed one.
+    if not row_families(row):
+        on_tag = {s.replace(" ", "") for s in re.findall(
+            r"\d*\.?\d+\s*(?:g|mg|oz|pk)",
+            _norm(f"{row.get('product', '')} {row.get('brand', '')} {row.get('strain', '')}"))}
+        hits = [d for d in hits if d.kind == "botw"
+                or (d.size and _norm(d.size).replace(" ", "") in on_tag)]
+        if not hits:
+            return None
     hits.sort(key=lambda d: (d.kind == "botw", d.size is not None,
                              len(" ".join(d.brands))), reverse=True)
     return hits[0]

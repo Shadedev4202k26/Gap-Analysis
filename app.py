@@ -1235,13 +1235,15 @@ def deal_controls(key):
                      "ended since that week — the ones on the shelf that are now "
                      "wrong. Everything else keeps the tag it already has.")
         on = st.toggle("Add sale bubbles to matching tags", value=True,
-                       key=f"{key}_dealon")
+                       key=f"{key}_dealon",
+                       help="Off prints the tags with no bubble at all: no weekly "
+                            "sale, no standing BUY 5 / BUY 10G deal, no deli shelf.")
         bits = f"**{len(current)}** deals"
         if store:
             bits += f" for **{store}**"
         st.caption(bits + ".")
         if not on:
-            return None
+            return {"off": True}
         return {"deals": current, "prev": prev, "store": store,
                 "week": sheet.week, "updates_only": updates_only}
 
@@ -1329,7 +1331,16 @@ def apply_deals(rows, ctx, key):
     if not rows or not DEALS_AVAILABLE:
         return rows
     ctx = {"deals": ctx} if isinstance(ctx, list) else (ctx or {})
+    # Switched off means off: not the weekly sale, and not the standing bulk
+    # deal or shelf badge either. Those used to go on regardless, so on CSV tags
+    # (which have a category for them to match) the switch looked broken.
+    if ctx.get("off"):
+        return rows
     parsed = ctx.get("deals")
+    if key.startswith("preroll"):
+        # Custom tags carry no category; on this page every tag is a preroll.
+        for r in rows:
+            r.setdefault("family_hint", sorted(deals_mod.PREROLLS))
 
     if ctx.get("updates_only") and parsed:
         before = len(rows)
