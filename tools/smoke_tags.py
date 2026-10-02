@@ -90,6 +90,21 @@ KNOWN = [
     ("Goldkine | Biscotti Pancakes | 28G",    "Prepacked Flower Brands", None),
     ("Glacier | Heavy Z | 3.5G Bag",          "Prepacked Flower Brands", "BUY 5 15% OFF"),
     ("Common Citizen | Lemon Bar Smalls | 3.5G", "-RED TIER",            "RED"),
+    # 2026-10-02: the sheet's Non Infused / Infused and 510 / Disposable sections
+    # were one family each, so a deal crossed into the other half of the brand.
+    ("Dragonfly | Zoap | 1G Preroll",              "PreRoll",
+     "10/$7.50 OR 70/$49 Dragonfly"),
+    ("Dragonfly | Zoap | 1.25G Infused Preroll",   "Infused PreRoll",   "BUY 5 15% OFF"),
+    ("Superfire | Super Maui | 1G Disposable Vape", "Vape Carts Disposable Distillate",
+     "BUY 10G 15% OFF"),
+    # Vape Carts (MISC) mixes forms: its carts take either cart section's deals,
+    # its disposables only the disposable section's.
+    ("Platinum Vape | GMO | 1G FS Live Resin Cart", "Vape Carts (MISC)",
+     "3/$16 Amnesia OR Platinum Vape 1G"),
+    ("Church | Skywalker OG | 1G Liquid Diamond Cart", "Vape Carts (MISC)",
+     "50% OFF ALL Church"),
+    ("No Bad Days | Gas Berry | 1G Live Resin Disposable Vape", "Vape Carts (MISC)",
+     "$10 Packs OR No Bad Days 1g Live Resin Disposables"),
 ]
 for product, category, want in KNOWN:
     brand, strain = [p.strip() for p in product.split("|")][:2]

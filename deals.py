@@ -363,19 +363,37 @@ DELI = re.compile(r"\bdeli\b|\bbulk\b", re.I)
 # only applies within its own: "3/$5.50 Primo OR Traphouse OR Glacier" sits under
 # Non Infused Pre-Rolls, so it must not print on a Glacier flower bag just
 # because the brand matches and the line carries no size to rule it out.
-# Order matters — "Infused PreRoll" is a preroll, not flower.
+#
+# Where the sheet splits a family into two sections, so does this. Brands sell
+# both halves at different prices: "10/$7.50 OR 70/$49 Dragonfly" sits under
+# Non Infused Pre-Rolls and is priced for their $1 prerolls, and with one
+# "preroll" family it printed on every $2.25 Dragonfly infused preroll too. The
+# same split exists for carts — "510 Carts" against "Disposable AND MISC Carts".
+#
+# Order matters: "non infused" contains "infused", "Infused PreRoll" is a
+# preroll and not flower, and a 510 category is checked before the generic cart
+# words that would also match it.
 SECTION_FAMILY = [
+    (re.compile(r"non[\s-]?infused", re.I), "preroll"),
+    (re.compile(r"infused.*pre[\s-]?roll", re.I), "infused preroll"),
     (re.compile(r"pre[\s-]?roll", re.I), "preroll"),
     (re.compile(r"edible", re.I), "edible"),
     (re.compile(r"concentrate", re.I), "concentrate"),
-    (re.compile(r"cart|510|disposable", re.I), "cart"),
+    (re.compile(r"510", re.I), "510 cart"),
+    (re.compile(r"cart|disposable", re.I), "disposable cart"),
     (re.compile(r"flower", re.I), "flower"),
 ]
+# Checked against every category in the 2026-09-29 to 10-02 exports: PreRoll and
+# Multi Pack PreRolls are preroll; Infused PreRoll and Multipack Infused
+# PreRolls are infused preroll; Vape Cart 510 Distillate is 510 cart; Vape Carts
+# Disposable Distillate and Vape Carts (MISC) are disposable cart.
 CATEGORY_FAMILY = [
+    (re.compile(r"infused.*pre[\s-]?roll|pre[\s-]?roll.*infused", re.I), "infused preroll"),
     (re.compile(r"pre[\s-]?roll", re.I), "preroll"),
     (re.compile(r"edible|gumm|chocolate|baked|beverage", re.I), "edible"),
     (re.compile(r"concentrate|rosin|resin|badder|shatter|\bwax\b", re.I), "concentrate"),
-    (re.compile(r"cart|510|disposable|vape", re.I), "cart"),
+    (re.compile(r"510", re.I), "510 cart"),
+    (re.compile(r"cart|disposable|vape", re.I), "disposable cart"),
     (re.compile(r"flower|tier|stash|shake", re.I), "flower"),
 ]
 
@@ -385,6 +403,34 @@ def _family(table, text):
         if pattern.search(text or ""):
             return name
     return None
+
+
+# "Vape Carts (MISC)" is the one category that does not say what is in it. In
+# the 2026-09-15 to 10-02 exports it holds 137 disposables, 52 carts, 32
+# all-in-ones, 19 pods and a few rosin vapes and styluses — and the sheet uses
+# both cart sections for its carts: "3/$16 Amnesia OR Platinum Vape 1G" (510
+# Carts) is for Platinum's MISC "1G FS Live Resin Cart", while "50% OFF ALL
+# Church" (Disposable AND MISC Carts) is for Church's MISC "1G Liquid Diamond
+# Cart". So a cart filed under MISC may take either cart section's deals, and
+# anything else there — disposable, pod, all-in-one — only the disposable
+# section's. That is what keeps "5/$25 Superfire or No Bad Days 1G", a 510
+# deal, off No Bad Days' MISC "1G Live Resin Disposable Vape". The other two
+# vape categories match their contents exactly and stay category-only.
+MISC_VAPE = re.compile(r"\bmisc\b", re.I)
+NOT_510 = re.compile(r"dispos|\bpods?\b|all[\s-]?in[\s-]?one|\baio\b|stylus", re.I)
+IS_510 = re.compile(r"\bcarts?\b|\bcartridges?\b", re.I)
+
+
+def row_families(row):
+    """The families whose deals may apply to a product row, from its POS
+    category. Empty when the category is not one we recognise."""
+    cat = row.get("category", "")
+    fam = _family(CATEGORY_FAMILY, cat)
+    if fam == "disposable cart" and MISC_VAPE.search(cat):
+        form = str(row.get("product", "")).split("|")[-1]    # "1G FS Live Resin Cart"
+        if IS_510.search(form) and not NOT_510.search(form):
+            return {"510 cart", "disposable cart"}
+    return {fam} if fam else set()
 
 
 def is_deli(row):
@@ -471,8 +517,8 @@ def matches(deal, row):
     # A deal stays inside the family the sheet listed it under. Either side
     # unknown means no opinion, so nothing is lost where the sheet or the POS
     # uses wording we do not recognise.
-    row_family = _family(CATEGORY_FAMILY, row.get("category", ""))
-    if deal.family and row_family and deal.family != row_family:
+    fams = row_families(row)
+    if deal.family and fams and deal.family not in fams:
         return False
     text = _norm(f"{row.get('product','')} {row.get('brand','')}")
     # Brands are matched against the brand field only, never the whole product
