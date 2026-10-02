@@ -5,7 +5,7 @@ state of play. Work moved from the Mac to the Windows laptop on 2026-09-29.
 
 ## Everything is merged
 
-PRs #1–#11 are all in `main`, which is what the eight stores run at
+PRs #1–#12 are all in `main`, which is what the eight stores run at
 https://ziggyz.streamlit.app:
 
 - #1–#5 — deals correctness (deli shelf badges, family matching, 28G), week
@@ -25,17 +25,27 @@ https://ziggyz.streamlit.app:
 - #11 — deals stay in their sheet section: infused vs non-infused prerolls and
   510 vs disposable carts are separate families, so "10/$7.50 OR 70/$49
   Dragonfly" no longer prints on Dragonfly's $2.25 infused prerolls
+- #12 — from a store's report: custom tags no longer guess a deal (a typed
+  "MAGIC" preroll tag got Magic's 5/$22 cart deal); the deals switch off now
+  means no bubble at all, standing deals and shelf badges included;
+  "(Excludes Ratio)" and other exclusions are honoured; and the 10/5 sheet's
+  new Brands of the Week layout is read, so they cover the whole brand again
 
 There is no work in flight, and `main` is the only branch: each branch is
 deleted once its PR merges.
 
 ## Waiting on people, not code
 
-- **Reprint the tags #11 corrected.** Infused prerolls carrying a brand's
-  non-infused deal (Dragonfly, Seed Junky, Goldkine, Glacier, Traphouse,
-  Primo) and disposables carrying a 510 deal (Superfire, FLY, Mitten, Magic,
-  Platinum) are wrong on the shelf until reprinted. *Only what changed* won't
-  find them — the sheet didn't change — so filter Pick tags by category.
+- **Reprint the tags #11 and #12 corrected.** Infused prerolls carrying a
+  brand's non-infused deal (Dragonfly, Seed Junky, Goldkine, Glacier,
+  Traphouse, Primo); disposables carrying a 510 deal (Superfire, FLY, Mitten,
+  Magic, Platinum); custom Magic preroll tags showing 5/$22; The 8th's CBN
+  ratio gummies; and anything printed with the deals switch off that came out
+  with bubbles. *Only what changed* won't find them — the sheet didn't change —
+  so filter Pick tags by category.
+- **Reply to the field report** of 2026-10-02 (Magic 5/$22, switch won't turn
+  off, deals where there are none) — all fixed in #11 and #12; ask for a
+  product name or screenshot through Request support if another appears.
 
 - **A real manager's first sign-in.** Never done against the live tables (it
   writes a permanent row). Have one manager open Store tools → Break & Lunch
@@ -136,6 +146,25 @@ wrong:
   (carts, disposables, pods and all-in-ones together): its carts may take
   either cart section's deals, everything else there only the disposable
   section's — `deals.row_families`.
+- **Custom tags have no category, so they must not guess.** Rows typed by
+  hand carry only brand, strain, THC and price. They take a family from the
+  page (`family_hint`: the Preroll page and Shelf tags' preroll formats), then
+  from a product word on the *brand* line — never the strain, which can be
+  "Orange Gummi". With neither, `deals.for_row` keeps only a deal whose size
+  is on the tag, or Brands of the Week. An unrecognised POS category
+  (accessories, batteries) falls under the same rule.
+- **The sheet's layout drifts week to week.** 9/28 wrote "Brands of the Week
+  25% OFF" with bare brand names under it; 10/5 wrote the header with no
+  percentage and one dated line per brand ("50% OFF Jungle Juice Oct 1-31").
+  `deals.parse_column` reads both; month dates are stripped from brands
+  (`MONTH_DATES`), and "(Excludes …)" becomes `Deal.excludes`. When a new
+  sheet arrives, parse it and read the deal list before trusting the tags —
+  the 10/5 change silently turned eight brand-wide deals into flower-only ones.
+  "Mr Vapor Soar" is all Mr Vapor: for them category and size decide.
+- **"Off" has to mean off.** The deals switch used to drop only the weekly
+  sheet, leaving the standing bulk deals and shelf badges, which made it look
+  broken on exactly the tags that had a category. Any future "hide X" switch
+  should hide every kind of X.
 - **To check a deals change, diff every tag.** Run the week's sheet against
   every store and every local export before and after, and read each group of
   changes; `tools/smoke_tags.py` holds the cases that have gone wrong before.
