@@ -496,10 +496,13 @@ def _decorated(fmt, ctx):
                 r[f] = ""
     if fmt == "hook" and _deps.get("fix_outdoor"):
         _deps["fix_outdoor"](rows)
-    if bubbles and ctx["deals"]:
-        deals_mod.attach(rows, ctx["deals"])
-    deals_mod.attach_bulk(rows)
-    deals_mod.attach_shelf(rows)
+    # Sale bubbles off means no bubble of any kind — weekly, standing bulk or
+    # shelf. Leaving the standing ones on made the switch look broken.
+    if bubbles:
+        if ctx["deals"]:
+            deals_mod.attach(rows, ctx["deals"])
+        deals_mod.attach_bulk(rows)
+        deals_mod.attach_shelf(rows)
     changed = set()
     if ctx["prev"] is not None and ctx["deals"]:
         changed = {r["rid"] for r in deals_mod.changed(rows, ctx["prev"], ctx["deals"])}
@@ -719,7 +722,8 @@ def _setting(where, key, default, label, help_, disabled=False):
 
 MIX_HELP = ("Put sativa, hybrid and indica on the same sheet instead of a page "
             "per type. Saves paper; every tag keeps its own colour.")
-BUBBLES_HELP = "Standing bulk deals and deli shelf badges print either way."
+BUBBLES_HELP = ("Off prints the tags with no bubble at all: no weekly sale, no standing "
+                "BUY 5 / BUY 10G deal, no deli shelf.")
 CHANGED_HELP = ("Show only the tags whose deal is new, different or ended — the ones "
                 "on the shelf that are now wrong.")
 
@@ -734,7 +738,7 @@ def _step2_options(ctx, changed):
     ss = st.session_state
     o1, o2, o3 = st.columns(3, gap="small")
     _setting(o1, "zb_mix", False, "Mix types on one page", MIX_HELP)
-    _setting(o2, "zb_bubbles", True, "Sale bubbles", BUBBLES_HELP, disabled=not ctx["deals"])
+    _setting(o2, "zb_bubbles", True, "Sale bubbles", BUBBLES_HELP)
     if changed:
         ss["zb_changed_view"] = ss.get("zb_filter") == "Changed"
 
@@ -785,8 +789,7 @@ def _step1(ctx):
 
     o1, o2, o3 = st.columns(3, gap="small")
     _setting(o1, "zb_mix", False, "Mix types on one page", MIX_HELP)
-    _setting(o2, "zb_bubbles", True, "Sale bubbles from this week's deals", BUBBLES_HELP,
-             disabled=not ctx["deals"])
+    _setting(o2, "zb_bubbles", True, "Sale bubbles", BUBBLES_HELP)
     if ctx["prev"] is not None:
         _setting(o3, "zb_changed_only", False,
                  f"Only what changed since {deal_store.week_label(ctx['prev_week'])}",
@@ -1065,6 +1068,10 @@ def _step2_hand(ctx):
                "thc": str(r["THC"] or "").strip(), "price": str(r["Price"] or "").strip(),
                "type": r["Type"] if r["Type"] in TYPES else "hybrid"}
         rows.extend(dict(row) for _ in range(int(r["Qty"] or 0)))
+    if fmt in ("pr35", "pr4"):
+        # Typed tags carry no category; on a preroll format they are prerolls.
+        for r in rows:
+            r["family_hint"] = sorted(deals_mod.PREROLLS)
     if ss.get("zb_bubbles", True) and ctx["deals"]:
         deals_mod.attach(rows, ctx["deals"])
     for r in rows:
