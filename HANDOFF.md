@@ -1,11 +1,11 @@
-# Where this is up to — 2026-10-01
+# Where this is up to — 2026-10-02
 
 `README.md` covers setup (macOS and Windows) and how the app works. This is the
 state of play. Work moved from the Mac to the Windows laptop on 2026-09-29.
 
 ## Everything is merged
 
-PRs #1–#10 are all in `main`, which is what the eight stores run at
+PRs #1–#11 are all in `main`, which is what the eight stores run at
 https://ziggyz.streamlit.app:
 
 - #1–#5 — deals correctness (deli shelf badges, family matching, 28G), week
@@ -22,11 +22,20 @@ https://ziggyz.streamlit.app:
 - #10 — **Request support** under Settings in the sidebar: a window that sends
   a request into ZiggyBot (read under Settings → Support requests, marked done
   or reopened there) or opens a pre-filled email to chad@shopsmilez.com
+- #11 — deals stay in their sheet section: infused vs non-infused prerolls and
+  510 vs disposable carts are separate families, so "10/$7.50 OR 70/$49
+  Dragonfly" no longer prints on Dragonfly's $2.25 infused prerolls
 
 There is no work in flight, and `main` is the only branch: each branch is
 deleted once its PR merges.
 
 ## Waiting on people, not code
+
+- **Reprint the tags #11 corrected.** Infused prerolls carrying a brand's
+  non-infused deal (Dragonfly, Seed Junky, Goldkine, Glacier, Traphouse,
+  Primo) and disposables carrying a 510 deal (Superfire, FLY, Mitten, Magic,
+  Platinum) are wrong on the shelf until reprinted. *Only what changed* won't
+  find them — the sheet didn't change — so filter Pick tags by category.
 
 - **A real manager's first sign-in.** Never done against the live tables (it
   writes a permanent row). Have one manager open Store tools → Break & Lunch
@@ -118,6 +127,20 @@ wrong:
 - **The deployed app is `main`.** Several "something broke" reports turned out
   to be fixes that had never been merged. Check the branch before believing a
   regression.
+- **One sheet section, one family.** `deals.SECTION_FAMILY` and
+  `CATEGORY_FAMILY` must split wherever the sheet splits, or a deal crosses
+  into the other half of a brand that sells both — that was #11, where both
+  preroll sections were "preroll" and both cart sections "cart". If the sheet
+  ever gains a section (infused flower, say), add a family for it and map the
+  categories. The one category that can't be read alone is `Vape Carts (MISC)`
+  (carts, disposables, pods and all-in-ones together): its carts may take
+  either cart section's deals, everything else there only the disposable
+  section's — `deals.row_families`.
+- **To check a deals change, diff every tag.** Run the week's sheet against
+  every store and every local export before and after, and read each group of
+  changes; `tools/smoke_tags.py` holds the cases that have gone wrong before.
+  #11 changed 544 of 30,960 store × product deals, and the first attempt's
+  diff is what caught Platinum's and Church's MISC carts losing real deals.
 - **A product's category is what it IS; its name is just words.** Matching deal
   rules against product text put the concentrate deal on 316 infused prerolls
   ("Live Resin" in the name) and the edibles deal on flower called "Orange
