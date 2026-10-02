@@ -121,6 +121,48 @@ for product, category, want in KNOWN:
     else:
         failures.append(f"  FAIL {name}  got {got or 'no badge'!r}, want {want or 'no badge'!r}")
 
+# 2026-10-02 field report. Custom tags carry no category: on the Preroll page a
+# typed "MAGIC" tag is a preroll; on a page that takes anything, a tag saying
+# nothing about what it is takes no weekly deal rather than a guessed one (it
+# printed Magic's 5/$22 cart deal). And "(Excludes Ratio)" must hold.
+PRE = sorted(deals_mod.PREROLLS)
+CUSTOM = [
+    # Allegan has no Magic preroll line, so: never the cart deal.
+    ("custom MAGIC, Preroll page", {"brand": "MAGIC", "strain": "X", "family_hint": PRE}, None),
+    ("custom MAGIC, Hook page",    {"brand": "MAGIC", "strain": "X"}, None),
+    ("The 8th CBN ratio gummy",    {"brand": "THE 8TH | 200MG", "strain": "X", "category": "Gummies 200MG",
+                                    "product": "The 8th | Twilight Kiwi | 200mg: 100mg CBN Live Resin Gummies"},
+     None),
+]
+for name, r, want in CUSTOM:
+    r = dict(r, price="$10")
+    d = deals_mod.for_row(r, DEALS)
+    got = d.text if d else None
+    line = f"deal {name[:24]:24s}"
+    (results if got == want else failures).append(
+        f"  {'OK  ' if got == want else 'FAIL'} {line}  {got or 'no deal'}"
+        + ("" if got == want else f", want {want or 'no deal'!r}"))
+
+# The 10/5 sheet's Brands of the Week: no percentage in the header, one per
+# line, dated. They cover every section, and "Oct 1-31" is not part of a brand.
+BOTW_LINES = ["Outdoor Bulk Flower-$17.50 OZ", "Brands of the Week  (Excludes Deli Flower)",
+              "50% OFF Jungle Juice Oct 1-31", "30% OFF Zooted Oct 5-11", "Prepacked Flower",
+              "3/$36 Goldkine 3.5G Bags"]
+botw = deals_mod.parse_column(BOTW_LINES)
+for product, category, want in [
+        ("Jungle Juice | Strawnana | 2G Disposable", "Vape Carts Disposable Distillate",
+         "50% OFF Jungle Juice Oct 1-31"),
+        ("Zooted | Gushers | 2G Preroll", "PreRoll", "30% OFF Zooted Oct 5-11"),
+        ("Goldkine | Biscotti | 3.5G Bag", "Prepacked Flower Brands", "3/$36 Goldkine 3.5G Bags")]:
+    r = {"brand": product.split("|")[0].strip().upper(), "product": product,
+         "category": category, "price": "$20"}
+    d = deals_mod.for_row(r, botw)
+    got = d.text if d else None
+    line = f"botw {product.split('|')[0].strip()[:24]:24s}"
+    (results if got == want else failures).append(
+        f"  {'OK  ' if got == want else 'FAIL'} {line}  {got or 'no deal'}"
+        + ("" if got == want else f", want {want!r}"))
+
 print("\n".join(results))
 if failures:
     print("\n--- FAILURES ---")
