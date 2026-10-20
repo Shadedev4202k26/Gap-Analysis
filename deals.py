@@ -15,6 +15,7 @@ Section headers, shelf pricing, daily deals and customer discounts are ignored �
 they are not per-product and do not belong on a tag.
 """
 import csv
+import datetime
 import io
 import re
 
@@ -281,14 +282,72 @@ class Sheet:
                    d.get("name") or "")
 
 
+# Deals sheets come in as the .xlsx the deals team keeps, because only the
+# workbook carries strikethrough (a CSV export drops it). CSV uploads end after
+# CSV_LAST_DAY; tools and tests may still read CSV files directly.
+CSV_LAST_DAY = datetime.date(2026, 10, 20)
+
+
+def _michigan_today():
+    from zoneinfo import ZoneInfo
+    return datetime.datetime.now(ZoneInfo("America/Detroit")).date()
+
+
+def upload_types(today=None):
+    """File types the deals-sheet uploaders accept."""
+    return ["xlsx", "csv"] if (today or _michigan_today()) <= CSV_LAST_DAY else ["xlsx"]
+
+
+def upload_note(name, today=None):
+    """("error" | "warning", message) for an uploaded deals sheet, or None."""
+    if not str(name).lower().endswith(".csv"):
+        return None
+    if (today or _michigan_today()) > CSV_LAST_DAY:
+        return ("error", "Deals sheets have to be the Excel workbook (.xlsx) now — a CSV "
+                         "loses the strikethrough that takes a brand off a deal.")
+    return ("warning", "CSV deals sheets stop being accepted after today. Upload the Excel "
+                       "workbook (.xlsx) next time — a CSV loses the strikethrough.")
+
+
+def _xlsx_rows(data):
+    """Cell rows from the deals workbook's first tab, with struck-through text
+    left out.
+
+    The deals team strikes through a brand on a line ("$22 ~~Amnesia~~ 2G
+    Switch OR Boutiq Disposables") or a whole line when it should not carry
+    that deal — on 10-19-26 because Amnesia was on Brands of the Week instead.
+    Only the first tab is read: the 10-19-26 workbook also carries an
+    inventory snapshot and five working tabs, none of them deal lines.
+    """
+    import openpyxl
+    ws = openpyxl.load_workbook(io.BytesIO(data), rich_text=True).worksheets[0]
+    width = 0
+    for c in next(ws.iter_rows(min_row=1, max_row=1)):
+        if c.value is None or not str(c.value).strip():
+            break                          # the tab pads thousands of empty columns
+        width += 1
+    out = []
+    for row in ws.iter_rows(max_col=max(width, 1)):
+        cells = []
+        for c in row:
+            v = c.value
+            if v is None:
+                cells.append("")
+            elif isinstance(v, str):
+                cells.append("" if (c.font and c.font.strike) else v)
+            elif hasattr(v, "__iter__"):   # rich text: keep the runs not struck
+                cells.append("".join(str(run) for run in v
+                                     if not getattr(getattr(run, "font", None), "strike", False)))
+            else:
+                cells.append(str(v))
+        out.append(cells)
+    return out
+
+
 def _rows(data):
     """Raw cell rows from a CSV or XLSX export."""
     if data[:2] == b"PK":
-        import pandas as pd
-        out = []
-        for sheet in pd.read_excel(io.BytesIO(data), sheet_name=None, header=None).values():
-            out.extend(sheet.astype(str).values.tolist())
-        return out
+        return _xlsx_rows(data)
     text = data.decode("utf-8", errors="replace")
     csv.field_size_limit(10 ** 9)
     return list(csv.reader(io.StringIO(text)))
