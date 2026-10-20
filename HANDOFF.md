@@ -1,11 +1,11 @@
-# Where this is up to — 2026-10-02
+# Where this is up to — 2026-10-20
 
 `README.md` covers setup (macOS and Windows) and how the app works. This is the
 state of play. Work moved from the Mac to the Windows laptop on 2026-09-29.
 
 ## Everything is merged
 
-PRs #1–#12 are all in `main`, which is what the eight stores run at
+PRs #1–#13 are all in `main`, which is what the eight stores run at
 https://ziggyz.streamlit.app:
 
 - #1–#5 — deals correctness (deli shelf badges, family matching, 28G), week
@@ -30,11 +30,21 @@ https://ziggyz.streamlit.app:
   means no bubble at all, standing deals and shelf badges included;
   "(Excludes Ratio)" and other exclusions are honoured; and the 10/5 sheet's
   new Brands of the Week layout is read, so they cover the whole brand again
+- #13 — deals sheets: strikethrough in the .xlsx takes a line or a brand off a
+  deal, only the workbook's first tab is read, and the deals uploaders take
+  .xlsx only from 2026-10-21 (every other upload stays CSV)
 
 There is no work in flight, and `main` is the only branch: each branch is
 deleted once its PR merges.
 
 ## Waiting on people, not code
+
+- **Upload the 10-20 workbook.** The stored Oct 19 week is the Oct 16 CSV,
+  without the deals team's 10-20 out-of-stock removals or strikes. Upload
+  `10-19-26 Weekly Deals-Smilez (updated 10-20).xlsx` through a deals
+  uploader; it replaces that week.
+- **Tell whoever uploads the weekly sheet** it has to be the Excel workbook
+  from 2026-10-21 — a CSV is refused, and saving one drops the strikethrough.
 
 - **Reprint the tags #11 and #12 corrected.** Infused prerolls carrying a
   brand's non-infused deal (Dragonfly, Seed Junky, Goldkine, Glacier,
@@ -69,7 +79,7 @@ deleted once its PR merges.
    It is gitignored and does not travel with the repo.
 3. `.venv/bin/python tools/check_supabase.py` (`.venv\Scripts\python` on
    Windows) — proves storage works end to end without printing the key.
-4. `.venv/bin/python tools/smoke_tags.py "<a weekly deals CSV>"` — builds every
+4. `.venv/bin/python tools/smoke_tags.py "<a weekly deals sheet>"` — builds every
    tag combination. If this passes, the toolchain is sound. On Windows it passed
    20/20 only with pdftk-java; PDFtk Server failed every build (see README).
 
@@ -161,6 +171,19 @@ wrong:
   sheet arrives, parse it and read the deal list before trusting the tags —
   the 10/5 change silently turned eight brand-wide deals into flower-only ones.
   "Mr Vapor Soar" is all Mr Vapor: for them category and size decide.
+- **The deals workbook is a working file, not just the sheet.** The 10-19-26
+  one has seven tabs — `Deal.` plus an inventory snapshot and Deal Map, Deal
+  Rules, Deal Check, To Review and Changes — kept by whatever the deals team
+  uses to maintain it. Reading every tab (pandas `sheet_name=None`) put their
+  columns D, E and F into Quincy, Reading and Sturgis as extra deal lines, so
+  `deals._xlsx_rows` reads the first tab only, and only as many columns as
+  there are store names in row 1. Its **Changes** tab is worth reading when a
+  deal looks odd: it says why each line changed — out-of-stock brands are
+  *removed* ("Out: Boutiq – Removed – still out (0 sellable)"), while a strike
+  marked Amnesia as covered by Brands of the Week instead. Either way struck
+  text is left out (`openpyxl`, `rich_text=True`, whole-cell and per-run).
+  Uploads are .xlsx-only from `deals.CSV_LAST_DAY`, because a CSV loses the
+  strike; the tests and tools still read CSV directly.
 - **"Off" has to mean off.** The deals switch used to drop only the weekly
   sheet, leaving the standing bulk deals and shelf badges, which made it look
   broken on exactly the tags that had a category. Any future "hide X" switch

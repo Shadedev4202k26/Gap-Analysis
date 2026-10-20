@@ -169,11 +169,15 @@ delete from public.deal_sheets where week_start = '1999-01-04';
 
 ### Using it
 
-* **Upload** — the export's filename sets the week, so keep the date in it
-  (`9-28-26 Weekly Deals-Smilez.csv` files under the week of Sep 28). Drop it in
-  and press **Save**; anything older than the last two weeks is dropped
-  automatically. Re-uploading a corrected export for a week already stored
-  replaces it rather than pushing the other week out.
+* **Upload** — the Excel workbook (.xlsx), not a CSV: from 2026-10-21 the
+  deals uploaders take nothing else, because only the workbook keeps the
+  strikethrough the deals team uses to take a line or a brand off a deal. Only
+  its first tab is read. The filename sets the week, so keep the date in it
+  (`10-19-26 Weekly Deals-Smilez.xlsx` files under the week of Oct 19). Drop it
+  in and press **Save**; anything older than the last two weeks is dropped
+  automatically. Re-uploading a corrected workbook for a week already stored
+  replaces it rather than pushing the other week out. Inventory exports and
+  the other uploads stay CSV.
 * **Week** — pick which stored week the tags print from. A week that does not
   cover today is flagged in the picker and warned about above the tags.
 * **Store** — the export carries a column per location and some deals genuinely
