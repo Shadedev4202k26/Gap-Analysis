@@ -1284,11 +1284,17 @@ def _deal_week_picker(key, db, stored):
         box = st.expander("Upload a different week", expanded=False)
     else:
         box = st.container()
-        box.caption("Drag in the deals sheet (CSV or Excel)")
+        box.caption("Drag in the deals sheet — the Excel workbook (.xlsx)")
     with box:
-        up = st.file_uploader(" ", type=["csv", "xlsx", "xls"], key=f"{key}_dealfile",
+        up = st.file_uploader(" ", type=deals_mod.upload_types(), key=f"{key}_dealfile",
                               label_visibility="collapsed")
         if up is not None:
+            note = deals_mod.upload_note(up.name)
+            if note and note[0] == "error":
+                st.error(note[1])
+                return chosen
+            if note:
+                st.warning(note[1])
             try:
                 sheet = deals_mod.load_sheet(up.getvalue(), up.name)
             except Exception as e:                            # noqa: BLE001
@@ -1296,7 +1302,7 @@ def _deal_week_picker(key, db, stored):
                 return chosen
             if not sheet.week:
                 st.error(f"`{up.name}` has no date in its name, so there is no week "
-                         "to file it under. Rename it like `9-28-26 Weekly Deals.csv`.")
+                         "to file it under. Rename it like `9-28-26 Weekly Deals.xlsx`.")
                 return chosen
             if db is None:
                 return sheet                                  # session-only fallback

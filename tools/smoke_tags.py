@@ -163,6 +163,54 @@ for product, category, want in [
         f"  {'OK  ' if got == want else 'FAIL'} {line}  {got or 'no deal'}"
         + ("" if got == want else f", want {want!r}"))
 
+# 2026-10-20: the deals workbook strikes through a whole line, or one brand on
+# a line, to take it off a deal, and carries working tabs whose columns used to
+# be read as extra deal lines for Quincy, Reading and Sturgis. Built in memory
+# so the check needs no workbook on disk.
+import io
+import datetime as _dt
+import openpyxl
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
+from openpyxl.styles import Font
+
+wb = openpyxl.Workbook()
+ws = wb.active
+ws.title = "Deal."
+ws.append(["Allegan", "Burton"])
+ws.append(["Disposable AND MISC Carts", "Disposable AND MISC Carts"])
+for col in (1, 2):
+    ws.cell(3, col).value = CellRichText(["$22 ", TextBlock(InlineFont(strike=True), "Amnesia"),
+                                          " 2G Switch OR Boutiq Disposables"])
+ws.cell(4, 1, "3/$55 Jungle Juice 2G Disposables").font = Font(strike=True)
+ws.cell(4, 2, "3/$55 Jungle Juice 2G Disposables")
+other = wb.create_sheet("Deal Check")
+other.append(["50% OFF ALL Church", "50% OFF ALL Church"])
+buf = io.BytesIO()
+wb.save(buf)
+book = deals_mod.load_sheet(buf.getvalue(), "10-19-26 Weekly Deals.xlsx")
+for store, product, category, want in [
+        ("Allegan", "Amnesia | Banana Split | 2G Switch Disposable", "Vape Carts (MISC)", None),
+        ("Allegan", "Boutiq | Grape | 2G Switch Disposable", "Vape Carts (MISC)",
+         "$22 2G Switch OR Boutiq Disposables"),
+        ("Allegan", "Jungle Juice | Strawnana | 2G Disposable", "Vape Carts Disposable Distillate", None),
+        ("Burton", "Jungle Juice | Strawnana | 2G Disposable", "Vape Carts Disposable Distillate",
+         "3/$55 Jungle Juice 2G Disposables"),
+        ("Burton", "Church | Skywalker OG | 1G Liquid Diamond Cart", "Vape Carts (MISC)", None)]:
+    r = {"brand": product.split("|")[0].strip().upper(), "product": product,
+         "category": category, "price": "$30"}
+    d = deals_mod.for_row(r, book.deals(store))
+    got = d.text if d else None
+    line = f"xlsx {store[:7]} {product.split('|')[0].strip()[:15]:15s}"
+    (results if got == want else failures).append(
+        f"  {'OK  ' if got == want else 'FAIL'} {line}  {got or 'no deal'}"
+        + ("" if got == want else f", want {want or 'no deal'!r}"))
+
+for day, want in [(_dt.date(2026, 10, 20), ["xlsx", "csv"]), (_dt.date(2026, 10, 21), ["xlsx"])]:
+    got = deals_mod.upload_types(day)
+    (results if got == want else failures).append(
+        f"  {'OK  ' if got == want else 'FAIL'} upload types {day}       {got}")
+
 print("\n".join(results))
 if failures:
     print("\n--- FAILURES ---")

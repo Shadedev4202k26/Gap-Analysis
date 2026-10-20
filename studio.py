@@ -225,9 +225,17 @@ def _week_panel(ctx):
         st.caption("No week loaded yet. Drop this week's deals sheet below.")
 
     st.markdown('<div class="zb-panel-h">Add a week</div>', unsafe_allow_html=True)
-    up = st.file_uploader("Weekly deals sheet", type=["csv", "xlsx", "xls"],
-                          key="zb_dealfile", label_visibility="collapsed")
+    up = st.file_uploader("Weekly deals sheet", type=deals_mod.upload_types(),
+                          key="zb_dealfile", label_visibility="collapsed",
+                          help="The Excel workbook (.xlsx) — it keeps the strikethrough "
+                               "that takes a brand off a deal.")
     if up is not None:
+        note = deals_mod.upload_note(up.name)
+        if note and note[0] == "error":
+            st.error(note[1])
+            return
+        if note:
+            st.warning(note[1])
         try:
             sheet = deals_mod.load_sheet(up.getvalue(), up.name)
         except Exception as e:                              # noqa: BLE001
@@ -235,7 +243,7 @@ def _week_panel(ctx):
             return
         if not sheet.week:
             st.error(f"`{up.name}` has no date in its name. Rename it like "
-                     "`9-28-26 Weekly Deals.csv`.")
+                     "`9-28-26 Weekly Deals.xlsx`.")
             return
         label = deal_store.week_label(sheet.week)
         if ctx["db"] is None:
