@@ -112,6 +112,21 @@ wrong:
   Git for Windows' HTTPS helper (`libcurl-4.dll`), which is why Git uses SSH
   through Windows' own `C:\Windows\System32\OpenSSH\ssh.exe`
   (`core.sshCommand`), with a key added to the `Shadedev4202k26` account.
+- **Git reaches GitHub on port 443, not 22.** Port 22 to github.com timed out
+  on the laptop's network more than once (2026-10-01 and 10-20, leaving a push
+  hanging), so `~/.ssh/config` sends `github.com` to `ssh.github.com:443` —
+  GitHub's own SSH endpoint for this, same key, same remote URL — with a 15 s
+  connect timeout so a dead network fails fast. It is machine config, not in
+  the repo; a new machine needs the same block:
+
+  ```
+  Host github.com
+      Hostname ssh.github.com
+      Port 443
+      User git
+      IdentityFile ~/.ssh/id_ed25519
+      ConnectTimeout 15
+  ```
 - **Checking out a commit older than `863fe80` deletes your local
   `secrets.toml`.** Those commits still track the file, and Git overwrites an
   ignored file without asking — it happened on 2026-09-30 switching back to a
