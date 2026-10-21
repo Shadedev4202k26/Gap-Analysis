@@ -5,7 +5,7 @@ state of play. Work moved from the Mac to the Windows laptop on 2026-09-29.
 
 ## Everything is merged
 
-PRs #1–#14 are all in `main`, which is what the eight stores run at
+PRs #1–#16 are all in `main`, which is what the eight stores run at
 https://ziggyz.streamlit.app:
 
 - #1–#5 — deals correctness (deli shelf badges, family matching, 28G), week
@@ -35,6 +35,9 @@ https://ziggyz.streamlit.app:
   .xlsx only from 2026-10-21 (every other upload stays CSV)
 - #14 — the app reloads its own modules when their file changes, after #13's
   deploy left the live Hook and Preroll pages failing with AttributeError
+- #15, #16 — Ziggy runs across the top bar and eats the Smilez logo in five
+  bites, then it grows back; the round avatar is a 48px crop of the artwork.
+  #16 made the frame strips load on Streamlit Cloud (relative path)
 
 There is no work in flight, and `main` is the only branch: each branch is
 deleted once its PR merges.
@@ -217,7 +220,10 @@ wrong:
   running and munching on white; `tools/ziggy_frames.py` cuts the white away
   (`.copy()` before `floodfill`, or it silently does nothing) and writes
   `static/ziggy-run.webp` and `static/ziggy-munch.webp`, served by
-  `enableStaticServing`. `ziggy.py` times bites to the video's jaw snaps and
+  `enableStaticServing` (a server setting, read at start-up). Refer to them as
+  `app/static/…`, **relative**: Streamlit Cloud runs the app in a frame under
+  `/~/+/`, so `/app/static/…` returns the Cloud wrapper page (`text/html`)
+  instead — #16. `ziggy.py` times bites to the video's jaw snaps and
   hard-codes where the wordmark sits (`LOGO_LEFT`): change the avatar, the "×"
   or the wordmark and the bites miss — re-measure it. Higgsfield's AutoSprite
   failed every time on 2026-10-21 (refunded); still images and Kling worked.
