@@ -34,6 +34,7 @@ import deal_store
 import deals as deals_mod
 import preroll_tags
 import sale_badges
+import ziggy
 
 _deps = {}
 
@@ -292,11 +293,11 @@ WEEK_PAGES = {"", "home", "shelf-tags"}   # pages that print against the top bar
 def _avatar():
     import base64
     try:
-        with open("ziggy-avatar.png", "rb") as fh:
+        with open("ziggy-avatar.webp", "rb") as fh:   # crop of the shop's Ziggy artwork
             b = base64.b64encode(fh.read()).decode()
     except OSError:
         return ""
-    return f'<img class="zb-av" src="data:image/png;base64,{b}" alt="">'
+    return f'<img class="zb-av" src="data:image/webp;base64,{b}" alt="">'
 
 
 def context_bar(mark_html, current):
@@ -312,6 +313,9 @@ def context_bar(mark_html, current):
                 _week_panel(ctx)
                 if ctx["deals"]:
                     st.caption(f"{ctx['store']} runs {len(ctx['deals'])} deals this week.")
+        # Ziggy's run across the bar to the wordmark (ziggy.py) — absolute,
+        # so it takes no room in the row.
+        st.markdown(ziggy.HTML, unsafe_allow_html=True)
         # Smilez × Ziggy, at the right end of the bar: the two names side by side.
         st.markdown(f'<span class="zb-ctxmark" role="img" aria-label="Smilez × ZiggyBot">'
                     f'{mark_html}<span class="zb-x" aria-hidden="true">×</span>{_avatar()}'
@@ -1178,7 +1182,7 @@ CSS = """
 .zb-ctxmark img.zb-mark{height:19px;display:block}
 .zb-ctxmark .zb-x{font-family:'Inter',sans-serif;font-weight:300;font-size:20px;line-height:1;
   color:var(--dim)}
-.zb-ctxmark img.zb-av{width:38px;height:38px;border-radius:50%;object-fit:cover;
+.zb-ctxmark img.zb-av{width:48px;height:48px;border-radius:50%;object-fit:cover;
   border:1.5px solid var(--purple-l);box-shadow:0 0 14px rgba(139,92,246,.45)}
 /* Narrow screens: Streamlit collapses the sidebar and floats its reopen button
    top-left, over the start of this bar. */

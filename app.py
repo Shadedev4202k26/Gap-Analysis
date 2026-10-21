@@ -60,6 +60,7 @@ import break_store
 import shell
 import studio
 import support
+import ziggy
 
 try:
     import deal_store
@@ -89,7 +90,7 @@ def _fresh_local_modules():
     import importlib
     import sys
     for name in ("deals", "deal_store", "sale_badges", "preroll_tags", "combine_tags",
-                 "build_dual", "build_split", "break_store", "support", "shell", "studio",
+                 "build_dual", "build_split", "break_store", "support", "shell", "ziggy", "studio",
                  "crossword_data", "crossword_gen", "hangman_data"):
         mod = sys.modules.get(name)
         path = getattr(mod, "__file__", None)
@@ -3139,6 +3140,7 @@ def _settings_deals():
 # name collide.
 st.markdown(shell.CSS, unsafe_allow_html=True)
 st.markdown(studio.CSS, unsafe_allow_html=True)
+st.markdown(ziggy.CSS, unsafe_allow_html=True)
 if studio.on_cloud():
     st.markdown(studio.CLOUD_CSS, unsafe_allow_html=True)
 
