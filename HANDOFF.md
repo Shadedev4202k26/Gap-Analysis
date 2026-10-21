@@ -212,6 +212,15 @@ wrong:
   text is left out (`openpyxl`, `rich_text=True`, whole-cell and per-run).
   Uploads are .xlsx-only from `deals.CSV_LAST_DAY`, because a CSV loses the
   strike; the tests and tools still read CSV directly.
+- **Ziggy's top-bar run is real animation in two strips, not code.** Higgsfield
+  Nano Banana Pro redrew the artwork as a side view; Kling 4.0 animated it
+  running and munching on white; `tools/ziggy_frames.py` cuts the white away
+  (`.copy()` before `floodfill`, or it silently does nothing) and writes
+  `static/ziggy-run.webp` and `static/ziggy-munch.webp`, served by
+  `enableStaticServing`. `ziggy.py` times bites to the video's jaw snaps and
+  hard-codes where the wordmark sits (`LOGO_LEFT`): change the avatar, the "×"
+  or the wordmark and the bites miss — re-measure it. Higgsfield's AutoSprite
+  failed every time on 2026-10-21 (refunded); still images and Kling worked.
 - **"Off" has to mean off.** The deals switch used to drop only the weekly
   sheet, leaving the standing bulk deals and shelf badges, which made it look
   broken on exactly the tags that had a category. Any future "hide X" switch

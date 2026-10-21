@@ -7,3 +7,7 @@ primaryColor = "#8B5CF6"
 backgroundColor = "#080B16"
 secondaryBackgroundColor = "#0E1424"
 textColor = "#EAF0FB"
+
+# Serves static/ at /app/static (Ziggy's top-bar frame strips, see ziggy.py).
+[server]
+enableStaticServing = true
