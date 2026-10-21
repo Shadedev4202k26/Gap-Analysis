@@ -133,7 +133,9 @@ def _keyframes():
 
 
 _ANIM = f"{DURATION:.2f}s {DELAY}s 1 both"
-_STATIC = "/app/static"
+# Relative, not "/app/static": Streamlit Cloud runs the app in a frame under
+# /~/+/, so a root path reaches the Cloud wrapper page instead of the files.
+_STATIC = "app/static"
 _CRUMBS = [("#fff", 4), ("#FFD400", 4), ("#fff", 3), ("#FFD400", 3)]
 
 CSS = f"""<style>
