@@ -1,11 +1,11 @@
-# Where this is up to — 2026-10-20
+# Where this is up to — 2026-10-21
 
 `README.md` covers setup (macOS and Windows) and how the app works. This is the
 state of play. Work moved from the Mac to the Windows laptop on 2026-09-29.
 
 ## Everything is merged
 
-PRs #1–#13 are all in `main`, which is what the eight stores run at
+PRs #1–#14 are all in `main`, which is what the eight stores run at
 https://ziggyz.streamlit.app:
 
 - #1–#5 — deals correctness (deli shelf badges, family matching, 28G), week
@@ -33,6 +33,8 @@ https://ziggyz.streamlit.app:
 - #13 — deals sheets: strikethrough in the .xlsx takes a line or a brand off a
   deal, only the workbook's first tab is read, and the deals uploaders take
   .xlsx only from 2026-10-21 (every other upload stays CSV)
+- #14 — the app reloads its own modules when their file changes, after #13's
+  deploy left the live Hook and Preroll pages failing with AttributeError
 
 There is no work in flight, and `main` is the only branch: each branch is
 deleted once its PR merges.
@@ -43,6 +45,8 @@ deleted once its PR merges.
   without the deals team's 10-20 out-of-stock removals or strikes. Upload
   `10-19-26 Weekly Deals-Smilez (updated 10-20).xlsx` through a deals
   uploader; it replaces that week.
+- **Tell the store that reported the 10-21 error** the Hook and Preroll pages
+  work again (refresh), and that deals sheets are .xlsx-only from today.
 - **Tell whoever uploads the weekly sheet** it has to be the Excel workbook
   from 2026-10-21 — a CSV is refused, and saving one drops the strikethrough.
 
@@ -147,6 +151,15 @@ wrong:
 - **The deployed app is `main`.** Several "something broke" reports turned out
   to be fixes that had never been merged. Check the branch before believing a
   regression.
+- **A merge can deploy half-way.** On 2026-10-21 Streamlit Cloud ran #13's new
+  `app.py` against the `deals` module it had imported before the merge, so
+  `deals_mod.upload_types()` raised AttributeError on the classic tag pages
+  while `main` itself was correct. `app._fresh_local_modules` now reloads any
+  local module whose file is newer than the copy in memory (and each one once
+  per new process). An AttributeError on a function that exists on `main` means
+  a stale module: if it ever recurs, **Manage app → ⋮ → Reboot app** clears it,
+  and any new local module belongs in that function's list. After a merge,
+  load one page that uses the new code on the live app before calling it done.
 - **One sheet section, one family.** `deals.SECTION_FAMILY` and
   `CATEGORY_FAMILY` must split wherever the sheet splits, or a deal crosses
   into the other half of a brand that sells both — that was #11, where both
@@ -219,8 +232,8 @@ wrong:
 - **The break tracker is configured by string replacement.** Store tools swaps
   the line `const CONFIG = null; // ZB_CONFIG` for the URL, key and store. Keep
   that line exactly as it is; the page says so if it goes missing.
-- **Editing `studio.py` or `shell.py` needs a server restart locally** — a
-  browser reload re-runs `app.py` but keeps the old imported modules.
+- **Editing a local module locally** is picked up on the next page load since
+  #14; before it, `studio.py` and `shell.py` edits needed a server restart.
 - **Brand-line descriptors live in one list**, `BRAND_DESCRIPTORS` in
   `build_tag_rows` (`app.py`). An entry matches singular or plural and any
   spacing ("Melted Diamond", "Melted-Diamonds"). Before adding one, run every
