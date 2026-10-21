@@ -73,6 +73,39 @@ try:
 except ImportError:
     DEALS_AVAILABLE = False
 
+
+def _fresh_local_modules():
+    """Reload this repo's own modules when their file is newer than the copy
+    in memory.
+
+    Streamlit Cloud pulls a merge and re-runs app.py, but the process can keep
+    the modules it imported before. On 2026-10-21 that left the new app.py
+    calling deals.upload_types() on the old deals.py, and every tag page failed
+    with AttributeError until the app was rebooted. The first run in a process
+    reloads each module once, since it cannot tell how old its copy is; after
+    that only a changed file is reloaded. Leaf modules come first, so a module
+    is never reloaded on top of a stale one it imports.
+    """
+    import importlib
+    import sys
+    for name in ("deals", "deal_store", "sale_badges", "preroll_tags", "combine_tags",
+                 "build_dual", "build_split", "break_store", "support", "shell", "studio",
+                 "crossword_data", "crossword_gen", "hangman_data"):
+        mod = sys.modules.get(name)
+        path = getattr(mod, "__file__", None)
+        if not path:
+            continue
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue
+        if getattr(mod, "_zb_mtime", None) != mtime:   # changed, or first look
+            importlib.reload(mod)                       # reload keeps _zb_mtime
+            mod._zb_mtime = mtime
+
+
+_fresh_local_modules()
+
 # The sidebar is the navigation now, so it has to start open — the app
 # defaulted to collapsed back when everything lived in tabs.
 st.set_page_config(page_title="ZiggyBot", page_icon="⚡", layout="wide",
