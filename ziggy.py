@@ -17,7 +17,8 @@ Everything else is CSS on one DURATION-second timeline, generated below so the
 travel, the frame strips, the bites and the crumbs stay in step. Positions are
 measured from the bar's right edge, where the wordmark sits (studio.CSS: its
 left edge is LOGO_LEFT px from the right, LOGO_W px wide). Skipped for reduced
-motion and below 900px, where the wordmark is hidden anyway.
+motion and at 768px and below, where studio.CSS hides the wordmark — the same
+breakpoint, or a phone held sideways (768-900px) sees the logo eaten by no one.
 """
 
 DELAY = 1.2            # after the page draws, so it is not lost in the load
@@ -161,7 +162,7 @@ CSS = f"""<style>
 @media (prefers-reduced-motion: reduce){{
   .zb-ziggy{{display:none}}
   .st-key-zbctx .zb-ctxmark img.zb-mark{{animation:none}}}}
-@media (max-width: 900px){{.zb-ziggy{{display:none}}}}
+@media (max-width: 768px){{.zb-ziggy{{display:none}}}}   /* = studio.CSS's .zb-ctxmark breakpoint */
 </style>"""
 
 HTML = ('<div class="zb-ziggy" aria-hidden="true"><i class="zg-run"></i><i class="zg-munch"></i>'
