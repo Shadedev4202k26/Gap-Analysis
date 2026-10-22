@@ -1,11 +1,11 @@
-# Where this is up to — 2026-10-21
+# Where this is up to — 2026-10-22
 
 `README.md` covers setup (macOS and Windows) and how the app works. This is the
 state of play. Work moved from the Mac to the Windows laptop on 2026-09-29.
 
 ## Everything is merged
 
-PRs #1–#16 are all in `main`, which is what the eight stores run at
+PRs #1–#17 are all in `main`, which is what the eight stores run at
 https://ziggyz.streamlit.app:
 
 - #1–#5 — deals correctness (deli shelf badges, family matching, 28G), week
@@ -38,6 +38,8 @@ https://ziggyz.streamlit.app:
 - #15, #16 — Ziggy runs across the top bar and eats the Smilez logo in five
   bites, then it grows back; the round avatar is a 48px crop of the artwork.
   #16 made the frame strips load on Streamlit Cloud (relative path)
+- #17 — Ziggy hides at the same width as the logo (768px); a phone held
+  sideways saw the logo eaten with no Ziggy
 
 There is no work in flight, and `main` is the only branch: each branch is
 deleted once its PR merges.
@@ -225,7 +227,11 @@ wrong:
   `/~/+/`, so `/app/static/…` returns the Cloud wrapper page (`text/html`)
   instead — #16. `ziggy.py` times bites to the video's jaw snaps and
   hard-codes where the wordmark sits (`LOGO_LEFT`): change the avatar, the "×"
-  or the wordmark and the bites miss — re-measure it. Higgsfield's AutoSprite
+  or the wordmark and the bites miss — re-measure it. Ziggy must also hide at
+  exactly the wordmark's breakpoint (`max-width: 768px` in studio.CSS): at 900px
+  an iPhone held sideways (~844px) showed the logo being eaten by nobody (#17).
+  A merge took ~4 min to reach the live app on 10-22 — wait before calling a
+  fix missing. Higgsfield's AutoSprite
   failed every time on 2026-10-21 (refunded); still images and Kling worked.
 - **"Off" has to mean off.** The deals switch used to drop only the weekly
   sheet, leaving the standing bulk deals and shelf badges, which made it look
