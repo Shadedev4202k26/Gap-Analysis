@@ -233,18 +233,38 @@ def parse_column(lines):
     return deals
 
 
-def week_from_name(name):
-    """Week-start date out of an export filename like '9-21-26 Weekly Deals'."""
+def week_from_name(name, today=None):
+    """Week-start date out of an export filename: '9-21-26 Weekly Deals', or
+    without a year, '10-26 NEW Standing Weekly Deals (updated 10-23)'.
+
+    The first date in the name is the week; a later one is an update note.
+    With no year, the year that puts the date nearest today is used, so a
+    sheet for early January sent in late December lands in the new year.
+    """
     import datetime
-    m = re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})", str(name or ""))
+    name = str(name or "")
+    m = re.search(r"(?<!\d)(\d{1,2})[-/.](\d{1,2})(?:[-/.](\d{2,4}))?(?!\d)", name)
     if not m:
         return None
-    mo, day, yr = (int(x) for x in m.groups())
-    yr += 2000 if yr < 100 else 0
-    try:
-        return datetime.date(yr, mo, day)
-    except ValueError:
+    mo, day = int(m.group(1)), int(m.group(2))
+    if m.group(3):
+        yr = int(m.group(3))
+        yr += 2000 if yr < 100 else 0
+        candidates = [yr]
+    else:
+        today = today or datetime.date.today()
+        candidates = [today.year - 1, today.year, today.year + 1]
+    dates = []
+    for yr in candidates:
+        try:
+            dates.append(datetime.date(yr, mo, day))
+        except ValueError:
+            pass
+    if not dates:
         return None
+    if len(dates) == 1:
+        return dates[0]
+    return min(dates, key=lambda d: abs((d - today).days))
 
 
 class Sheet:
