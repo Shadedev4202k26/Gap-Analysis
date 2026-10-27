@@ -34,6 +34,7 @@ import deal_store
 import deals as deals_mod
 import preroll_tags
 import sale_badges
+import aging
 import ziggy
 
 _deps = {}
@@ -342,22 +343,13 @@ def _inventory_stats():
     if df is None:
         return None
     out = {"rows": len(df), "name": st.session_state.get("zb_inv_name", "")}
-    # Counted the way the Aging stock page counts, so the two never disagree:
-    # per product, the oldest of its packages, dated by packaging date where
-    # there is one and inventory date otherwise.
-    def dates(name):
-        if name not in df.columns:
-            return None
-        return pd.to_datetime(df[name].astype(str).str.strip('="').str.strip(),
-                              errors="coerce", format="mixed")
-    pkg, inv = dates("Packaging date"), dates("Inventory date")
-    ref = pkg.fillna(inv) if pkg is not None and inv is not None else (pkg if pkg is not None else inv)
-    if ref is not None and "Product" in df.columns:
-        age = (pd.Timestamp(dt.date.today()) - ref).dt.days
-        per = age.groupby(df["Product"].astype(str).str.strip('="').str.strip()).max().dropna()
-        out["products"] = int(len(per))
-        out["over45"] = int((per >= 45).sum())
-        out["over90"] = int((per >= 90).sum())
+    # Counted by aging.py, exactly as the Aging stock page counts: Metrc packages
+    # aged from the day the store received them.
+    pkgs, err = aging.packages(df)
+    if not err:
+        out["packages"] = len(pkgs)
+        out["over45"] = sum(1 for p in pkgs if p["age"] >= aging.WATCH_DAYS)
+        out["over90"] = sum(1 for p in pkgs if p["age"] >= 90)
     cat = next((c for c in df.columns if c.strip().lower() == "category"), None)
     if cat:
         out["outdoor"] = int(df[cat].astype(str).str.contains("outdoor", case=False).sum())
@@ -423,8 +415,8 @@ def render_home():
     c1, c2, c3, c4 = st.columns(4, gap="small")
     with c1:
         if inv and "over45" in inv:
-            body = (f'<b class="zb-big">{inv["over45"]:,}</b> products 45+ days old'
-                    f'<br><span>{inv["over90"]:,} past 90 · of {inv["products"]:,} '
+            body = (f'<b class="zb-big">{inv["over45"]:,}</b> packages received 45+ days ago'
+                    f'<br><span>{inv["over90"]:,} past 90 · of {inv["packages"]:,} '
                     f'in {esc(inv["name"])}</span>')
         else:
             body = ('Load today\'s inventory in Shelf tags and the oldest stock '
