@@ -19,7 +19,13 @@ measured from the bar's right edge, where the wordmark sits (studio.CSS: its
 left edge is LOGO_LEFT px from the right, LOGO_W px wide). Skipped for reduced
 motion and at 768px and below, where studio.CSS hides the wordmark — the same
 breakpoint, or a phone held sideways (768-900px) sees the logo eaten by no one.
+
+Clicking Ziggy's bubble plays it again, with no JavaScript (st.markdown runs
+none): the bubble is the label of a hidden checkbox (REPLAY_INPUT), and each
+click flips the whole animation between two identical sets of keyframes, the
+second named with a "B". A changed animation-name starts over from the top.
 """
+import re
 
 DELAY = 1.2            # after the page draws, so it is not lost in the load
 LOGO_LEFT = 217.7      # px from the bar's right edge to the wordmark's left edge:
@@ -133,6 +139,28 @@ def _keyframes():
     return "\n".join(css)
 
 
+def _replay_css():
+    """The second keyframe set, and the rules that switch to it while the
+    replay box is ticked. Unticking switches back, which also starts over."""
+    names = sorted(set(re.findall(r"@keyframes (zg\w+)\{", _KEYFRAMES)))
+    copy = _KEYFRAMES
+    for n in names:
+        copy = copy.replace(f"@keyframes {n}{{", f"@keyframes {n}B{{")
+    on = ".st-key-zbctx:has(#zb-replay:checked)"
+    go = REPLAY_DELAY
+    rules = [
+        f"{on} .zb-ziggy{{animation-name:zgMoveB;animation-delay:{go}s}}",
+        f"{on} .zb-ziggy .zg-run{{animation-name:zgRunCycleB,zgShowRunB;animation-delay:{go}s,{go}s}}",
+        f"{on} .zb-ziggy .zg-munch{{animation-name:zgMunchStripB,zgShowMunchB;"
+        f"animation-delay:{go + RUN_IN_S:.2f}s,{go}s}}",
+        f"{on} .zb-ctxmark img.zb-mark{{animation-name:zgBiteB,zgRegrowB;animation-delay:{go}s,{go}s}}",
+    ] + [f"{on} .zb-ziggy .zg-c{n}{{animation-name:zgCrumb{n}B;animation-delay:{go}s}}"
+         for n in range(len(_CRUMBS))]
+    return copy + "\n@media (prefers-reduced-motion: no-preference){" + "".join(rules) + "}"
+
+
+REPLAY_DELAY = 0.1     # a replay starts right away: the page is already drawn
+_KEYFRAMES = _keyframes()
 _ANIM = f"{DURATION:.2f}s {DELAY}s 1 both"
 # Relative, not "/app/static": Streamlit Cloud runs the app in a frame under
 # /~/+/, so a root path reaches the Cloud wrapper page instead of the files.
@@ -140,7 +168,8 @@ _STATIC = "app/static"
 _CRUMBS = [("#fff", 4), ("#FFD400", 4), ("#fff", 3), ("#FFD400", 3)]
 
 CSS = f"""<style>
-{_keyframes()}
+{_KEYFRAMES}
+{_replay_css()}
 .st-key-zbctx [data-testid="stElementContainer"]:has(.zb-ziggy){{position:absolute!important;
   inset:0;width:auto!important;pointer-events:none;z-index:4;overflow:hidden}}   /* enters and leaves at the bar's edge */
 .zb-ziggy{{position:absolute;top:{TOP}px;width:{SPRITE_W}px;height:{SPRITE_H}px;right:{OFF_LEFT};
@@ -159,6 +188,9 @@ CSS = f"""<style>
 """ + "".join(f".zb-ziggy .zg-c{n}{{background:{c};width:{s}px;height:{s}px;"
               f"animation:zgCrumb{n} {_ANIM} ease-out}}\n" for n, (c, s) in enumerate(_CRUMBS)) + f"""
 .st-key-zbctx .zb-ctxmark img.zb-mark{{animation:zgBite {_ANIM} step-end,zgRegrow {_ANIM} ease-out}}
+.st-key-zbctx .zb-replay{{display:flex;cursor:pointer;border-radius:50%;transition:transform .15s}}
+.st-key-zbctx .zb-replay:hover{{transform:scale(1.06)}}
+.st-key-zbctx .zb-replay:active{{transform:scale(.95)}}
 @media (prefers-reduced-motion: reduce){{
   .zb-ziggy{{display:none}}
   .st-key-zbctx .zb-ctxmark img.zb-mark{{animation:none}}}}
@@ -167,3 +199,11 @@ CSS = f"""<style>
 
 HTML = ('<div class="zb-ziggy" aria-hidden="true"><i class="zg-run"></i><i class="zg-munch"></i>'
         + "".join(f'<i class="zg-crumb zg-c{n}"></i>' for n in range(len(_CRUMBS))) + '</div>')
+
+# Ziggy's bubble wraps itself in this label's place in studio.context_bar; the
+# hidden box is what the replay rules in CSS watch.
+REPLAY_INPUT = '<input type="checkbox" id="zb-replay" hidden>'
+
+
+def replay_bubble(avatar_html):
+    return f'<label for="zb-replay" class="zb-replay" title="Play Ziggy again">{avatar_html}</label>'

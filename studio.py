@@ -319,9 +319,10 @@ def context_bar(mark_html, current):
         # so it takes no room in the row.
         st.markdown(ziggy.HTML, unsafe_allow_html=True)
         # Smilez × Ziggy, at the right end of the bar: the two names side by side.
-        st.markdown(f'<span class="zb-ctxmark" role="img" aria-label="Smilez × ZiggyBot">'
-                    f'{mark_html}<span class="zb-x" aria-hidden="true">×</span>{_avatar()}'
-                    f'</span>', unsafe_allow_html=True)
+        # Clicking Ziggy's bubble plays the run again (ziggy.replay_bubble).
+        st.markdown(f'{ziggy.REPLAY_INPUT}<span class="zb-ctxmark" aria-label="Smilez × ZiggyBot">'
+                    f'{mark_html}<span class="zb-x" aria-hidden="true">×</span>'
+                    f'{ziggy.replay_bubble(_avatar())}</span>', unsafe_allow_html=True)
     return ctx
 
 
