@@ -91,7 +91,7 @@ def _fresh_local_modules():
     import importlib
     import sys
     for name in ("aging", "deals", "deal_store", "sale_badges", "preroll_tags", "combine_tags",
-                 "build_dual", "build_split", "break_store", "support", "shell", "ziggy", "studio",
+                 "build_dual", "build_split", "break_store", "support", "shell", "ziggy", "whats_new", "studio",
                  "crossword_data", "crossword_gen", "hangman_data"):
         mod = sys.modules.get(name)
         path = getattr(mod, "__file__", None)
