@@ -35,6 +35,7 @@ import deals as deals_mod
 import preroll_tags
 import sale_badges
 import aging
+import whats_new
 import ziggy
 
 _deps = {}
@@ -1395,6 +1396,7 @@ def on_cloud():
 def page_home():
     with st.container(key="zbhome"):
         render_home()
+    whats_new.show(_page)
 
 
 def page_studio():
