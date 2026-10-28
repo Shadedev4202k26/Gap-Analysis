@@ -159,11 +159,18 @@ def context():
     stores = sheet_stores + [s for s in KNOWN_STORES if s not in sheet_stores]
     # One store for the whole app, picked in the sidebar. It rides in the URL
     # too, so a store's tablet opened from a bookmark starts on that store.
+    # A device that has done neither falls back to the first store, but only
+    # for this visit: the fallback is kept out of the URL, so bookmarking the
+    # page doesn't turn it into a choice, and the usage log counts it apart.
     store = ss.get("zb_store") or st.query_params.get("store")
-    if store not in stores:
-        store = stores[0]
+    if store in stores:
+        if not ss.get("zb_store"):
+            ss["zb_store_chosen"] = True            # arrived with ?store=
+    else:
+        store, ss["zb_store_chosen"] = stores[0], False
     ss["zb_store"] = store
-    if st.query_params.get("store") != store:
+    chosen = bool(ss.get("zb_store_chosen"))
+    if chosen and st.query_params.get("store") != store:
         st.query_params["store"] = store
     current = sheet.deals(store) if store in sheet_stores else []
 
@@ -181,8 +188,8 @@ def context():
             prev = None
 
     ctx = {"db": db, "why": why, "weeks": weeks, "week": week, "sheet": sheet,
-           "stores": stores, "store": store, "deals": current, "prev": prev,
-           "prev_week": prev_week}
+           "stores": stores, "store": store, "store_chosen": chosen, "deals": current,
+           "prev": prev, "prev_week": prev_week}
     ss["_zb_ctx_run"] = (ss.get("_zb_run_id"), ctx)
     return ctx
 
@@ -277,6 +284,7 @@ def _pick_store():
     v = st.session_state.get("zb_store_pick")
     if v:
         st.session_state["zb_store"] = v
+        st.session_state["zb_store_chosen"] = True
         st.query_params["store"] = v
 
 
@@ -367,8 +375,30 @@ def _card(key, page, html_body):
             st.page_link(page, label="Open", icon=":material/arrow_forward:")
 
 
+def _choose_store_banner(ctx):
+    """Asks a device that never picked its store to pick it. The sidebar can't:
+    it already shows the fallback store, and picking that one again changes
+    nothing, so it would never count as a choice."""
+    if ctx["store_chosen"]:
+        return
+    with st.container(key="zbpickstore"):
+        st.warning("**Which store is this?** Pick it once so tags, trackers and usage "
+                   "count for the right store, then bookmark this page — it will open "
+                   "on your store from then on.", icon=":material/storefront:")
+        st.selectbox("Your store", ctx["stores"], index=None, key="zb_store_first",
+                     placeholder="Choose your store", on_change=_first_store)
+
+
+def _first_store():
+    v = st.session_state.get("zb_store_first")
+    if v:
+        st.session_state["zb_store_pick"] = v
+        _pick_store()
+
+
 def render_home():
     ctx = context()
+    _choose_store_banner(ctx)
     inv = _inventory_stats()
     wk = deal_store.week_label(ctx["week"]) if ctx["week"] else None
     where = (f'for <b>{esc(ctx["store"])}</b>, week of <b>{esc(wk)}</b>'

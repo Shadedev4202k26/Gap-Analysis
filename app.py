@@ -61,6 +61,7 @@ import break_store
 import shell
 import studio
 import support
+import usage
 import ziggy
 
 try:
@@ -91,7 +92,7 @@ def _fresh_local_modules():
     import importlib
     import sys
     for name in ("aging", "deals", "deal_store", "sale_badges", "preroll_tags", "combine_tags",
-                 "build_dual", "build_split", "break_store", "support", "shell", "ziggy", "whats_new", "studio",
+                 "build_dual", "build_split", "break_store", "support", "shell", "ziggy", "whats_new", "usage", "studio",
                  "crossword_data", "crossword_gen", "hangman_data"):
         mod = sys.modules.get(name)
         path = getattr(mod, "__file__", None)
@@ -732,6 +733,7 @@ def render_strain_ai():
             brand_input = st.text_input("Brand (optional)", placeholder="e.g., FAVRD")
         submitted = st.form_submit_button("🔍  SEARCH STRAIN")
     if submitted and user_input:
+        usage.log("used", "Strain lookup", f"Searched {user_input.strip()[:60]}")
         st.session_state.last_strain = user_input
         st.session_state.last_brand = (brand_input or "").strip()
         st.rerun()
@@ -2863,6 +2865,9 @@ def render_settings():
     _settings_deals()
     _settings_break()
     support.settings_inbox(STORE_TZ)
+    usage.settings_view(STORE_TZ, studio.KNOWN_STORES,
+                        [pg.title for pages in _SECTIONS.values() for pg in pages])
+    usage.store_links(studio.KNOWN_STORES, "https://ziggyz.streamlit.app")
 
 
 STORE_TZ = "America/Detroit"   # every store is in Michigan; history shows their local time
@@ -3101,7 +3106,11 @@ studio.configure(
 studio.new_run()
 support.configure(init_db=init_supabase, context=studio.context,
                   page_title=lambda: _nav.title)
+usage.configure(init_db=init_supabase, context=studio.context,
+                page_title=lambda: _nav.title)
+usage.track_downloads()
 shell.sidebar(_SECTIONS, _TRAILING, _nav.url_path, top=studio.store_picker,
               bottom=support.button)
 studio.context_bar(_smilez_mark(), _nav.url_path)
+usage.opened(_nav.title)
 _nav.run()

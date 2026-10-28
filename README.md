@@ -338,6 +338,58 @@ The app's key is public, so anyone who pulls it out of a page could read these
 requests — that is why the form asks people to leave out passwords and customer
 details, and why the reply contact is optional.
 
+## Usage
+
+**Settings → Usage by store** shows which stores use which tools: a heat map of
+stores × tools, a bar chart per store, and when each store last finished a job
+in each tool. It reads a log the app keeps in Supabase (`usage.py`):
+
+* **opened** — a visit opened a tool (once per visit, not every click)
+* **used** — a job finished: any download (tag PDFs, reports, tracker files)
+  or a strain search
+
+Each line has the store, the tool and the time. Nothing about the person or
+the device is saved; `visit` is a random id so one visit counts once.
+
+A device that never picked its store is logged as **Store not picked**, not as
+the first store in the list. Home asks such a device to pick its store, and
+**Settings → Store links** lists each store's own link to bookmark.
+
+### Creating the table
+
+Run this in the Supabase **SQL Editor**. It is safe to run again.
+
+```sql
+create table if not exists public.ziggy_usage (
+    id           bigint generated always as identity primary key,
+    at           timestamptz not null default now(),
+    visit        text not null check (length(visit) <= 40),
+    store        text not null check (length(store) <= 60),
+    store_chosen boolean not null,
+    tool         text not null check (length(tool) between 1 and 60),
+    action       text not null check (action in ('opened', 'used')),
+    detail       text not null default '' check (length(detail) <= 120)
+);
+create index if not exists ziggy_usage_at on public.ziggy_usage (at);
+
+-- Add lines and read them; never edit or delete one, never set its time.
+grant usage on schema public to anon, authenticated;
+revoke all on public.ziggy_usage from anon, authenticated;
+grant select on public.ziggy_usage to anon, authenticated;
+grant insert (visit, store, store_chosen, tool, action, detail)
+      on public.ziggy_usage to anon, authenticated;
+
+alter table public.ziggy_usage enable row level security;
+
+drop policy if exists "usage read"   on public.ziggy_usage;
+drop policy if exists "usage insert" on public.ziggy_usage;
+
+create policy "usage read"   on public.ziggy_usage
+    for select to anon, authenticated using (true);
+create policy "usage insert" on public.ziggy_usage
+    for insert to anon, authenticated with check (true);
+```
+
 ## Tags
 
 Three builders, all filling the same nine templates through `pdftk`:
