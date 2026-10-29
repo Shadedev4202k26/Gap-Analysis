@@ -62,11 +62,15 @@ def log(action, tool=None, detail=""):
 
 
 def opened(tool):
-    """Once per visit per page."""
+    """Once per visit per page — and once more after the store is picked, so
+    the page someone was on when they picked it (usually Home) counts for that
+    store and not only for "Store not picked"."""
+    ctx = (_deps["context"]() if _deps.get("context") else None) or {}
+    mark = (tool, ctx.get("store") if ctx.get("store_chosen") else None)
     seen = st.session_state.setdefault("zb_usage_seen", set())
-    if tool in seen:
+    if mark in seen:
         return
-    seen.add(tool)
+    seen.add(mark)
     log("opened", tool)
 
 
@@ -143,7 +147,11 @@ def settings_view(tz_name, stores, tools):
 
     df = pd.DataFrame(rows)
     df["at"] = pd.to_datetime(df["at"], utc=True, format="ISO8601").dt.tz_convert(tz)
-    df["store"] = df["store"].where(df["store_chosen"], NOT_CHOSEN)
+    # A visit's lines from before its store was picked count for the store it
+    # picked; only visits that never picked one stay "Store not picked".
+    picked = df[df["store_chosen"]].groupby("visit")["store"].last()
+    df["store"] = (df["store"].where(df["store_chosen"], df["visit"].map(picked))
+                   .fillna(NOT_CHOSEN))
     act = df[df["action"] == MEASURES[measure]]
 
     store_order = list(stores) + ([NOT_CHOSEN] if (df["store"] == NOT_CHOSEN).any() else [])
@@ -151,7 +159,8 @@ def settings_view(tz_name, stores, tools):
     tool_order = [t for t in tools if t not in SKIP]
     tool_order += sorted(set(df["tool"]) - set(tool_order))
 
-    counts = (act.groupby(["store", "tool"]).size().rename("n").reset_index())
+    by = act.groupby(["store", "tool"])        # a visit counts once per tool
+    counts = (by["visit"].nunique() if measure == "Visits" else by.size()).rename("n").reset_index()
     grid = pd.MultiIndex.from_product([store_order, tool_order], names=["store", "tool"])
     counts = counts.set_index(["store", "tool"]).reindex(grid, fill_value=0).reset_index()
 

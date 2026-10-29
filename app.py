@@ -3115,4 +3115,10 @@ studio.context_bar(_smilez_mark(), _nav.url_path)
 if _nav.url_path != "settings":
     studio.choose_store_banner()
 usage.opened(_nav.title)
+# Tags carry the store's deals, so a device that never picked its store would
+# print another store's prices (the fallback is the first store, Allegan).
+if _nav.url_path in {pg.url_path for pg in _SECTIONS["Print"]}         and not studio.context()["store_chosen"]:
+    st.info("Tags print with your store's deals — pick your store above to start.",
+            icon=":material/print_disabled:")
+    st.stop()
 _nav.run()
