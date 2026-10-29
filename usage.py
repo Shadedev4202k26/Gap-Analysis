@@ -155,6 +155,12 @@ def settings_view(tz_name, stores, tools):
     grid = pd.MultiIndex.from_product([store_order, tool_order], names=["store", "tool"])
     counts = counts.set_index(["store", "tool"]).reindex(grid, fill_value=0).reset_index()
 
+    if not counts["n"].any():           # an empty grid draws a legend of 0.000000
+        st.info(f"No {measure.lower()} in the {period.lower()} yet."
+                + (" Switch to **Visits** to see who has opened the tools." if measure == "Jobs done" else ""))
+        _unpicked_note(df)
+        return
+
     # ── heat map ──
     st.markdown(f"**{measure} by store and tool** — darker means used more; "
                 "blank squares are tools that store hasn't used.")
@@ -165,7 +171,7 @@ def settings_view(tz_name, stores, tools):
         y=alt.Y("store:N", sort=store_order, title=None))
     heat = base.mark_rect(stroke="#0b1020", strokeWidth=2).encode(
         color=alt.condition("datum.n > 0",
-                            alt.Color("n:Q", title=measure,
+                            alt.Color("n:Q", title=measure, legend=alt.Legend(format="d"),
                                       scale=alt.Scale(scheme="purples")),
                             alt.value("rgba(255,255,255,0.04)")),
         tooltip=[alt.Tooltip("store:N", title="Store"), alt.Tooltip("tool:N", title="Tool"),
@@ -205,6 +211,10 @@ def settings_view(tz_name, stores, tools):
     else:
         st.dataframe(last, use_container_width=True)
 
+    _unpicked_note(df)
+
+
+def _unpicked_note(df):
     n_unpicked = df.loc[df["store"] == NOT_CHOSEN, "visit"].nunique()
     if n_unpicked:
         st.caption(f"⚠️ {n_unpicked} visit(s) came from a device that never picked its "
