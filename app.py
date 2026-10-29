@@ -3112,5 +3112,7 @@ usage.track_downloads()
 shell.sidebar(_SECTIONS, _TRAILING, _nav.url_path, top=studio.store_picker,
               bottom=support.button)
 studio.context_bar(_smilez_mark(), _nav.url_path)
+if _nav.url_path != "settings":
+    studio.choose_store_banner()
 usage.opened(_nav.title)
 _nav.run()
