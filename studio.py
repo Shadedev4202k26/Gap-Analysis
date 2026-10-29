@@ -292,8 +292,11 @@ def store_picker():
     """The app-wide store, at the top of the sidebar. Tags read its deals column,
     Store tools signs managers in to it, Settings opens on it."""
     ctx = context()
-    st.session_state["zb_store_pick"] = ctx["store"]
-    st.selectbox("Store", ctx["stores"], key="zb_store_pick", on_change=_pick_store)
+    # Empty until this device picks its store, so nobody prints Allegan's tags
+    # by leaving the first store in place.
+    st.session_state["zb_store_pick"] = ctx["store"] if ctx["store_chosen"] else None
+    st.selectbox("Store", ctx["stores"], key="zb_store_pick", placeholder="Select a store",
+                 on_change=_pick_store)
 
 
 WEEK_PAGES = {"", "home", "shelf-tags"}   # pages that print against the top bar's week
@@ -375,10 +378,10 @@ def _card(key, page, html_body):
             st.page_link(page, label="Open", icon=":material/arrow_forward:")
 
 
-def _choose_store_banner(ctx):
-    """Asks a device that never picked its store to pick it. The sidebar can't:
-    it already shows the fallback store, and picking that one again changes
-    nothing, so it would never count as a choice."""
+def choose_store_banner():
+    """Asks a device that never picked its store to pick it, on every page —
+    the sidebar's picker is out of sight on a phone."""
+    ctx = context()
     if ctx["store_chosen"]:
         return
     with st.container(key="zbpickstore"):
@@ -386,7 +389,7 @@ def _choose_store_banner(ctx):
                    "count for the right store, then bookmark this page — it will open "
                    "on your store from then on.", icon=":material/storefront:")
         st.selectbox("Your store", ctx["stores"], index=None, key="zb_store_first",
-                     placeholder="Choose your store", on_change=_first_store)
+                     placeholder="Select a store", on_change=_first_store)
 
 
 def _first_store():
@@ -398,11 +401,14 @@ def _first_store():
 
 def render_home():
     ctx = context()
-    _choose_store_banner(ctx)
     inv = _inventory_stats()
     wk = deal_store.week_label(ctx["week"]) if ctx["week"] else None
-    where = (f'for <b>{esc(ctx["store"])}</b>, week of <b>{esc(wk)}</b>'
-             if ctx["store"] and wk else "once this week's deals sheet is loaded")
+    if not ctx["store_chosen"]:
+        where = "for your store once you select it above"
+    elif ctx["store"] and wk:
+        where = f'for <b>{esc(ctx["store"])}</b>, week of <b>{esc(wk)}</b>'
+    else:
+        where = "once this week's deals sheet is loaded"
     st.markdown(f'<div class="zb-home-h"><h1>{_greeting()}</h1>'
                 f'<p>Everything below is {where}.</p></div>', unsafe_allow_html=True)
 
