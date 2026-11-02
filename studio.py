@@ -1213,14 +1213,18 @@ def _step2_hand(ctx):
                        "then 3 and 4. A Qty of 2 puts the same strain on both halves.")
     fmt, mix = ss["zb_fmt"], _mix()
     rows = []
+    # Rows added past the first 6 arrive with every cell blank (NaN), Qty
+    # included: blank text is "", and a blank Qty means 1 like the starting rows.
     for _, r in out.iterrows():
+        r = {k: (None if pd.isna(v) else v) for k, v in r.items()}
         if not any(str(r[c] or "").strip() for c in ("Brand line", "Strain", "THC", "Price")):
             continue
         row = {"brand": str(r["Brand line"] or "").strip(),
                "strain": str(r["Strain"] or "").strip(),
                "thc": str(r["THC"] or "").strip(), "price": str(r["Price"] or "").strip(),
                "type": r["Type"] if r["Type"] in TYPES else "hybrid"}
-        rows.extend(dict(row) for _ in range(int(r["Qty"] or 0)))
+        qty = 1 if r["Qty"] is None else int(r["Qty"])
+        rows.extend(dict(row) for _ in range(qty))
     if fmt in ("pr35", "pr4"):
         # Typed tags carry no category; on a preroll format they are prerolls.
         for r in rows:
