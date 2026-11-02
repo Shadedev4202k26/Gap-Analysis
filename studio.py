@@ -385,9 +385,9 @@ def choose_store_banner():
     if ctx["store_chosen"]:
         return
     with st.container(key="zbpickstore"):
-        st.warning("**Which store is this?** Pick it once so tags, trackers and usage "
-                   "count for the right store, then bookmark this page — it will open "
-                   "on your store from then on.", icon=":material/storefront:")
+        st.warning("**Which store is this?** Pick your store to open ZiggyBot — tags "
+                   "print with its deals. Then bookmark the page: it will open on your "
+                   "store from then on.", icon=":material/storefront:")
         st.selectbox("Your store", ctx["stores"], index=None, key="zb_store_first",
                      placeholder="Select a store", on_change=_first_store)
 
