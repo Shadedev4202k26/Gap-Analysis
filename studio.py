@@ -35,6 +35,7 @@ import deals as deals_mod
 import preroll_tags
 import sale_badges
 import aging
+import build_dual
 import whats_new
 import ziggy
 
@@ -81,6 +82,29 @@ def _per_page(path):
 
 def per_page(fmt):
     return _per_page(FORMATS[fmt]["templates"]["hybrid"])
+
+
+SPLIT = "split"
+
+
+def _mix():
+    """How strain types share a sheet: False (a page per type), True (mixed), or
+    SPLIT — two strains per preroll tag, each half in its own type colour, so
+    types always mix. Split is a preroll layout: a hook tag is too small."""
+    ss = st.session_state
+    if ss.get("zb_split") and ss.get("zb_fmt") in ("pr35", "pr4"):
+        return SPLIT
+    return ss.get("zb_mix", False)
+
+
+def tags_on(n, mix):
+    """Physical tags for n chosen rows: a split tag carries two."""
+    return -(-n // 2) if mix == SPLIT else n
+
+
+def slots(fmt, mix):
+    """Rows one sheet holds."""
+    return per_page(fmt) * (2 if mix == SPLIT else 1)
 
 
 # ── the week & store context ────────────────────────────────────────────────
@@ -417,7 +441,7 @@ def render_home():
         with st.container(key="zbhero"):
             st.markdown(
                 '<div class="zb-hero"><div class="zb-hero-k">PRINT</div>'
-                '<h2>Shelf tags</h2><p>Hook, 3.5″ and 4″ preroll — one flow, three steps. '
+                '<h2>Shelf tags</h2><p>Hook, 3.5″ and 4″ preroll, and split tags — one flow, three steps. '
                 'Pick from today\'s inventory with the sheet drawing itself beside you.</p>'
                 '<div class="zb-hero-steps"><span>1 · Source &amp; format</span>'
                 '<span>2 · Pick tags</span><span>3 · Review &amp; print</span></div></div>',
@@ -566,9 +590,14 @@ EDITABLE = {"Strain": "strain", "Brand line": "brand", "THC": "thc", "Price": "p
 
 
 def _chosen(rows):
-    """Selected rows, edits applied, each repeated by its quantity, grid order."""
+    """Selected rows, edits applied, each repeated by its quantity, in grid
+    order — or, for split tags, in the order they were ticked, which is how
+    staff choose the pairs."""
     ss = st.session_state
     sel, edits = ss.setdefault("zb_sel", {}), ss.setdefault("zb_edit", {})
+    if _mix() == SPLIT:
+        by_rid = {r["rid"]: r for r in rows}
+        rows = [by_rid[rid] for rid in sel if rid in by_rid]
     out = []
     for r in rows:
         q = sel.get(r["rid"], 0)
@@ -581,7 +610,7 @@ def _chosen(rows):
 
 
 def _pages(chosen, fmt, mix):
-    per = per_page(fmt)
+    per = slots(fmt, mix)
     if mix:
         return [chosen[i:i + per] for i in range(0, len(chosen), per)]
     pages = []
@@ -630,11 +659,17 @@ def _tag_html(r, style):
             f'{_badge_html(deal)}{price}</div></div></div>')
 
 
-def sheet_html(page_rows, fmt):
+def sheet_html(page_rows, fmt, mix=False):
     f = FORMATS[fmt]
     per = per_page(fmt)
-    cells = [_tag_html(r, f["style"]) for r in page_rows]
-    cells += ['<div class="zt empty"></div>'] * (per - len(page_rows))
+    if mix == SPLIT:
+        rows = list(page_rows) + [None] * (2 * per - len(page_rows))
+        cells = ['<div class="zt-pair">' + "".join(
+            _tag_html(x, f["style"]) if x else '<div class="zt empty"></div>'
+            for x in rows[i:i + 2]) + '</div>' for i in range(0, 2 * per, 2)]
+    else:
+        cells = [_tag_html(r, f["style"]) for r in page_rows]
+        cells += ['<div class="zt empty"></div>'] * (per - len(page_rows))
     return (f'<div class="zb-sheet {f["style"]}" style="--cols:{f["cols"]};'
             f'--rows:{per // f["cols"]}">{"".join(cells)}</div>')
 
@@ -645,6 +680,8 @@ def _build_pdf(fmt, mix, rows_json):
     rows = json.loads(rows_json)
     templates = FORMATS[fmt]["templates"]
     with tempfile.TemporaryDirectory() as td:
+        if mix == SPLIT:
+            return build_dual.build_sheet(rows, td, size="4" if fmt == "pr4" else "3.5")
         if mix:
             return combine_tags.build_combined(templates, rows, td)
         grouped = {}
@@ -784,7 +821,8 @@ def _step2_options(ctx, changed):
     """
     ss = st.session_state
     o1, o2, o3 = st.columns(3, gap="small")
-    _setting(o1, "zb_mix", False, "Mix types on one page", MIX_HELP)
+    _setting(o1, "zb_mix", False, "Mix types on one page", MIX_HELP,
+             disabled=_mix() == SPLIT)
     _setting(o2, "zb_bubbles", True, "Sale bubbles", BUBBLES_HELP)
     if changed:
         ss["zb_changed_view"] = ss.get("zb_filter") == "Changed"
@@ -803,15 +841,21 @@ def _step1(ctx):
     src = ss.setdefault("zb_src", "csv")
 
     st.markdown('<div class="zb-h2">What are you printing?</div>', unsafe_allow_html=True)
+    split = _mix() == SPLIT
     cols = st.columns(4, gap="small")
     for c, key in zip(cols[:3], FORMATS):
         with c:
-            if _option(key, FORMATS[key]["label"], FORMATS[key]["sub"], fmt == key, GLYPH[key]):
-                ss["zb_fmt"] = key
+            if _option(key, FORMATS[key]["label"], FORMATS[key]["sub"],
+                       fmt == key and not split, GLYPH[key]):
+                ss.update(zb_fmt=key, zb_split=False)
                 st.rerun()
     with cols[3]:
-        _option("split", "Split tag", "2 strains · in Preroll tags for now", False,
-                GLYPH["split"], disabled=True)
+        if _option("split", "Split tag", "2 strains per tag · 20 per sheet", split,
+                   GLYPH["split"]):
+            _pick_format(SPLIT)
+            st.rerun()
+    if split:
+        _split_size()
 
     st.markdown('<div class="zb-h2">Where do the products come from?</div>',
                 unsafe_allow_html=True)
@@ -835,7 +879,8 @@ def _step1(ctx):
             st.rerun()
 
     o1, o2, o3 = st.columns(3, gap="small")
-    _setting(o1, "zb_mix", False, "Mix types on one page", MIX_HELP)
+    _setting(o1, "zb_mix", False, "Mix types on one page", MIX_HELP,
+             disabled=_mix() == SPLIT)
     _setting(o2, "zb_bubbles", True, "Sale bubbles", BUBBLES_HELP)
     if ctx["prev"] is not None:
         _setting(o3, "zb_changed_only", False,
@@ -857,7 +902,7 @@ def _step1(ctx):
                 + (f' · {n_out} outdoor at the fixed price' if n_out and fmt == "hook" else "")
                 + '</div>', unsafe_allow_html=True)
         ready = bool(rows)
-    fmt_l = FORMATS[ss["zb_fmt"]]["label"]
+    fmt_l = ("Split tag · " if _mix() == SPLIT else "") + FORMATS[ss["zb_fmt"]]["label"]
     src_l = {"csv": "Import CSV", "hand": "Typed by hand", "handoff": "Handed over"}[src]
 
     def nxt():
@@ -874,7 +919,7 @@ FILTERS = ["All", "On sale", "Changed", "Outdoor", "Selected"]
 @st.fragment
 def _step2(ctx):
     ss = st.session_state
-    fmt, mix = ss["zb_fmt"], ss.get("zb_mix", False)
+    fmt, mix = ss["zb_fmt"], _mix()
     if ss.get("zb_src") == "hand":
         return _step2_hand(ctx)
     rows = _decorated(fmt, ctx)
@@ -983,6 +1028,10 @@ def _step2(ctx):
 
         st.caption("Tick a tag to print it. Every cell but Deal can be edited — "
                    "changes print exactly as typed.")
+        if mix == SPLIT:
+            st.caption("**Split tags pair up in the order you tick them:** the 1st and "
+                       "2nd share a tag, then the 3rd and 4th. Untick and tick again to "
+                       "move one to the end.")
 
     chosen = _chosen(rows)
     with right:
@@ -1002,7 +1051,7 @@ def _preview(chosen, fmt, mix):
         if kinds.count(k))
     st.markdown(f'<div class="zb-prev-h"><b>Sheet preview</b>'
                 f'<span>page {pg} of {n}</span>{chips}</div>', unsafe_allow_html=True)
-    st.markdown(sheet_html(pages[pg - 1], fmt), unsafe_allow_html=True)
+    st.markdown(sheet_html(pages[pg - 1], fmt, mix), unsafe_allow_html=True)
     if n > 1:
         p = st.segmented_control("Page", list(range(1, n + 1)), default=pg,
                                  key=f"zb_pgsel_{n}", label_visibility="collapsed",
@@ -1038,7 +1087,7 @@ def _select_bar(view_rows, sel, filt, cat, ql, fmt):
     # Everything in one go is allowed — it is sometimes the job — but it should
     # not be a surprise: the whole 9/25 export is 166 hook sheets.
     total = sum(sel.values())
-    sheets = -(-total // per_page(fmt)) if total else 0
+    sheets = -(-total // slots(fmt, _mix())) if total else 0
     if sheets > 20:
         mins = max(1, round(sheets * BUILD_S.get(fmt, 2.5) / 60))
         st.caption(f"⚠️ {total:,} tags is about {sheets:,} sheets — building them in the "
@@ -1076,7 +1125,13 @@ def _no_matches(filt, cat, q):
 def _step2_footer(chosen, fmt, mix, ctx):
     n = len(chosen)
     pages = len(_pages(chosen, fmt, mix))
-    summary = (f"<b>{n}</b> tag{'s' if n != 1 else ''} selected · {pages} "
+    if mix == SPLIT:
+        t = tags_on(n, mix)
+        what = (f"<b>{n}</b> strain{'s' if n != 1 else ''} · {t} split "
+                f"tag{'s' if t != 1 else ''}")
+    else:
+        what = f"<b>{n}</b> tag{'s' if n != 1 else ''} selected"
+    summary = (f"{what} · {pages} "
                f"sheet{'s' if pages != 1 else ''} · {esc(FORMATS[fmt]['label'].lower())}"
                + (f" · {esc(ctx['store'])}" if ctx["store"] else ""))
     _footer("Back", lambda: _go(1), summary, "Review & print", lambda: _go(3),
@@ -1095,16 +1150,42 @@ def start_custom():
     st.switch_page(_page("studio"))
 
 
+def _pick_format(key):
+    """A format, or SPLIT: split tags print on a preroll sheet, so picking it
+    from Hook tag moves to 4″, the size most bins use."""
+    ss = st.session_state
+    if key == SPLIT:
+        ss["zb_split"] = True
+        if ss.get("zb_fmt") not in ("pr35", "pr4"):
+            ss["zb_fmt"] = "pr4"
+    else:
+        ss.update(zb_fmt=key, zb_split=False)
+
+
+def _split_size():
+    ss = st.session_state
+
+    def keep():
+        if ss.get("zb_split_w"):
+            ss["zb_fmt"] = ss["zb_split_w"]
+    ss["zb_split_w"] = ss["zb_fmt"]
+    st.segmented_control("Split tag size", ["pr35", "pr4"], key="zb_split_w",
+                         on_change=keep, format_func=lambda k: FORMATS[k]["label"])
+
+
 def _format_pick():
     """Step 1's format cards as one row, for the typing screen."""
     ss = st.session_state
 
     def keep():
         if ss.get("zb_fmt_w"):
-            ss["zb_fmt"] = ss["zb_fmt_w"]
-    ss["zb_fmt_w"] = ss["zb_fmt"]
-    st.segmented_control("Tag size", list(FORMATS), key="zb_fmt_w", on_change=keep,
-                         format_func=lambda k: FORMATS[k]["label"])
+            _pick_format(ss["zb_fmt_w"])
+    ss["zb_fmt_w"] = SPLIT if _mix() == SPLIT else ss["zb_fmt"]
+    st.segmented_control("Tag", list(FORMATS) + [SPLIT], key="zb_fmt_w", on_change=keep,
+                         format_func=lambda k: "Split tag" if k == SPLIT
+                         else FORMATS[k]["label"])
+    if _mix() == SPLIT:
+        _split_size()
 
 
 def _step2_hand(ctx):
@@ -1127,7 +1208,10 @@ def _step2_hand(ctx):
             })
         st.caption("Text prints exactly as typed; blank lines stay blank. Brand names "
                    "still pick up this week's deals.")
-    fmt, mix = ss["zb_fmt"], ss.get("zb_mix", False)
+        if _mix() == SPLIT:
+            st.caption("**Split tags pair up row by row:** rows 1 and 2 share a tag, "
+                       "then 3 and 4. A Qty of 2 puts the same strain on both halves.")
+    fmt, mix = ss["zb_fmt"], _mix()
     rows = []
     for _, r in out.iterrows():
         if not any(str(r[c] or "").strip() for c in ("Brand line", "Strain", "THC", "Price")):
@@ -1153,7 +1237,7 @@ def _step2_hand(ctx):
 
 def _step3(ctx):
     ss = st.session_state
-    fmt, mix = ss["zb_fmt"], ss.get("zb_mix", False)
+    fmt, mix = ss["zb_fmt"], _mix()
     if ss.get("zb_src") == "hand":
         chosen = ss.get("zb_hand_rows") or []
     else:
@@ -1164,7 +1248,8 @@ def _step3(ctx):
         return
     kinds = [r.get("_kind") for r in chosen]
     pages = _pages(chosen, fmt, mix)
-    tiles = [(len(chosen), "tags"), (len(pages), "sheets"),
+    tiles = [(tags_on(len(chosen), mix), "split tags" if mix == SPLIT else "tags"),
+             (len(pages), "sheets"),
              (kinds.count("sale"), "on sale"), (kinds.count("bulk"), "bulk deal"),
              (kinds.count("shelf"), "shelf badge")]
     st.markdown('<div class="zb-tiles">' + "".join(
@@ -1173,7 +1258,8 @@ def _step3(ctx):
 
     payload = json.dumps([_clean(r) for r in chosen], sort_keys=True, default=str)
     try:
-        with st.spinner(f"Building {len(chosen)} {FORMATS[fmt]['label'].lower()}s…"):
+        with st.spinner(f"Building {tags_on(len(chosen), mix)} "
+                        f"{'split ' if mix == SPLIT else ''}{FORMATS[fmt]['label'].lower()}s…"):
             pdf = _build_pdf(fmt, mix, payload)
             thumbs = _thumbs(pdf)
     except FileNotFoundError as e:
@@ -1184,7 +1270,8 @@ def _step3(ctx):
         return
 
     stamp = dt.date.today().isoformat()
-    name = f"{FORMATS[fmt]['label'].replace('″', 'in').replace(' ', '')}_{stamp}.pdf"
+    label = ("Split " if mix == SPLIT else "") + FORMATS[fmt]["label"]
+    name = f"{label.replace('″', 'in').replace(' ', '')}_{stamp}.pdf"
     st.download_button("Download PDF to print", pdf, name, "application/pdf",
                        type="primary", icon=":material/print:", key="zb_dl")
     st.markdown('<div class="zb-sec">The real pages</div>', unsafe_allow_html=True)
@@ -1351,6 +1438,12 @@ CSS = """
 .zt{container-type:size;box-sizing:border-box;border:.5px dashed #C9CCD6;position:relative;
   overflow:hidden;font-family:'Archivo',sans-serif;color:#101114}
 .zt.empty{background:repeating-linear-gradient(135deg,#fff 0 6px,#F6F6F9 6px 12px)}
+/* a split tag: two halves, each its own tag with its own type colour */
+.zt-pair{display:flex;gap:2%;min-width:0;min-height:0}
+.zt-pair>.zt{flex:1 1 0;min-width:0}
+.zt-pair .zt.pr .zt-s,.zt-pair .zt.pr4 .zt-s{font-size:min(15cqh,10cqw);overflow-wrap:anywhere}
+.zt-pair .zt.pr .zt-b,.zt-pair .zt.pr4 .zt-b{font-size:min(9cqh,8cqw)}
+.zt-pair .zt-t,.zt-pair .zt-p{font-size:min(11cqh,10cqw)}
 .zt-in{position:absolute;inset:6% 5%;display:flex;flex-direction:column;align-items:center;
   justify-content:space-between;text-align:center}
 .zt-b{font-weight:800;font-size:8cqh;letter-spacing:.2px;white-space:nowrap;overflow:hidden;
