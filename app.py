@@ -3076,10 +3076,6 @@ _SECTIONS = {
         _STUDIO,
         st.Page(studio.page_custom, title="Custom tags", icon=":material/edit_note:",
                 url_path="custom-tags"),
-        st.Page(render_hook_tags, title="Hook tags · classic", icon=":material/label:",
-                url_path="hook-tags"),
-        st.Page(render_preroll_tags, title="Preroll tags · classic",
-                icon=":material/local_florist:", url_path="preroll-tags"),
     ],
     "Stock": [
         st.Page(render_inventory, title="Inventory balance", icon=":material/bar_chart:",
@@ -3096,9 +3092,15 @@ _SECTIONS = {
 }
 _TRAILING = [st.Page(render_settings, title="Settings", icon=":material/settings:",
                      url_path="settings")]
+# The classic tag pages are off the menu; their old links and bookmarks open
+# Shelf tags on the same kind of tag instead of a "page not found".
+_RETIRED = {"hook-tags": "hook", "preroll-tags": "pr4"}
+_OLD = [st.Page(render_hook_tags, title="Hook tags · classic", url_path="hook-tags"),
+        st.Page(render_preroll_tags, title="Preroll tags · classic", url_path="preroll-tags")]
 
 _nav = st.navigation(
-    [pg for pages in _SECTIONS.values() for pg in pages] + _TRAILING, position="hidden")
+    [pg for pages in _SECTIONS.values() for pg in pages] + _TRAILING + _OLD,
+    position="hidden")
 _by_path = {pg.url_path: pg for pages in _SECTIONS.values() for pg in pages + _TRAILING}
 studio.configure(
     init_db=init_supabase, build_rows=build_tag_rows, fix_outdoor=fix_outdoor_prices,
@@ -3111,6 +3113,10 @@ support.configure(init_db=init_supabase, context=studio.context,
 usage.configure(init_db=init_supabase, context=studio.context,
                 page_title=lambda: _nav.title)
 usage.track_downloads()
+if _nav.url_path in _RETIRED:
+    studio.context()        # takes the link's ?store= along before leaving
+    st.session_state.update(zb_fmt=_RETIRED[_nav.url_path], zb_step=1)
+    st.switch_page(_STUDIO)
 shell.sidebar(_SECTIONS, _TRAILING, _nav.url_path, top=studio.store_picker,
               bottom=support.button)
 studio.context_bar(_smilez_mark(), _nav.url_path)
@@ -3122,4 +3128,6 @@ if _nav.url_path != "settings":
 if _nav.url_path != "settings" and not studio.context()["store_chosen"]:
     st.stop()
 usage.opened(_nav.title)
+if _nav.url_path != "settings":
+    studio.whats_new_popup()     # on every page: many stores bookmark a page, not Home
 _nav.run()
