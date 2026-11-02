@@ -3074,6 +3074,8 @@ _SECTIONS = {
     "": [_HOME],
     "Print": [
         _STUDIO,
+        st.Page(studio.page_custom, title="Custom tags", icon=":material/edit_note:",
+                url_path="custom-tags"),
         st.Page(render_hook_tags, title="Hook tags · classic", icon=":material/label:",
                 url_path="hook-tags"),
         st.Page(render_preroll_tags, title="Preroll tags · classic",

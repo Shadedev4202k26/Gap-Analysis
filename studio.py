@@ -422,10 +422,15 @@ def render_home():
                 '<div class="zb-hero-steps"><span>1 · Source &amp; format</span>'
                 '<span>2 · Pick tags</span><span>3 · Review &amp; print</span></div></div>',
                 unsafe_allow_html=True)
-            if st.button("Start", type="primary", icon=":material/arrow_forward:",
-                         key="zb_home_start"):
+            b1, b2 = st.columns(2, gap="small")
+            if b1.button("Start", type="primary", icon=":material/arrow_forward:",
+                         key="zb_home_start", use_container_width=True):
                 st.session_state["zb_step"] = 1
                 st.switch_page(_page("studio"))
+            if b2.button("Custom tags", icon=":material/edit_note:",
+                         key="zb_home_custom", use_container_width=True,
+                         help="Type your own tags — straight to the typing table"):
+                start_custom()
     with right:
         if ctx["sheet"]:
             botw = sum(1 for d in ctx["deals"] if getattr(d, "kind", "") == "botw")
@@ -1081,11 +1086,32 @@ def _step2_footer(chosen, fmt, mix, ctx):
 HAND_COLS = ["Qty", "Brand line", "Strain", "THC", "Price", "Type"]
 
 
+def start_custom():
+    """Straight to the typing table, skipping step 1: the Print menu's Custom
+    tags and Home's button. The tag size is picked on the table's screen."""
+    ss = st.session_state
+    ss.setdefault("zb_fmt", "hook")
+    ss.update(zb_src="hand", zb_step=2)
+    st.switch_page(_page("studio"))
+
+
+def _format_pick():
+    """Step 1's format cards as one row, for the typing screen."""
+    ss = st.session_state
+
+    def keep():
+        if ss.get("zb_fmt_w"):
+            ss["zb_fmt"] = ss["zb_fmt_w"]
+    ss["zb_fmt_w"] = ss["zb_fmt"]
+    st.segmented_control("Tag size", list(FORMATS), key="zb_fmt_w", on_change=keep,
+                         format_func=lambda k: FORMATS[k]["label"])
+
+
 def _step2_hand(ctx):
     ss = st.session_state
-    fmt, mix = ss["zb_fmt"], ss.get("zb_mix", False)
     left, right = st.columns([13, 10], gap="large")
     with left:
+        _format_pick()
         _step2_options(ctx, False)
         st.markdown('<div class="zb-h2">Type your tags</div>', unsafe_allow_html=True)
         seed = ss.setdefault("zb_hand_seed", pd.DataFrame(
@@ -1101,6 +1127,7 @@ def _step2_hand(ctx):
             })
         st.caption("Text prints exactly as typed; blank lines stay blank. Brand names "
                    "still pick up this week's deals.")
+    fmt, mix = ss["zb_fmt"], ss.get("zb_mix", False)
     rows = []
     for _, r in out.iterrows():
         if not any(str(r[c] or "").strip() for c in ("Brand line", "Strain", "THC", "Price")):
@@ -1434,6 +1461,10 @@ def page_home():
     with st.container(key="zbhome"):
         render_home()
     whats_new.show(_page, context()["store"])
+
+
+def page_custom():
+    start_custom()
 
 
 def page_studio():
