@@ -1553,6 +1553,9 @@ def on_cloud():
 def page_home():
     with st.container(key="zbhome"):
         render_home()
+
+
+def whats_new_popup():
     whats_new.show(_page, context()["store"])
 
 

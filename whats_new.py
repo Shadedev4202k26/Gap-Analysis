@@ -36,6 +36,18 @@ UPDATES = [
         ],
     },
     {
+        "id": "classic-retired",
+        "until": dt.date(2026, 11, 30),
+        "title": "Classic tag pages are gone",
+        "body": ("**Hook tags · classic** and **Preroll tags · classic** are off the menu. "
+                 "Everything they did is in **Shelf tags** now."),
+        "points": [
+            "**Deals tags:** Shelf tags, then pick Hook, 3.5″, 4″ or Split tag",
+            "**Typed tags** (curbside, notes): **Custom tags** in the Print menu",
+            "Old bookmarks still work. They open Shelf tags.",
+        ],
+    },
+    {
         "id": "split-tags",
         "until": dt.date(2026, 11, 16),
         "title": "Split tags are now in Shelf tags",
@@ -46,7 +58,6 @@ UPDATES = [
             "**From the inventory:** halves pair up in the order you tick them",
             "**Typed by hand:** rows 1 and 2 share a tag, then 3 and 4",
         ],
-        "note": "Preroll tags · classic still works while you switch over.",
         "page": "studio",
         "page_label": "Split tags",
         "state": {"zb_split": True, "zb_fmt": "pr4", "zb_step": 1},
