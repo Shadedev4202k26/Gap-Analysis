@@ -1433,7 +1433,7 @@ def on_cloud():
 def page_home():
     with st.container(key="zbhome"):
         render_home()
-    whats_new.show(_page)
+    whats_new.show(_page, context()["store"])
 
 
 def page_studio():
