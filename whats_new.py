@@ -5,6 +5,10 @@ one pop-up, newest first, so a notice retires itself without anyone removing
 it. An entry with "highlight" is drawn as a bold callout at the top. "{store}"
 in a body becomes the store this device picked.
 
+An entry's "page" gives the pop-up a button to that page, and its "state" is
+set first (Split tags opens Shelf tags with Split tag picked). The newest
+entry with a page gets the button.
+
 It opens once per visit: Streamlit forgets everything when the page is
 reopened, so that is the most it can remember without sign-ins. The seen flag
 is set before the pop-up opens, which also covers someone closing it with ✕.
@@ -30,6 +34,22 @@ UPDATES = [
             "**Bookmark this page now.** It opens on your store every time.",
             "Wrong store? Change it in the **Store** box at the top left.",
         ],
+    },
+    {
+        "id": "split-tags",
+        "until": dt.date(2026, 11, 16),
+        "title": "Split tags are now in Shelf tags",
+        "body": ("Two strains on one preroll tag, to save space in the bins. Pick "
+                 "**Split tag** on the first step of Shelf tags, then 3.5″ or 4″."),
+        "points": [
+            "**Each half keeps its own colour** and its own sale bubble",
+            "**From the inventory:** halves pair up in the order you tick them",
+            "**Typed by hand:** rows 1 and 2 share a tag, then 3 and 4",
+        ],
+        "note": "Preroll tags · classic still works while you switch over.",
+        "page": "studio",
+        "page_label": "Split tags",
+        "state": {"zb_split": True, "zb_fmt": "pr4", "zb_step": 1},
     },
     {
         "id": "aging-per-package",
@@ -108,6 +128,7 @@ def show(page_for, store=""):
         if target and target[1] is not None and right.button(
                 target[0]["page_label"], type="primary", icon=":material/arrow_forward:",
                 use_container_width=True, key="zb_new_go"):
+            st.session_state.update(target[0].get("state") or {})
             st.switch_page(target[1])
 
     _pop()
