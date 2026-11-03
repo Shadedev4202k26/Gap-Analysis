@@ -871,6 +871,7 @@ def render_inventory():
         df['Room']    = df['Room'].apply(lambda x: str(x).strip('="').strip())
         df['Qty']     = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
         st.caption(f"Counting stock from the **{qty_col}** column.")
+        usage.loaded("Inventory balance", uploaded_file)
 
         all_rooms = sorted(df['Room'].dropna().unique().tolist())
 
