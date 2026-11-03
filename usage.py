@@ -74,6 +74,18 @@ def opened(tool):
     log("opened", tool)
 
 
+def loaded(tool, file):
+    """A page whose job ends on screen, with nothing to download (Inventory
+    balance), counts a finished job when a file is read: once per file per
+    visit, not on every rerun after it."""
+    mark = ("loaded", tool, getattr(file, "file_id", None) or getattr(file, "name", ""))
+    seen = st.session_state.setdefault("zb_usage_seen", set())
+    if mark in seen:
+        return
+    seen.add(mark)
+    log("used", tool, f"Loaded {getattr(file, 'name', 'a file')}"[:120])
+
+
 def track_downloads():
     """Count every download button as a finished job, without touching each of
     the dozen call sites: st.download_button gets an on_click that logs the
