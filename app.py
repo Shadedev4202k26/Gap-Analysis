@@ -61,6 +61,7 @@ import break_store
 import shell
 import studio
 import live_stock
+import stock_filter
 from types import SimpleNamespace
 import support
 import usage
@@ -906,12 +907,12 @@ def render_inventory():
         if live is None:
             st.caption(f"Counting stock from the **{qty_col}** column.")
             usage.loaded("Inventory balance", uploaded_file)
-        else:
-            # An export is one category; live stock is all of them, so pick one here.
-            cats = sorted(c for c in df["Category"].dropna().unique() if c)
-            pick = st.selectbox("Category", ["All categories"] + cats, key="balance_cat")
-            if pick != "All categories":
-                df = df[df["Category"] == pick]
+        # Search, Category and Brand: the same bar as Shelf tags and Aging stock.
+        # An export is usually one category; live stock holds them all.
+        keep = stock_filter.bar(
+            "balance", df["Product"].tolist(),
+            df["Category"].astype(str).tolist() if "Category" in df.columns else None)
+        df = df[keep]
 
         all_rooms = sorted(df['Room'].dropna().unique().tolist())
 
@@ -1846,6 +1847,14 @@ def render_dead_stock():
     except Exception as e:
         st.error(f"Could not read CSV: {e}")
         return
+
+    # Search, Category and Brand: the same bar as Shelf tags and Inventory balance.
+    if "Product" in df.columns:
+        cat_col = next((c for c in df.columns if c.strip().lower() == "category"), None)
+        keep = stock_filter.bar(
+            "aging", df["Product"].astype(str).str.strip('="').tolist(),
+            df[cat_col].astype(str).tolist() if cat_col else None)
+        df = df[keep]
 
     today = date.today()
     pkgs, err = aging.packages(df, today)
