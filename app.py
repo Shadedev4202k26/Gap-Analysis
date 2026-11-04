@@ -3106,6 +3106,8 @@ def _unmatched_deals(sheet, db):
             continue
         rows = build_tag_rows(got[0])
         for d in sheet.deals(store):
+            if d.section.startswith("bulk flower"):    # deli shelf: no bubble by design
+                continue
             if any(deals_mod.matches(d, r) for r in rows):
                 continue
             deli = [r for r in rows if deals_mod.is_deli(r)]
