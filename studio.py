@@ -32,6 +32,7 @@ import streamlit as st
 
 import combine_tags
 import deal_store
+import live_stock
 import deals as deals_mod
 import preroll_tags
 import sale_badges
@@ -541,6 +542,8 @@ def _source_rows():
     src = ss.get("zb_src", "csv")
     if src == "csv":
         return ss.get("zb_rows") or []
+    if src == "live":
+        return ss.get("zb_live_rows") or []
     if src == "handoff":
         return ss.get("zb_handoff_rows") or []
     return []
@@ -555,7 +558,7 @@ def _decorated(fmt, ctx):
     ss = st.session_state
     bubbles = ss.get("zb_bubbles", True)
     base = _source_rows()
-    sig = (ss.get("zb_src"), ss.get("zb_rows_sig"), len(base), fmt,
+    sig = (ss.get("zb_src"), ss.get("zb_rows_sig"), ss.get("zb_live_sig"), len(base), fmt,
            str(ctx["week"]), ctx["store"], bubbles, len(ctx["deals"] or []),
            str(ctx["prev_week"]))
     hit = ss.get("zb_dec")
@@ -741,6 +744,7 @@ GLYPH = {
     "pr4": '<i style="width:60px;height:26px"></i>',
     "split": '<i style="width:28px;height:26px;border-color:#F59E0B"></i>'
              '<i style="width:28px;height:26px;border-color:#A78BFA"></i>',
+    "live": '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>',
     "csv": '<svg viewBox="0 0 24 24"><path d="M14 2.8H6.8a1.8 1.8 0 0 0-1.8 1.8v14.8a1.8 1.8 0 0 0 1.8 1.8h10.4a1.8 1.8 0 0 0 1.8-1.8V7.6Z"/><path d="M14 2.8v4.8h5"/></svg>',
     "hand": '<svg viewBox="0 0 24 24"><path d="M11 4.8H5.6a1.8 1.8 0 0 0-1.8 1.8v11.8a1.8 1.8 0 0 0 1.8 1.8h11.8a1.8 1.8 0 0 0 1.8-1.8V13"/><path d="M17.6 3.4a1.9 1.9 0 0 1 2.7 2.7L12.6 13.8l-3.6 1 1-3.6Z"/></svg>',
     "handoff": '<svg viewBox="0 0 24 24"><path d="M4 12h13M12 6l6 6-6 6"/></svg>',
@@ -772,6 +776,27 @@ def _footer(back_label, on_back, summary, next_label, on_next, next_ok=True, key
 def _go(step):
     st.session_state["zb_step"] = step
     st.rerun(scope="app")
+
+
+def _live(ctx, refresh=False):
+    """This store's live stock for the visit (pinned, so a push mid-pick doesn't
+    reshuffle the grid), as tag rows. Returns its updated time, or None when
+    there is no live copy."""
+    ss = st.session_state
+    got = live_stock.pin(_deps["init_db"](), ctx["store"], "zb_live_pin", refresh=refresh)
+    if not got:
+        return None
+    df, at = got
+    sig = f"{ctx['store']}:{at.isoformat()}"
+    if ss.get("zb_live_sig") != sig:
+        ss.update(zb_live_rows=_deps["build_rows"](df), zb_live_sig=sig, zb_sel={}, zb_edit={},
+                  zb_grid_v=ss.get("zb_grid_v", 0) + 1)
+    return at
+
+
+def default_source(ctx):
+    """Live stock when there is a copy for this store, the CSV upload otherwise."""
+    return "live" if live_stock.latest(_deps["init_db"](), ctx["store"]) else "csv"
 
 
 def _load_csv(up):
@@ -839,7 +864,7 @@ def _step2_options(ctx, changed):
 def _step1(ctx):
     ss = st.session_state
     fmt = ss.setdefault("zb_fmt", "hook")
-    src = ss.setdefault("zb_src", "csv")
+    src = ss.setdefault("zb_src", default_source(ctx))
 
     st.markdown('<div class="zb-h2">What are you printing?</div>', unsafe_allow_html=True)
     split = _mix() == SPLIT
@@ -861,7 +886,14 @@ def _step1(ctx):
     st.markdown('<div class="zb-h2">Where do the products come from?</div>',
                 unsafe_allow_html=True)
     waiting, frm = _handoff_waiting()
-    c1, c2, c3 = st.columns(3, gap="small")
+    live_at = _live(ctx) if src == "live" else live_stock.latest(_deps["init_db"](), ctx["store"])
+    live_at = live_at[1] if isinstance(live_at, tuple) else live_at
+    c0, c1, c2, c3 = st.columns(4, gap="small")
+    with c0:
+        sub = f"Updated {live_stock.when(live_at)}" if live_at else "Not set up yet"
+        if _option("live", "Live stock", sub, src == "live", GLYPH["live"], disabled=not live_at):
+            ss["zb_src"] = "live"
+            st.switch_page(_page("studio"))
     with c1:
         if _option("csv", "Import inventory CSV", "Dutchie export", src == "csv", GLYPH["csv"]):
             ss["zb_src"] = "csv"
@@ -888,6 +920,22 @@ def _step1(ctx):
                  CHANGED_HELP)
 
     ready = True
+    if src == "live":
+        rows = ss.get("zb_live_rows") or []
+        if rows:
+            old = live_at and live_stock.is_old(live_at)
+            a, b = st.columns([5, 1], vertical_alignment="center")
+            a.markdown(
+                f'<div class="zb-loaded">✓ <b>{len(rows):,}</b> products in stock at '
+                f'<b>{esc(ctx["store"])}</b> · live from Dutchie, updated '
+                f'<b>{live_stock.when(live_at)}</b>'
+                + (' · <b style="color:#F59E0B">older than usual: pushes may have stopped</b>'
+                   if old else "") + '</div>', unsafe_allow_html=True)
+            if b.button("Refresh", icon=":material/refresh:", key="zb_live_refresh",
+                        help="Take the newest copy. Tags already picked are cleared."):
+                _live(ctx, refresh=True)
+                st.rerun()
+        ready = bool(rows)
     if src == "csv":
         up = st.file_uploader("Inventory export", type=["csv"], key="zb_csv",
                               label_visibility="collapsed")
@@ -903,7 +951,8 @@ def _step1(ctx):
                 + '</div>', unsafe_allow_html=True)
         ready = bool(rows)
     fmt_l = ("Split tag · " if _mix() == SPLIT else "") + FORMATS[ss["zb_fmt"]]["label"]
-    src_l = {"csv": "Import CSV", "hand": "Typed by hand", "handoff": "Handed over"}[src]
+    src_l = {"live": "Live stock", "csv": "Import CSV", "hand": "Typed by hand",
+             "handoff": "Handed over"}[src]
 
     def nxt():
         if ss.get("zb_changed_only") and ctx["prev"] is not None:
@@ -1616,6 +1665,6 @@ def page_custom():
 def page_studio():
     ss = st.session_state
     if ss.get("zb_src") == "hand":
-        ss.update(zb_src="csv", zb_step=1)
+        ss.update(zb_src=default_source(context()), zb_step=1)
     with st.container(key="zbstudio"):
         render_studio()

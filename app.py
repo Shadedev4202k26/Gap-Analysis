@@ -60,6 +60,8 @@ import aging
 import break_store
 import shell
 import studio
+import live_stock
+from types import SimpleNamespace
 import support
 import usage
 import ziggy
@@ -835,18 +837,49 @@ def render_strain_ai():
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 2 — INVENTORY INTEL
 # ════════════════════════════════════════════════════════════════════════════════
+def _live_or_upload(page, upload_key, count_job=False, howto=""):
+    """The store's live stock from Dutchie, with a switch to upload a CSV
+    instead; without a live copy, just the uploader. Returns (table, None) for
+    live stock, (None, file) for an upload, or (None, None) until there's one.
+    count_job: reading the stock is the page's whole job (no download to count).
+    howto: the export instructions, shown only when uploading."""
+    store = studio.context()["store"]
+    got = live_stock.pin(init_supabase(), store, f"{page}_live_pin")
+    if got:
+        df, at = got
+        a, b = st.columns([5, 1], vertical_alignment="center")
+        use = a.toggle(
+            f"Live stock for **{store}** · updated {live_stock.when(at)}"
+            + (" · :orange[older than usual]" if live_stock.is_old(at) else ""),
+            value=True, key=f"{page}_use_live",
+            help="Straight from Dutchie, sent every 15 minutes during store hours: Sales Floor, "
+                 "Curbside Room, Vault and Upstairs Vault. Switch off to upload an export instead.")
+        if use:
+            if b.button("Refresh", icon=":material/refresh:", key=f"{page}_live_refresh"):
+                live_stock.pin(init_supabase(), store, f"{page}_live_pin", refresh=True)
+                st.rerun()
+            if count_job:
+                usage.loaded(page, SimpleNamespace(name=f"live stock {at:%m-%d %H:%M}"))
+            return df.copy(), None
+    if howto:
+        st.markdown(howto, unsafe_allow_html=True)
+    up = st.file_uploader(" ", type="csv", key=upload_key, label_visibility="collapsed")
+    return None, up
+
+
 def render_inventory():
     st.markdown('<div class="sec-head"><div class="sec-head-text">📊 Live Room Balance Analyzer</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
-    st.markdown("""
+    howto = ("""
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backoffice, select your rooms &amp; <strong>one category</strong></span></div>
       <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Available</strong></span></div>
       <div class="instr-step"><span class="instr-icon">🔄</span><span><strong>Rebalance</strong> = stock is lopsided <em>or</em> a room is running low while the other has plenty — move some over</span></div>
-    </div></div>""", unsafe_allow_html=True)
-    uploaded_file = st.file_uploader(" ", type="csv", key="restock_csv", label_visibility="collapsed")
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
+    </div></div>""")
+    live, uploaded_file = _live_or_upload("Inventory balance", "restock_csv", count_job=True,
+                                          howto=howto)
+    if live is not None or uploaded_file:
+        df = live if live is not None else pd.read_csv(uploaded_file)
         df.columns = [str(col).strip('="').strip() for col in df.columns]
         # Prefer "Available" (sellable stock) over "Quantity" (includes allocated)
         def _pick_qty_col(cols):
@@ -870,8 +903,15 @@ def render_inventory():
         df['Product'] = df['Product'].apply(lambda x: str(x).strip('="').strip())
         df['Room']    = df['Room'].apply(lambda x: str(x).strip('="').strip())
         df['Qty']     = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
-        st.caption(f"Counting stock from the **{qty_col}** column.")
-        usage.loaded("Inventory balance", uploaded_file)
+        if live is None:
+            st.caption(f"Counting stock from the **{qty_col}** column.")
+            usage.loaded("Inventory balance", uploaded_file)
+        else:
+            # An export is one category; live stock is all of them, so pick one here.
+            cats = sorted(c for c in df["Category"].dropna().unique() if c)
+            pick = st.selectbox("Category", ["All categories"] + cats, key="balance_cat")
+            if pick != "All categories":
+                df = df[df["Category"] == pick]
 
         all_rooms = sorted(df['Room'].dropna().unique().tolist())
 
@@ -1790,19 +1830,19 @@ def render_hook_tags():
 def render_dead_stock():
     st.markdown('<div class="sec-head"><div class="sec-head-text">⏳ Aging Stock Watch List</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
 
-    st.markdown("""
+    howto = ("""
     <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
     <div class="instr-steps">
       <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backend, export your <strong>full inventory</strong> (any rooms/categories)</span></div>
       <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Include at minimum: <strong>Package ID, Product, Available, Inventory date, Room</strong> (Expiration date and Vendor help too)</span></div>
       <div class="instr-step"><span class="instr-icon">i</span><span>This is a <strong>watch list to investigate</strong>, not a sales report — it flags old stock by age, not proven non-sales</span></div>
-    </div></div>""", unsafe_allow_html=True)
+    </div></div>""")
 
-    ds_file = st.file_uploader(" ", type=["csv"], key="deadstock_csv", label_visibility="collapsed")
-    if ds_file is None:
+    live, ds_file = _live_or_upload("Aging stock", "deadstock_csv", howto=howto)
+    if live is None and ds_file is None:
         return
     try:
-        df = pd.read_csv(ds_file, dtype=str)
+        df = live if live is not None else pd.read_csv(ds_file, dtype=str)
     except Exception as e:
         st.error(f"Could not read CSV: {e}")
         return
@@ -3049,6 +3089,71 @@ def _settings_deals():
             "The parsed store columns from the weekly export — roughly 24KB a week, "
             "not the 2MB file. Each week keeps every store's column, so one upload "
             "serves all locations and the tag tabs pick which column to read.")
+
+    _settings_deal_check(db, stored)
+
+
+def _unmatched_deals(sheet, db):
+    """Per store, the sheet's deals that no product in its live stock takes, so
+    a misspelled brand ("Smoorehouse") is caught before tags print without it.
+    Deals that only meet deli flower are left out: deli never gets a product
+    bubble, by design. Returns ({deal text: [stores]}, [stores with no stock])."""
+    misses, no_stock = {}, []
+    for store in sheet.stores:
+        got = live_stock.latest(db, store)
+        if not got:
+            no_stock.append(store)
+            continue
+        rows = build_tag_rows(got[0])
+        for d in sheet.deals(store):
+            if any(deals_mod.matches(d, r) for r in rows):
+                continue
+            deli = [r for r in rows if deals_mod.is_deli(r)]
+            if any(deals_mod._brand_hit(b, deals_mod._norm(r.get("brand", "")))
+                   for r in deli for b in d.brands):
+                continue
+            misses.setdefault(d.text, []).append(store)
+    return misses, no_stock
+
+
+def _settings_deal_check(db, stored):
+    """Check a stored week's deals against every store's live stock."""
+    st.markdown('<div class="cat-hdr">🔎 Deals that match nothing in stock</div>',
+                unsafe_allow_html=True)
+    st.caption("Runs the sheet against each store's live stock and lists the deals no product "
+               "takes: usually a brand spelled differently from Dutchie, or a brand not in stock. "
+               "Those deals print no bubble anywhere. Deli flower deals are left out (deli never "
+               "gets a bubble).")
+    weeks = [w["week"] for w in stored]
+    c1, c2 = st.columns([3, 1], vertical_alignment="bottom")
+    week = c1.selectbox("Week", weeks, format_func=deal_store.week_label, key="dchk_week",
+                        index=next((i for i, w in enumerate(weeks) if deal_store.is_current(w)), 0))
+    if c2.button("Check against stock", key="dchk_go", use_container_width=True):
+        sheet = deal_store.get(db, week)
+        if sheet is None:
+            st.error("That week isn't stored any more.")
+            return
+        with st.spinner("Checking every store's stock (takes a little while)..."):
+            st.session_state["dchk_result"] = (week, _unmatched_deals(sheet, db))
+    res = st.session_state.get("dchk_result")
+    if not res or res[0] != week:
+        return
+    misses, no_stock = res[1]
+    if no_stock and len(no_stock) == len(deal_store.get(db, week).stores):
+        st.info("No live stock to check against yet: it arrives once Smilez Reports sends it "
+                "(Reports › Settings › ZiggyBot stock).")
+        return
+    if not misses:
+        st.success("Every deal matches something in stock at its stores.")
+    else:
+        st.warning(f"{len(misses)} deal(s) match nothing at one or more stores.")
+        st.dataframe(pd.DataFrame(
+            [{"Deal (as written on the sheet)": t,
+              "Matches nothing at": ", ".join(ss_) if len(ss_) < 8 else "every store"}
+             for t, ss_ in sorted(misses.items(), key=lambda x: -len(x[1]))]),
+            hide_index=True, use_container_width=True)
+    if no_stock:
+        st.caption("No live stock yet for: " + ", ".join(no_stock))
 
 
 # ════════════════════════════════════════════════════════════════════════════════
