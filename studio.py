@@ -123,6 +123,28 @@ def _stored_weeks(_db, bust):
     return deal_store.weeks(_db)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _reports_sheet(_db):
+    return deal_store.reports_sheet(_db)
+
+
+def _take_reports_sheet(db):
+    """A deals sheet uploaded in Smilez Reports becomes this week's (or next
+    week's) sheet here too, so it needn't be uploaded twice. Checked once per
+    hand-off per visit; the first visit after one stores it for everyone."""
+    ss = st.session_state
+    info = _reports_sheet(db)
+    if not info or ss.get("zb_reports_sheet") == info:
+        return
+    ss["zb_reports_sheet"] = info
+    try:
+        if deal_store.take_from_reports(db, info):
+            ss["zb_weeks_bust"] = ss.get("zb_weeks_bust", 0) + 1
+            ss.pop("zb_sheets", None)
+    except deal_store.StoreError:
+        pass                                 # the manual upload still works
+
+
 def _sheet_for(db, week):
     """A stored week's Sheet, read once per session."""
     cache = st.session_state.setdefault("zb_sheets", {})
@@ -149,6 +171,7 @@ def context():
     if db is None:
         why = "no Supabase connection, so a sheet uploaded here lasts this session only"
     else:
+        _take_reports_sheet(db)
         try:
             stored = _stored_weeks(db, ss.get("zb_weeks_bust", 0))
         except deal_store.StoreError as e:

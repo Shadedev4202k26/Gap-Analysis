@@ -18,9 +18,16 @@ Table (see README for the walkthrough):
         uploaded_at timestamptz not null default now()
     );
 """
+import base64
 import datetime
+import gzip
 
 import deals as deals_mod
+
+# The sheet Smilez Reports hands over (its app/ziggy_push.py): one row, the
+# newest sheet uploaded there, as a small gzipped CSV of the first tab with the
+# struck-through text already left out.
+FROM_REPORTS = "ziggy_deal_file"
 
 TABLE = "deal_sheets"
 KEEP = 2                     # current week + the one before it
@@ -113,6 +120,48 @@ def prune(db, keep=KEEP):
         except Exception:                                    # noqa: BLE001, S110
             pass
     return gone
+
+
+def reports_sheet(db):
+    """(name, uploaded_at) of the sheet Smilez Reports last handed over, or
+    None. Small: the file itself is only read when it's needed."""
+    try:
+        data = (db.table(FROM_REPORTS).select("name,uploaded_at").eq("id", 1)
+                .limit(1).execute().data)
+    except Exception:                                        # noqa: BLE001
+        return None
+    return (data[0]["name"], data[0]["uploaded_at"]) if data else None
+
+
+def take_from_reports(db, info):
+    """Store the sheet Reports handed over as its week, unless that week already
+    holds one saved since (here, or an earlier hand-off), or the week is older
+    than every week kept. Returns the week stored, or None."""
+    name, at = info
+    week = deals_mod.week_from_name(name)
+    if not week:
+        return None
+    have = {w["week"]: w["uploaded_at"] for w in weeks(db)}
+    if week in have and _when(have[week]) >= _when(at):
+        return None
+    if week not in have and len(have) >= KEEP and week < min(have):
+        return None                    # an old sheet; storing it would push a newer one out
+    try:
+        data = (db.table(FROM_REPORTS).select("file").eq("id", 1).limit(1)
+                .execute().data)
+        raw = gzip.decompress(base64.b64decode(data[0]["file"]))
+    except Exception as e:                                   # noqa: BLE001
+        raise StoreError(f"couldn't read the sheet Reports sent: {e}") from e
+    save(db, deals_mod.load_sheet(raw, name))
+    return week
+
+
+def _when(stamp):
+    """A Supabase timestamp as a datetime, so two can be compared."""
+    try:
+        return datetime.datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
 
 
 def week_label(week):
