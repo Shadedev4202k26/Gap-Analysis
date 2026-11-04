@@ -23,6 +23,7 @@ import datetime as dt
 import html
 import json
 import os
+import re
 import subprocess
 import tempfile
 
@@ -864,11 +865,10 @@ def _step1(ctx):
     with c1:
         if _option("csv", "Import inventory CSV", "Dutchie export", src == "csv", GLYPH["csv"]):
             ss["zb_src"] = "csv"
-            st.rerun()
+            st.switch_page(_page("studio"))
     with c2:
         if _option("hand", "Type them by hand", "One-off tags", src == "hand", GLYPH["hand"]):
-            ss["zb_src"] = "hand"
-            st.rerun()
+            start_custom()
     with c3:
         sub = f"{len(waiting)} tags from {frm}" if waiting else "Nothing waiting"
         if _option("handoff", "Handed over", sub, src == "handoff", GLYPH["handoff"],
@@ -876,7 +876,7 @@ def _step1(ctx):
             ss.update(zb_src="handoff", zb_handoff_rows=[dict(r) for r in waiting],
                       zb_sel={i: 1 for i in range(len(waiting))}, zb_edit={},
                       zb_grid_v=ss.get("zb_grid_v", 0) + 1)
-            st.rerun()
+            st.switch_page(_page("studio"))
 
     o1, o2, o3 = st.columns(3, gap="small")
     _setting(o1, "zb_mix", False, "Mix types on one page", MIX_HELP,
@@ -1138,16 +1138,16 @@ def _step2_footer(chosen, fmt, mix, ctx):
             next_ok=n > 0, key="2")
 
 
-HAND_COLS = ["Qty", "Brand line", "Strain", "THC", "Price", "Type"]
+HAND_COLS = ["Qty", "Brand line", "Strain", "THC", "Price", "Sale price", "Bubble", "Type"]
 
 
 def start_custom():
-    """Straight to the typing table, skipping step 1: the Print menu's Custom
-    tags and Home's button. The tag size is picked on the table's screen."""
+    """Straight to the typing table, skipping step 1: Home's button and the
+    "Type them by hand" card. The tag size is picked on the table's screen."""
     ss = st.session_state
     ss.setdefault("zb_fmt", "hook")
     ss.update(zb_src="hand", zb_step=2)
-    st.switch_page(_page("studio"))
+    st.switch_page(_page("custom"))
 
 
 def _pick_format(key):
@@ -1188,6 +1188,27 @@ def _format_pick():
         _split_size()
 
 
+def _dollars(text):
+    """'20' -> '$20', so a crossed-out price reads as money; anything else as typed."""
+    t = str(text or "").strip()
+    return f"${t}" if re.fullmatch(r"\d+(\.\d+)?", t) else t
+
+
+def _own_deal(price, sale, bubble):
+    """A typed row's own deal: Sale price crosses out Price, and Bubble is the
+    red bubble's text. A Sale price with no Price to cross out just prints as
+    the price ("_price")."""
+    sale, bubble = str(sale or "").strip(), str(bubble or "").strip()
+    deal = {}
+    if bubble:
+        deal["badge"] = bubble
+    if sale and price:
+        deal.update(was=_dollars(price), now=_dollars(sale))
+    elif sale:
+        deal["_price"] = sale
+    return deal
+
+
 def _step2_hand(ctx):
     ss = st.session_state
     left, right = st.columns([13, 10], gap="large")
@@ -1197,17 +1218,26 @@ def _step2_hand(ctx):
         st.markdown('<div class="zb-h2">Type your tags</div>', unsafe_allow_html=True)
         seed = ss.setdefault("zb_hand_seed", pd.DataFrame(
             [{"Qty": 1, "Brand line": "", "Strain": "", "THC": "", "Price": "",
-              "Type": "hybrid"} for _ in range(6)]))
+              "Sale price": "", "Bubble": "", "Type": "hybrid"} for _ in range(6)]))
         out = st.data_editor(
             seed, key="zb_hand", num_rows="dynamic", hide_index=True,
             use_container_width=True, height=470,
             column_config={
                 "Qty": st.column_config.NumberColumn(min_value=0, max_value=60, step=1,
-                                                     width=52),
-                "Type": st.column_config.SelectboxColumn(options=TYPES, width=90),
+                                                     width=44),
+                "Brand line": st.column_config.TextColumn(width=100),
+                "Strain": st.column_config.TextColumn(width=100),
+                "THC": st.column_config.TextColumn(width=60),
+                "Price": st.column_config.TextColumn(width=64),
+                "Sale price": st.column_config.TextColumn(
+                    "Sale", width=62, help="Crosses out the Price and prints this beside it"),
+                "Bubble": st.column_config.TextColumn(
+                    width=84, help="Your own red bubble, e.g. BOGO or 2/$30"),
+                "Type": st.column_config.SelectboxColumn(options=TYPES, width=74),
             })
         st.caption("Text prints exactly as typed; blank lines stay blank. Brand names "
-                   "still pick up this week's deals.")
+                   "still pick up this week's deals, unless the row has its own "
+                   "**Sale** price (crosses out Price) or **Bubble**.")
         if _mix() == SPLIT:
             st.caption("**Split tags pair up row by row:** rows 1 and 2 share a tag, "
                        "then 3 and 4. A Qty of 2 puts the same strain on both halves.")
@@ -1223,6 +1253,11 @@ def _step2_hand(ctx):
                "strain": str(r["Strain"] or "").strip(),
                "thc": str(r["THC"] or "").strip(), "price": str(r["Price"] or "").strip(),
                "type": r["Type"] if r["Type"] in TYPES else "hybrid"}
+        own = _own_deal(row["price"], r.get("Sale price"), r.get("Bubble"))
+        if own:
+            row["price"] = row["price"] or own.pop("_price", "")
+            if own:
+                row["own_deal"] = own
         qty = 1 if r["Qty"] is None else int(r["Qty"])
         rows.extend(dict(row) for _ in range(qty))
     if fmt in ("pr35", "pr4"):
@@ -1232,6 +1267,8 @@ def _step2_hand(ctx):
     if ss.get("zb_bubbles", True) and ctx["deals"]:
         deals_mod.attach(rows, ctx["deals"])
     for r in rows:
+        if r.get("own_deal"):           # typed on purpose, so it prints either way
+            r["deal"] = dict(r["own_deal"])
         r["_kind"] = _deal_kind(r.get("deal"))
     ss["zb_hand_rows"] = rows
     with right:
@@ -1293,7 +1330,8 @@ def _step3(ctx):
 def render_studio():
     ctx = context()
     step = st.session_state.setdefault("zb_step", 1)
-    st.markdown('<div class="zb-titlebar"><h1>Shelf tags</h1></div>', unsafe_allow_html=True)
+    title = "Custom tags" if st.session_state.get("zb_src") == "hand" else "Shelf tags"
+    st.markdown(f'<div class="zb-titlebar"><h1>{title}</h1></div>', unsafe_allow_html=True)
     _rail(step)
     if step == 1:
         _step1(ctx)
@@ -1563,10 +1601,21 @@ def whats_new_popup():
     whats_new.show(_page, context()["store"])
 
 
+# Typed tags live on Custom tags and everything else on Shelf tags, so the
+# menu lights up the page that is on screen. Arriving on one page in the
+# other's mode switches the mode over.
 def page_custom():
-    start_custom()
+    ss = st.session_state
+    if ss.get("zb_src") != "hand":
+        ss.setdefault("zb_fmt", "hook")
+        ss.update(zb_src="hand", zb_step=2)
+    with st.container(key="zbstudio"):
+        render_studio()
 
 
 def page_studio():
+    ss = st.session_state
+    if ss.get("zb_src") == "hand":
+        ss.update(zb_src="csv", zb_step=1)
     with st.container(key="zbstudio"):
         render_studio()
