@@ -3071,12 +3071,13 @@ _HOME = st.Page(studio.page_home, title="Home", icon=":material/home:",
                 url_path="home", default=True)
 _STUDIO = st.Page(studio.page_studio, title="Shelf tags", icon=":material/sell:",
                   url_path="shelf-tags")
+_CUSTOM = st.Page(studio.page_custom, title="Custom tags", icon=":material/edit_note:",
+                  url_path="custom-tags")
 _SECTIONS = {
     "": [_HOME],
     "Print": [
         _STUDIO,
-        st.Page(studio.page_custom, title="Custom tags", icon=":material/edit_note:",
-                url_path="custom-tags"),
+        _CUSTOM,
     ],
     "Stock": [
         st.Page(render_inventory, title="Inventory balance", icon=":material/bar_chart:",
@@ -3105,7 +3106,7 @@ _nav = st.navigation(
 _by_path = {pg.url_path: pg for pages in _SECTIONS.values() for pg in pages + _TRAILING}
 studio.configure(
     init_db=init_supabase, build_rows=build_tag_rows, fix_outdoor=fix_outdoor_prices,
-    pages={"home": _HOME, "studio": _STUDIO, "aging": _by_path["aging-stock"],
+    pages={"home": _HOME, "studio": _STUDIO, "custom": _CUSTOM, "aging": _by_path["aging-stock"],
            "inventory": _by_path["inventory"], "strain": _by_path["strain"],
            "tools": _by_path["store-tools"], "settings": _by_path["settings"]})
 studio.new_run()
