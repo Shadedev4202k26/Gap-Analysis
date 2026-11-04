@@ -1,9 +1,10 @@
 """Keep the last couple of weekly deals sheets in Supabase.
 
 Uploading the sheet is a weekly chore for whoever opens the app first, so the
-parsed sheet is saved once and every later visit reads it back. Two weeks are
-kept: the current one to print from, and the one before it to diff against so
-"only what changed" can be worked out.
+parsed sheet is saved once and every later visit reads it back. Three weeks are
+kept: the current one to print from, the one before it to diff against so
+"only what changed" can be worked out, and next week's, which arrives on
+Tuesday or Wednesday (with two, it pushed last week out mid-week).
 
 The stored payload is deals.Sheet.to_dict() — the store columns only, about
 24KB, rather than the 2MB export, which is almost entirely empty padding
@@ -24,13 +25,13 @@ import gzip
 
 import deals as deals_mod
 
-# The sheet Smilez Reports hands over (its app/ziggy_push.py): one row, the
-# newest sheet uploaded there, as a small gzipped CSV of the first tab with the
-# struck-through text already left out.
+# The sheets Smilez Reports hands over (its app/ziggy_push.py): one row per
+# sheet it holds (this week's, next week's), by file name, as a small gzipped
+# CSV of the first tab with the struck-through text already left out.
 FROM_REPORTS = "ziggy_deal_file"
 
 TABLE = "deal_sheets"
-KEEP = 2                     # current week + the one before it
+KEEP = 3                     # last week, this week, and next week's once it's in
 
 
 class StoreError(RuntimeError):
@@ -122,15 +123,16 @@ def prune(db, keep=KEEP):
     return gone
 
 
-def reports_sheet(db):
-    """(name, uploaded_at) of the sheet Smilez Reports last handed over, or
-    None. Small: the file itself is only read when it's needed."""
+def reports_sheets(db):
+    """((name, uploaded_at), ...) for the sheets Smilez Reports handed over,
+    oldest first; empty when there are none. Small: a file is only read when
+    it's needed."""
     try:
-        data = (db.table(FROM_REPORTS).select("name,uploaded_at").eq("id", 1)
-                .limit(1).execute().data)
+        data = (db.table(FROM_REPORTS).select("name,uploaded_at")
+                .order("uploaded_at").execute().data)
     except Exception:                                        # noqa: BLE001
-        return None
-    return (data[0]["name"], data[0]["uploaded_at"]) if data else None
+        return ()
+    return tuple((r["name"], r["uploaded_at"]) for r in data or ())
 
 
 def take_from_reports(db, info):
@@ -147,7 +149,7 @@ def take_from_reports(db, info):
     if week not in have and len(have) >= KEEP and week < min(have):
         return None                    # an old sheet; storing it would push a newer one out
     try:
-        data = (db.table(FROM_REPORTS).select("file").eq("id", 1).limit(1)
+        data = (db.table(FROM_REPORTS).select("file").eq("name", name).limit(1)
                 .execute().data)
         raw = gzip.decompress(base64.b64decode(data[0]["file"]))
     except Exception as e:                                   # noqa: BLE001

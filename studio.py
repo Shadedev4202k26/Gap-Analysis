@@ -124,25 +124,28 @@ def _stored_weeks(_db, bust):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _reports_sheet(_db):
-    return deal_store.reports_sheet(_db)
+def _reports_sheets(_db):
+    return deal_store.reports_sheets(_db)
 
 
 def _take_reports_sheet(db):
-    """A deals sheet uploaded in Smilez Reports becomes this week's (or next
-    week's) sheet here too, so it needn't be uploaded twice. Checked once per
+    """Deals sheets uploaded in Smilez Reports (this week's, next week's)
+    become this app's too, so they needn't be uploaded twice. Checked once per
     hand-off per visit; the first visit after one stores it for everyone."""
     ss = st.session_state
-    info = _reports_sheet(db)
-    if not info or ss.get("zb_reports_sheet") == info:
+    info = _reports_sheets(db)
+    if not info or ss.get("zb_reports_sheets") == info:
         return
-    ss["zb_reports_sheet"] = info
-    try:
-        if deal_store.take_from_reports(db, info):
-            ss["zb_weeks_bust"] = ss.get("zb_weeks_bust", 0) + 1
-            ss.pop("zb_sheets", None)
-    except deal_store.StoreError:
-        pass                                 # the manual upload still works
+    ss["zb_reports_sheets"] = info
+    took = False
+    for one in info:                         # oldest first, so a re-upload wins
+        try:
+            took = bool(deal_store.take_from_reports(db, one)) or took
+        except deal_store.StoreError:
+            pass                             # the manual upload still works
+    if took:
+        ss["zb_weeks_bust"] = ss.get("zb_weeks_bust", 0) + 1
+        ss.pop("zb_sheets", None)
 
 
 def _sheet_for(db, week):
@@ -225,9 +228,12 @@ def context():
     current = sheet.deals(store) if store in sheet_stores else []
 
     prev, prev_week = None, None
-    others = [w["week"] for w in weeks if w["week"] != week]
+    # The week before this one, never a later one: once next week's sheet is
+    # in (Tuesday or Wednesday) it is the newest, and "only what changed" took
+    # it as last week.
+    others = [w["week"] for w in weeks if week is not None and w["week"] < week]
     if others and sheet:
-        prev_week = others[0]
+        prev_week = max(others)
         try:
             if prev_week.isoformat() in local:
                 other = deals_mod.Sheet.from_dict(local[prev_week.isoformat()])
