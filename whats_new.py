@@ -36,6 +36,19 @@ UPDATES = [
         ],
     },
     {
+        "id": "custom-deals",
+        "until": dt.date(2026, 11, 30),
+        "title": "Custom tags: sale prices and your own bubbles",
+        "body": "The typing table in **Custom tags** has two new columns.",
+        "points": [
+            "**Sale:** crosses out the Price and prints the sale price beside it",
+            "**Bubble:** prints a red bubble with your text, like BOGO or 2/$30",
+            "A row with its own Sale or Bubble keeps it over this week's deals",
+        ],
+        "page": "custom",
+        "page_label": "Custom tags",
+    },
+    {
         "id": "classic-retired",
         "until": dt.date(2026, 11, 30),
         "title": "Classic tag pages are gone",
