@@ -33,6 +33,7 @@ import streamlit as st
 import combine_tags
 import deal_store
 import live_stock
+import stock_filter
 import deals as deals_mod
 import preroll_tags
 import sale_badges
@@ -987,21 +988,18 @@ def _step2(ctx):
     left, right = st.columns([13, 10], gap="large")
     with left:
         _step2_options(ctx, ctx["prev"] is not None and any(r["_changed"] for r in rows))
-        cats = pd.Series([r.get("category") or "—" for r in rows]).value_counts()
-        s1, s2 = st.columns([1, 1], vertical_alignment="center")
-        q = s1.text_input("Search", key="zb_q", placeholder="Search strain or brand…",
-                          label_visibility="collapsed", icon=":material/search:")
-        cat = s2.selectbox("Category", ["All categories"] + list(cats.index), key="zb_cat",
-                           label_visibility="collapsed",
-                           format_func=lambda c: c if c == "All categories"
-                           else f"{c}  ({cats[c]:,})")
-        ql = (q or "").strip().lower()
-        # The rows the search and category leave. The filter counts are taken
-        # from these, so a pill never promises tags the grid then cannot show.
-        scope = [r for r in rows
-                 if (cat == "All categories" or (r.get("category") or "—") == cat)
-                 and (not ql or ql in f'{r.get("strain","")} {r.get("brand","")} '
-                                      f'{r.get("product","")}'.lower())]
+        # Search (any words, any order), Category and Brand: stock_filter, the
+        # same bar as Inventory balance and Aging stock.
+        keep = stock_filter.bar(
+            "zb", [r.get("product") or r.get("brand", "") for r in rows],
+            [r.get("category") or "—" for r in rows],
+            extra=[f'{r.get("strain", "")} {r.get("brand", "")}' for r in rows])
+        q, cat = ss.get("zb_q") or "", ss.get("zb_cat") or "All categories"
+        brand = ss.get("zb_brand") or stock_filter.ALL_BRANDS
+        ql = (q.strip().lower() + ("" if brand == stock_filter.ALL_BRANDS else f" @{brand}")).strip()
+        # The rows the search, category and brand leave. The filter counts are
+        # taken from these, so a pill never promises tags the grid cannot show.
+        scope = [r for r, k in zip(rows, keep) if k]
         test = {"All": lambda r: True,
                 "On sale": lambda r: r["_kind"] == "sale",
                 "Changed": lambda r: r["_changed"],
@@ -1021,7 +1019,7 @@ def _step2(ctx):
         _select_bar(view_rows, sel, filt, cat, ql, fmt)
 
         if not view_rows:
-            _no_matches(filt, cat, (q or "").strip())
+            _no_matches(filt, cat, (q or "").strip(), brand)
         else:
             def val(r, f):
                 return edits.get(r["rid"], {}).get(f, r.get(f, ""))
@@ -1157,10 +1155,12 @@ def _widen(**state):
     st.session_state.update(state)
 
 
-def _no_matches(filt, cat, q):
+def _no_matches(filt, cat, q, brand=stock_filter.ALL_BRANDS):
     """Say why the grid is empty, and offer the way back out."""
     shelf = deals_mod.shelf_of({"category": cat}) if cat != "All categories" else None
     where = "" if cat == "All categories" else f" in <b>{esc(cat)}</b>"
+    if brand != stock_filter.ALL_BRANDS:
+        where += f" from <b>{esc(brand)}</b>"
     if shelf and filt in ("On sale", "Changed"):
         what = "is on sale" if filt == "On sale" else "has a changed deal"
         msg = (f"Nothing{where} {what}. Deli flower never takes a weekly deal — it "
@@ -1176,9 +1176,10 @@ def _no_matches(filt, cat, q):
     if filt != "All":
         c1.button(f"Show all{' of ' + cat if cat != 'All categories' else ''}",
                   key="zb_nm_all", on_click=_widen, kwargs={"zb_filter": "All"})
-    if cat != "All categories" or q:
-        c2.button("Clear search & category", key="zb_nm_clear", on_click=_widen,
-                  kwargs={"zb_cat": "All categories", "zb_q": ""})
+    if cat != "All categories" or q or brand != stock_filter.ALL_BRANDS:
+        c2.button("Clear search & filters", key="zb_nm_clear", on_click=_widen,
+                  kwargs={"zb_cat": "All categories", "zb_q": "",
+                          "zb_brand": stock_filter.ALL_BRANDS, stock_filter.SHARED_Q: ""})
 
 
 def _step2_footer(chosen, fmt, mix, ctx):
