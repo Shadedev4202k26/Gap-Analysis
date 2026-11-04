@@ -707,14 +707,16 @@ def matches(deal, row):
     # Pack", and "Fire Styxx" degraded to "fire". Custom tags carry no brand, so
     # those still fall back to the whole line.
     brand_text = _norm(row.get("brand", "")) or text
-    # A one-word brand must open the product's brand: "Packs" is not "Mad
+    # A one-word brand must open a part of the brand line: "Packs" is not "Mad
     # Packs", "Fat Pack" or "Pressure Pack" (all three took the 11/2 "50% OFF
-    # PACKS"). Longer brands can sit anywhere in it: "White Boy Rick" is sold
-    # as "8TH By White Boy Rick".
-    lead = _norm(str(row.get("brand", "")).split("|")[0]).strip() or text
-    lead = re.sub(r"^the\s+", "", lead)     # the sheet drops it: "The Limit" -> "Limit"
+    # PACKS"), but "Cyborgz" is in "HY-R | CYBORGZ", its maker's line. Longer
+    # brands can sit anywhere in it.
+    parts = [re.sub(r"^the\s+", "", _norm(p).strip())   # the sheet drops it: "The Limit"
+             for p in str(row.get("brand", "")).split("|")]
+    parts = [p for p in parts if p] or [text]
     if not any(_brand_hit(b, brand_text) if len(_norm(b).split()) > 1
-               else _brand_hit(b, lead, anchored=True) for b in deal.brands):
+               else any(_brand_hit(b, p, anchored=True) for p in parts)
+               for b in deal.brands):
         return False
     if deal.size:
         # Sizes are written into the product name, so this still reads it all.
