@@ -468,7 +468,7 @@ def render_home():
                 f'<span>{esc(ctx["sheet"].name or "")}</span></div>'
                 f'<div class="zb-stat-grid">'
                 f'<div><b>{len(ctx["deals"])}</b><i>deals for {esc(ctx["store"] or "")}</i></div>'
-                f'<div><b>{botw}</b><i>brands of the week</i></div>'
+                f'<div><b>{botw}</b><i>brands of the week &amp; month</i></div>'
                 f'<div><b>{len(ctx["stores"])}</b><i>stores in this sheet</i></div>'
                 f'<div><b>{n_weeks} / {deal_store.KEEP}</b><i>week slots used</i></div>'
                 f'</div>{note}</div>', unsafe_allow_html=True)
