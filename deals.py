@@ -18,6 +18,7 @@ import csv
 import datetime
 import io
 import re
+import unicodedata
 
 # Lines that are never a product deal, however they are worded.
 SKIP = re.compile(
@@ -108,22 +109,41 @@ def _fmt(v):
 def _brands_and_size(rest):
     """Pull brand names and a pack size out of the text left after the price."""
     size = None
-    m = SIZE.search(rest)
-    if m:
-        num = m.group(1).rstrip(".")
-        size = f"{num}{m.group(2).upper()}"
     txt = PAREN.sub(" ", rest)
     txt = MONTH_DATES.sub(" ", txt)
     txt = DATES.sub(" ", txt)
-    txt = SIZE.sub(" ", txt)
-    txt = NOISE.sub(" ", txt)
+    m = SIZE.search(txt)
+    if m:
+        num = m.group(1).rstrip(".")
+        size = f"{num}{m.group(2).upper()}"
     txt = re.sub(r"\ball\b", " ", txt, flags=re.I)
-    parts = re.split(r"\s+or\s+|\s*&\s*|\s*,\s*", txt, flags=re.I)
+    parts = []
+    for alt in re.split(r"\s+or\s+|\s*,\s*", txt, flags=re.I):
+        # Each brand comes before its size and the product's description after
+        # it: in "Smoorhouse 3.5G Hash & Diamond Infused", "Hash" and "Diamond"
+        # were read as brands. A part that opens with its size keeps the rest.
+        s = SIZE.search(alt)
+        if s and re.search(r"[A-Za-z]{2}", alt[:s.start()]):
+            alt = alt[:s.start()]
+        parts += re.split(r"\s*&\s*", SIZE.sub(" ", alt))
     stop = {"to", "x", "non", "only", "and", "the", "get", "buy", "all", "select"}
     brands = []
     for p in parts:
+        # Product words are only dropped from the end, so a brand that contains
+        # one keeps it: "Shake It Off" was read as "It Off".
+        while True:
+            trimmed = re.sub(rf"(?:\s|-)*(?:{NOISE.pattern})\W*$", "", p, flags=re.I)
+            if trimmed == p:
+                break
+            p = trimmed
         p = re.sub(r"[^A-Za-z0-9'’\s-]", " ", p)
-        words = [w for w in p.split() if w.lower() not in stop and not w.isdigit()]
+        # A number after a word belongs to the brand ("Cloud 9"); a bare one
+        # leading the part is a leftover count.
+        words = []
+        for w in p.split():
+            if w.lower() in stop or (w.isdigit() and not words):
+                continue
+            words.append(w)
         p = " ".join(words).strip(" -")
         if len(p) >= 2:
             brands.append(p)
@@ -174,8 +194,15 @@ SECTION = re.compile(
 # Two layouts, both seen. 9/28: "Brands of the Week 25% OFF (Excludes Deli
 # Flower)" with bare brand names under it. 10/5: "Brands of the Week (Excludes
 # Deli Flower)" with no percentage, and each line carrying its own — "50% OFF
-# Jungle Juice Oct 1-31", "30% OFF Amnesia Oct 5-11".
-BOTW = re.compile(r"brands?\s+of\s+the\s+week", re.I)
+# Jungle Juice Oct 1-31", "30% OFF Amnesia Oct 5-11". Brands of the Month
+# (11/2) is laid out the same; read as part of the Bulk Flower section above it,
+# its "50% OFF Cyborgz" only looked for Cyborgz flower and matched nothing.
+BOTW = re.compile(r"brands?\s+of\s+the\s+(?:week|month)", re.I)
+# Sections that never hold a tag deal: everything under them is skipped, however
+# it is worded. Daily deals and happy hour are rung up at the register and must
+# not print; a line here that leaves out its day name would otherwise read as a
+# brand deal.
+NO_TAG_SECTION = re.compile(r"^(daily\s+deals?|new\s+customer|other\s+deals?)\s*$", re.I)
 BOTW_PCT = re.compile(r"(\d{1,2})\s*%\s*off", re.I)
 
 
@@ -194,7 +221,7 @@ def parse_column(lines):
     """
     deals, seen = [], set()
     in_botw, botw_pct = False, None
-    family = None
+    family, no_tag = None, False
     for raw in lines:
         cell = re.sub(r"\s{2,}", " ", str(raw or "")).strip()
         if not cell or cell.lower() == "nan":
@@ -202,10 +229,14 @@ def parse_column(lines):
         if BOTW.search(cell):
             m = BOTW_PCT.search(cell)
             in_botw, botw_pct = True, (int(m.group(1)) if m else None)
+            no_tag = False
             continue
         if SECTION.match(cell):
             in_botw, botw_pct = False, None
             family = _family(SECTION_FAMILY, cell)
+            no_tag = bool(NO_TAG_SECTION.match(cell))
+            continue
+        if no_tag:
             continue
         if in_botw:
             # Brands of the Week cover the brand's whole range, whatever section
@@ -437,10 +468,13 @@ def load(file_or_bytes):
 
 # ── matching ────────────────────────────────────────────────────────────────
 def _norm(s):
-    return re.sub(r"[^a-z0-9. ]", " ", str(s or "").lower())
+    # Accents fold to the plain letter first: Dutchie's "Grön" is the sheet's
+    # "GRON", and dropping the ö left "gr n", which matched nothing.
+    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9. ]", " ", s.lower())
 
 
-def _brand_hit(brand, hay):
+def _brand_hit(brand, hay, anchored=False):
     """Longest leading part of the brand that appears in the product text.
 
     Sheet brands often carry trailing product words ("Packs Glass Cone"), so try
@@ -460,7 +494,7 @@ def _brand_hit(brand, hay):
                 pat = re.escape(phrase[:-1]) + "s?"
             else:
                 pat += "s?"
-            if re.search(rf"\b{pat}\b", hay):
+            if re.search(rf"{'^' if anchored else ''}\b{pat}\b", hay):
                 return True
         words.pop()
     return False
@@ -673,7 +707,14 @@ def matches(deal, row):
     # Pack", and "Fire Styxx" degraded to "fire". Custom tags carry no brand, so
     # those still fall back to the whole line.
     brand_text = _norm(row.get("brand", "")) or text
-    if not any(_brand_hit(b, brand_text) for b in deal.brands):
+    # A one-word brand must open the product's brand: "Packs" is not "Mad
+    # Packs", "Fat Pack" or "Pressure Pack" (all three took the 11/2 "50% OFF
+    # PACKS"). Longer brands can sit anywhere in it: "White Boy Rick" is sold
+    # as "8TH By White Boy Rick".
+    lead = _norm(str(row.get("brand", "")).split("|")[0]).strip() or text
+    lead = re.sub(r"^the\s+", "", lead)     # the sheet drops it: "The Limit" -> "Limit"
+    if not any(_brand_hit(b, brand_text) if len(_norm(b).split()) > 1
+               else _brand_hit(b, lead, anchored=True) for b in deal.brands):
         return False
     if deal.size:
         # Sizes are written into the product name, so this still reads it all.
