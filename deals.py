@@ -56,6 +56,7 @@ class Deal:
                  family=None):
         self.text, self.kind, self.badge = text, kind, badge
         self.brands, self.size = brands, size
+        self.section = ""          # the sheet heading it sat under, e.g. "bulk flower"
         self.tiers, self.pct, self.unit = tiers or [], pct, unit
         # Which product family the sheet listed this deal under, so a preroll
         # deal cannot land on flower that happens to share the brand.
@@ -221,7 +222,7 @@ def parse_column(lines):
     """
     deals, seen = [], set()
     in_botw, botw_pct = False, None
-    family, no_tag = None, False
+    family, no_tag, section = None, False, ""
     for raw in lines:
         cell = re.sub(r"\s{2,}", " ", str(raw or "")).strip()
         if not cell or cell.lower() == "nan":
@@ -235,6 +236,7 @@ def parse_column(lines):
             in_botw, botw_pct = False, None
             family = _family(SECTION_FAMILY, cell)
             no_tag = bool(NO_TAG_SECTION.match(cell))
+            section = re.sub(r"\s+", " ", cell.lower())
             continue
         if no_tag:
             continue
@@ -259,7 +261,7 @@ def parse_column(lines):
         seen.add(cell)
         d = parse_line(cell)
         if d and d.brands:
-            d.family = family
+            d.family, d.section = family, section
             deals.append(d)
     return deals
 
@@ -528,6 +530,21 @@ DELI = re.compile(r"\bdeli\b|\bbulk\b", re.I)
 # Order matters: "non infused" contains "infused", "Infused PreRoll" is a
 # preroll and not flower, and a 510 category is checked before the generic cart
 # words that would also match it.
+# Brands the sheet calls something other than Dutchie's product names do:
+# sheet name -> the names on the products. Add a line when Settings › "Deals
+# that match nothing in stock" shows a brand that is in stock under another
+# name. Lower case.
+BRAND_NICKNAMES = {
+    "white boy rick": ("the 8th",),     # Dutchie: "The 8th | ..." (brand "8TH By White Boy Rick")
+    "mintz": ("minntz",),               # the sheet writes Mintz; the brand is Minntz
+}
+
+
+def _names(brand):
+    """A sheet brand and every name its products go by."""
+    return [brand, *BRAND_NICKNAMES.get(_norm(brand).strip(), ())]
+
+
 SECTION_FAMILY = [
     (re.compile(r"non[\s-]?infused", re.I), "preroll"),
     (re.compile(r"infused.*pre[\s-]?roll", re.I), "infused preroll"),
@@ -714,9 +731,9 @@ def matches(deal, row):
     parts = [re.sub(r"^the\s+", "", _norm(p).strip())   # the sheet drops it: "The Limit"
              for p in str(row.get("brand", "")).split("|")]
     parts = [p for p in parts if p] or [text]
-    if not any(_brand_hit(b, brand_text) if len(_norm(b).split()) > 1
-               else any(_brand_hit(b, p, anchored=True) for p in parts)
-               for b in deal.brands):
+    if not any(_brand_hit(n, brand_text) if len(_norm(n).split()) > 1
+               else any(_brand_hit(n, p, anchored=True) for p in parts)
+               for b in deal.brands for n in _names(b)):
         return False
     if deal.size:
         # Sizes are written into the product name, so this still reads it all.
