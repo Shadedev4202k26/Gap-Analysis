@@ -377,11 +377,20 @@ def _greeting():
 
 
 def _inventory_stats():
-    """Numbers from the inventory export loaded in Shelf tags, if any."""
-    df = st.session_state.get("zb_inv")
+    """Numbers from the inventory export loaded in Shelf tags, or else from the
+    store's live stock; None when there is neither."""
+    ss = st.session_state
+    df, name = ss.get("zb_inv"), ss.get("zb_inv_name", "")
     if df is None:
-        return None
-    out = {"rows": len(df), "name": st.session_state.get("zb_inv_name", "")}
+        got = live_stock.latest(_deps["init_db"](), context()["store"])
+        if not got:
+            return None
+        df, name = got[0], f"live stock, {live_stock.when(got[1])}"
+        sig = (context()["store"], got[1])
+        hit = ss.get("zb_inv_stats")
+        if hit and hit[0] == sig:           # counted once per copy, not on every rerun
+            return hit[1]
+    out = {"rows": len(df), "name": name}
     # Counted by aging.py, exactly as the Aging stock page counts: Metrc packages
     # aged from the day the store received them.
     pkgs, err = aging.packages(df)
@@ -393,6 +402,8 @@ def _inventory_stats():
     if cat:
         out["outdoor"] = int(df[cat].astype(str).str.contains("outdoor", case=False).sum())
         out["cats"] = int(df[cat].nunique())
+    if ss.get("zb_inv") is None:
+        ss["zb_inv_stats"] = (sig, out)
     return out
 
 
@@ -488,8 +499,7 @@ def render_home():
                     f'<br><span>{inv["over90"]:,} past 90 · of {inv["packages"]:,} '
                     f'in {esc(inv["name"])}</span>')
         else:
-            body = ('Load today\'s inventory in Shelf tags and the oldest stock '
-                    'shows up here.')
+            body = 'Your store\'s oldest packages, from Dutchie or an inventory export.'
         _card("aging", _page("aging"),
               f'<div class="zb-card"><div class="zb-card-h">Aging stock</div>'
               f'<div class="zb-card-b">{body}</div></div>')

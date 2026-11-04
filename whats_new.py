@@ -36,6 +36,21 @@ UPDATES = [
         ],
     },
     {
+        "id": "live-stock",
+        "until": dt.date(2026, 12, 7),
+        "title": "No more inventory exports",
+        "body": ("**Shelf tags**, **Inventory balance** and **Aging stock** now load "
+                 "{store}'s stock straight from Dutchie. It updates every 15 minutes."),
+        "points": [
+            "**Shelf tags:** pick **Live stock** on the first step (it's picked for you)",
+            "**Curbside, Sales Floor and both vaults** are included; the Waiting Room isn't",
+            "Need an export anyway? It still works: pick **Import inventory CSV**",
+        ],
+        "note": "Each page shows when the stock was last updated. Refresh takes the newest.",
+        "page": "studio",
+        "page_label": "Shelf tags",
+    },
+    {
         "id": "custom-deals",
         "until": dt.date(2026, 11, 30),
         "title": "Custom tags: sale prices and your own bubbles",
