@@ -379,7 +379,7 @@ def build_aging_pdf(groups, summary, today_date):
         return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     story = [Paragraph("Ziggyz Aging Stock Watch List", ts),
-             Paragraph(f"METRC PACKAGES RECEIVED {aging.WATCH_DAYS}+ DAYS AGO &nbsp;·&nbsp; GENERATED "
+             Paragraph(f"METRC PACKAGES RECEIVED {summary['days']}+ DAYS AGO &nbsp;·&nbsp; GENERATED "
                        f"{today_date:%B} {today_date.day}, {today_date.year}", ss)]
 
     md = [[Paragraph(f"<b>Aged packages:</b> {summary['packages']}", cs),
@@ -397,7 +397,7 @@ def build_aging_pdf(groups, summary, today_date):
         "One line per Metrc package. Age counts from the day the store received the package "
         "(Dutchie's Inventory date). A package split across rooms is one line with its units "
         "added up. \"Newer\" is how many units of the same product are in packages under "
-        f"{aging.WATCH_DAYS} days old. Age is a reason to look, not proof it isn't selling — "
+        f"{summary['days']} days old. Age is a reason to look, not proof it isn't selling — "
         "review each package before discounting or pulling it.", note))
 
     for cat, items in groups:
@@ -1856,12 +1856,19 @@ def render_dead_stock():
             df[cat_col].astype(str).tolist() if cat_col else None)
         df = df[keep]
 
+    # Only packages at least this old are listed: a couple of months on the shelf
+    # is normal for plenty of products, so it starts at 90 days.
+    days = st.slider("Show packages received at least this many days ago",
+                     aging.WATCH_DAYS, 360, aging.PAGE_DAYS, step=15, format="%d days",
+                     key="aging_min_days",
+                     help="Slide right to see only the oldest stock, left to look further back.")
+
     today = date.today()
-    pkgs, err = aging.packages(df, today)
+    pkgs, err = aging.packages(df, today, watch=days)
     if err:
         st.error(err)
         return
-    groups = aging.watch_list(pkgs)
+    groups = aging.watch_list(pkgs, watch=days)
     aged = [p for _, ps in groups for p in ps]
     expiring = [p for p in aged if p["days_to_exp"] is not None and p["days_to_exp"] < aging.EXP_SOON_DAYS]
     units, grams = aging.totals(aged)
@@ -1869,16 +1876,16 @@ def render_dead_stock():
     st.markdown(f"""
     <div class="checklist-summary">
       <div class="cs-tile cs-tile-total"><div class="cs-num">{len(pkgs)}</div><div class="cs-lbl">Packages</div></div>
-      <div class="cs-tile cs-tile-afternoon"><div class="cs-num">{len(aged)}</div><div class="cs-lbl">⏳ Aged {aging.WATCH_DAYS}+d</div></div>
+      <div class="cs-tile cs-tile-afternoon"><div class="cs-num">{len(aged)}</div><div class="cs-lbl">⏳ Aged {days}+d</div></div>
       <div class="cs-tile cs-tile-handover"><div class="cs-num">{units:,}</div><div class="cs-lbl">Units in them{f" + {grams:,.0f} g bulk" if grams else ""}</div></div>
       <div class="cs-tile cs-tile-morning" style="border:none"><div class="cs-num" style="color:#FCA5A5">{len(expiring)}</div><div class="cs-lbl">🔴 Exp &lt;{aging.EXP_SOON_DAYS}d</div></div>
     </div>""", unsafe_allow_html=True)
     st.caption(f"One line per Metrc package, aged from the day the store received it (the export's "
                f"Inventory date). A package split across rooms is one line. \"Newer\" counts units of "
-               f"the same product in packages under {aging.WATCH_DAYS} days old.")
+               f"the same product in packages under {days} days old.")
 
     if not aged:
-        st.success(f"✅ No packages received {aging.WATCH_DAYS}+ days ago. Inventory is fresh!")
+        st.success(f"✅ No packages received {days}+ days ago. Inventory is fresh!")
         return
 
     def severity(age):
@@ -1941,7 +1948,7 @@ def render_dead_stock():
 
     st.markdown("<br>", unsafe_allow_html=True)
     summary = {"packages": len(aged), "units": units, "grams": grams, "expiring": len(expiring),
-               "total": len(pkgs)}
+               "total": len(pkgs), "days": days}
     st.download_button(
         "📥  DOWNLOAD AGING STOCK PDF",
         build_aging_pdf(groups, summary, today),

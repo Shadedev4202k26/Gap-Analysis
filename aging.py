@@ -13,7 +13,8 @@ line. Both the Aging stock page and the Home card read from here.
 import datetime
 from collections import defaultdict
 
-WATCH_DAYS = 45
+WATCH_DAYS = 45          # the youngest age the page's slider allows, and the Home card's count
+PAGE_DAYS = 90           # where the page's slider starts: younger than that rarely needs action
 EXP_SOON_DAYS = 60
 
 
@@ -60,7 +61,7 @@ def qty_text(p):
     return f"{q:,}"
 
 
-def packages(df, today=None):
+def packages(df, today=None, watch=WATCH_DAYS):
     """Every package in the export: [{tag, product, received, dated_by, age,
     qty, unit, rooms, cat, vendor, price, on_sale, days_to_exp, newer_units}].
 
@@ -71,7 +72,7 @@ def packages(df, today=None):
     `dated_by` says which date the age counts from: "Received" (Inventory
     date) normally, "Packaged" only when an export has no Inventory date.
     `newer_units` is how many units of the same product sit in packages under
-    WATCH_DAYS old — context for whether the product is still selling.
+    `watch` days old — context for whether the product is still selling.
     Returns (packages, error) where error explains a missing column.
     """
     today = today or datetime.date.today()
@@ -127,7 +128,7 @@ def packages(df, today=None):
     out = list(by_tag.values())
     fresh = defaultdict(float)
     for p in out:
-        if p["age"] < WATCH_DAYS:
+        if p["age"] < watch:
             fresh[p["product"]] += p["qty"]
     for p in out:
         p["qty"] = int(p["qty"]) if float(p["qty"]).is_integer() else round(p["qty"], 2)
@@ -135,12 +136,12 @@ def packages(df, today=None):
     return out, None
 
 
-def watch_list(pkgs):
-    """Packages WATCH_DAYS or older, grouped by category: [(category, [pkg])],
+def watch_list(pkgs, watch=WATCH_DAYS):
+    """Packages `watch` days or older, grouped by category: [(category, [pkg])],
     oldest category first and oldest package first within each."""
     by_cat = defaultdict(list)
     for p in pkgs:
-        if p["age"] >= WATCH_DAYS:
+        if p["age"] >= watch:
             by_cat[p["cat"] or "Uncategorized"].append(p)
     groups = [(c, sorted(ps, key=lambda p: -p["age"])) for c, ps in by_cat.items()]
     return sorted(groups, key=lambda g: -g[1][0]["age"])
