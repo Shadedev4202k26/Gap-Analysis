@@ -51,6 +51,19 @@ UPDATES = [
         "page_label": "Shelf tags",
     },
     {
+        "id": "deals-from-reports",
+        "until": dt.date(2026, 12, 7),
+        "title": "The weekly deals sheet arrives by itself",
+        "body": ("No need to upload the deals sheet here any more. It comes over from "
+                 "Smilez Reports within a couple of minutes of being uploaded there."),
+        "points": [
+            "**Next week's sheet** shows up in the **Week** menu as soon as it's in, "
+            "usually Tuesday or Wednesday; this week's stays in use until Monday",
+            "**Only what changed** now always compares with last week's sheet",
+        ],
+        "note": "The upload in the Week menu still works if a sheet is ever missing.",
+    },
+    {
         "id": "custom-deals",
         "until": dt.date(2026, 11, 30),
         "title": "Custom tags: sale prices and your own bubbles",
