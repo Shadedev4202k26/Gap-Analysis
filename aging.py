@@ -13,8 +13,8 @@ line. Both the Aging stock page and the Home card read from here.
 import datetime
 from collections import defaultdict
 
-WATCH_DAYS = 45          # the youngest age the page's slider allows, and the Home card's count
-PAGE_DAYS = 90           # where the page's slider starts: younger than that rarely needs action
+WATCH_DAYS = 45          # the youngest age the page's slider allows
+PAGE_DAYS = 90           # where the page's slider starts, and the Home card's count: younger rarely needs action
 EXP_SOON_DAYS = 60
 
 
