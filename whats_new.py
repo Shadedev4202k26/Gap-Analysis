@@ -36,6 +36,19 @@ UPDATES = [
         ],
     },
     {
+        "id": "aging-slider",
+        "until": dt.date(2026, 11, 23),
+        "title": "Aging stock: pick how old",
+        "body": ("A slider at the top of **Aging stock** sets the youngest stock it lists. "
+                 "It starts at **90 days**, so stock from the last couple of months stays off the list."),
+        "points": [
+            "**Slide right** to see only the oldest stock, **left** to look further back (down to 45 days)",
+            "The counts and the **PDF** follow the slider",
+        ],
+        "page": "aging",
+        "page_label": "Aging stock",
+    },
+    {
         "id": "live-stock",
         "until": dt.date(2026, 12, 7),
         "title": "No more inventory exports",
