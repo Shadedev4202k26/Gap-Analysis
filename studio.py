@@ -426,8 +426,9 @@ def _inventory_stats():
     pkgs, err = aging.packages(df)
     if not err:
         out["packages"] = len(pkgs)
-        out["over45"] = sum(1 for p in pkgs if p["age"] >= aging.WATCH_DAYS)
-        out["over90"] = sum(1 for p in pkgs if p["age"] >= 90)
+        # The same starting age as the page's slider, so the two numbers agree.
+        out["aged"] = sum(1 for p in pkgs if p["age"] >= aging.PAGE_DAYS)
+        out["over180"] = sum(1 for p in pkgs if p["age"] >= 180)
     cat = next((c for c in df.columns if c.strip().lower() == "category"), None)
     if cat:
         out["outdoor"] = int(df[cat].astype(str).str.contains("outdoor", case=False).sum())
@@ -524,9 +525,10 @@ def render_home():
     st.markdown('<div class="zb-sec">Stock &amp; tools</div>', unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4, gap="small")
     with c1:
-        if inv and "over45" in inv:
-            body = (f'<b class="zb-big">{inv["over45"]:,}</b> packages received 45+ days ago'
-                    f'<br><span>{inv["over90"]:,} past 90 · of {inv["packages"]:,} '
+        if inv and "aged" in inv:
+            body = (f'<b class="zb-big">{inv["aged"]:,}</b> packages received '
+                    f'{aging.PAGE_DAYS}+ days ago'
+                    f'<br><span>{inv["over180"]:,} past 180 · of {inv["packages"]:,} '
                     f'in {esc(inv["name"])}</span>')
         else:
             body = 'Your store\'s oldest packages, from Dutchie or an inventory export.'
