@@ -26,6 +26,8 @@ import streamlit as st
 
 TABLE = "ziggy_usage"
 SKIP = {"Settings"}                 # Chad's own page, not a store tool
+# Pages taken off the menu: their old lines stay in the table, not in the charts.
+RETIRED = {"Hook tags · classic", "Preroll tags · classic"}
 
 _deps = {}
 
@@ -163,7 +165,7 @@ def settings_view(tz_name, stores, tools):
     # until a store is picked (Nov 2026) there are no new ones, only old lines.
     picked = df[df["store_chosen"]].groupby("visit")["store"].last()
     df["store"] = df["store"].where(df["store_chosen"], df["visit"].map(picked))
-    df = df[df["store"].notna()]
+    df = df[df["store"].notna() & ~df["tool"].isin(RETIRED)]
     act = df[df["action"] == MEASURES[measure]]
 
     store_order = list(stores)
