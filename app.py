@@ -907,14 +907,17 @@ def render_inventory():
         if live is None:
             st.caption(f"Counting stock from the **{qty_col}** column.")
             usage.loaded("Inventory balance", uploaded_file)
+        # Every room the store has, taken before the filters below: a category with
+        # nothing in the vault (Three Rivers' 510 carts, accessories) used to drop
+        # the Vault from the room list, so its zeros couldn't be seen at all.
+        all_rooms = sorted(df['Room'].dropna().unique().tolist())
+
         # Search, Category and Brand: the same bar as Shelf tags and Aging stock.
         # An export is usually one category; live stock holds them all.
         keep = stock_filter.bar(
             "balance", df["Product"].tolist(),
             df["Category"].astype(str).tolist() if "Category" in df.columns else None)
         df = df[keep]
-
-        all_rooms = sorted(df['Room'].dropna().unique().tolist())
 
         # ── Controls: room filter + total-qty filter + balancing toggle ──────
         rooms = st.multiselect("Rooms to include", all_rooms, default=all_rooms,
