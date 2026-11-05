@@ -25,7 +25,6 @@ import uuid
 import streamlit as st
 
 TABLE = "ziggy_usage"
-NOT_CHOSEN = "Store not picked"
 SKIP = {"Settings"}                 # Chad's own page, not a store tool
 
 _deps = {}
@@ -64,7 +63,7 @@ def log(action, tool=None, detail=""):
 def opened(tool):
     """Once per visit per page — and once more after the store is picked, so
     the page someone was on when they picked it (usually Home) counts for that
-    store and not only for "Store not picked"."""
+    store."""
     ctx = (_deps["context"]() if _deps.get("context") else None) or {}
     mark = (tool, ctx.get("store") if ctx.get("store_chosen") else None)
     seen = st.session_state.setdefault("zb_usage_seen", set())
@@ -160,13 +159,14 @@ def settings_view(tz_name, stores, tools):
     df = pd.DataFrame(rows)
     df["at"] = pd.to_datetime(df["at"], utc=True, format="ISO8601").dt.tz_convert(tz)
     # A visit's lines from before its store was picked count for the store it
-    # picked; only visits that never picked one stay "Store not picked".
+    # picked. Visits that never picked one are left out: since nothing opens
+    # until a store is picked (Nov 2026) there are no new ones, only old lines.
     picked = df[df["store_chosen"]].groupby("visit")["store"].last()
-    df["store"] = (df["store"].where(df["store_chosen"], df["visit"].map(picked))
-                   .fillna(NOT_CHOSEN))
+    df["store"] = df["store"].where(df["store_chosen"], df["visit"].map(picked))
+    df = df[df["store"].notna()]
     act = df[df["action"] == MEASURES[measure]]
 
-    store_order = list(stores) + ([NOT_CHOSEN] if (df["store"] == NOT_CHOSEN).any() else [])
+    store_order = list(stores)
     store_order += sorted(set(df["store"]) - set(store_order))
     tool_order = [t for t in tools if t not in SKIP]
     tool_order += sorted(set(df["tool"]) - set(tool_order))
@@ -179,7 +179,6 @@ def settings_view(tz_name, stores, tools):
     if not counts["n"].any():           # an empty grid draws a legend of 0.000000
         st.info(f"No {measure.lower()} in the {period.lower()} yet."
                 + (" Switch to **Visits** to see who has opened the tools." if measure == "Jobs done" else ""))
-        _unpicked_note(df)
         return
 
     # ── heat map ──
@@ -231,16 +230,6 @@ def settings_view(tz_name, stores, tools):
         st.caption("No jobs done in this period.")
     else:
         st.dataframe(last, use_container_width=True)
-
-    _unpicked_note(df)
-
-
-def _unpicked_note(df):
-    n_unpicked = df.loc[df["store"] == NOT_CHOSEN, "visit"].nunique()
-    if n_unpicked:
-        st.caption(f"⚠️ {n_unpicked} visit(s) came from a device that never picked its "
-                   "store. Send that store its own link (Settings → Store links) so its "
-                   "tablet opens on the right store.")
 
 
 def store_links(stores, base_url):
