@@ -57,6 +57,7 @@ except ImportError:
     DUAL_AVAILABLE = False
 
 import aging
+import balance_report
 import break_store
 import shell
 import studio
@@ -350,96 +351,6 @@ def get_compound_profile(api_key, compound_name):
         return {"error": f"Status {r.status_code}"}
     except Exception as e:
         return {"error": str(e)}
-
-def build_pdf(dataframe, threshold_value, rooms, min_stock=None, mode="balance",
-              qty_label="Available"):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter,
-                            rightMargin=36, leftMargin=36, topMargin=40, bottomMargin=40)
-    styles = getSampleStyleSheet()
-    ts = ParagraphStyle('T', parent=styles['Heading1'], fontSize=22,
-                        textColor=colors.HexColor('#0F172A'), spaceAfter=4)
-    ss = ParagraphStyle('S', parent=styles['Normal'], fontSize=11,
-                        textColor=colors.HexColor('#4B5563'), fontName='Helvetica-Bold', spaceAfter=18)
-    cs = ParagraphStyle('C', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#374151'), leading=11)
-    hs = ParagraphStyle('H', parent=styles['Normal'], fontSize=9,
-                        fontName='Helvetica-Bold', textColor=colors.HexColor('#FFFFFF'))
-
-    gap_mode  = (mode == "gap")
-    flag_word = "Gap" if gap_mode else "Rebalance"
-    extra_col = "Missing In" if gap_mode else "Mix %"
-    n_flag = int(dataframe["Status"].str.contains(flag_word).sum())
-    n_ok   = len(dataframe) - n_flag
-
-    title    = "Ziggyz Room Comparison" if gap_mode else "Ziggyz Room Balance Report"
-    subtitle = ("ROOM COMPARISON &middot; MISSING STOCK" if gap_mode
-                else "STOCK MIX &amp; ROOM BALANCE MANIFEST")
-    story = [Paragraph(title, ts), Paragraph(subtitle, ss)]
-
-    if gap_mode:
-        rule_txt = f"<b>Gap</b> = zero {qty_label} in one or more rooms"
-        md = [[Paragraph(f"<b>Products:</b> {len(dataframe)}", cs),
-               Paragraph(f"<b>Gaps:</b> {n_flag}", cs),
-               Paragraph(f"<b>In all rooms:</b> {n_ok}", cs),
-               Paragraph(rule_txt, cs)]]
-    else:
-        rule_txt = f"<b>Counts:</b> {qty_label} &nbsp;·&nbsp; <b>Imbalance:</b> &gt;{threshold_value}%"
-        if min_stock is not None:
-            rule_txt += f" &nbsp;·&nbsp; <b>Min stock:</b> &le;{min_stock}"
-        md = [[Paragraph(f"<b>Products:</b> {len(dataframe)}", cs),
-               Paragraph(f"<b>Rebalance:</b> {n_flag}", cs),
-               Paragraph(f"<b>Balanced:</b> {n_ok}", cs),
-               Paragraph(rule_txt, cs)]]
-    mt = Table(md, colWidths=[110, 110, 110, 186])
-    mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#F8FAFC')),
-                             ('BOX',(0,0),(-1,-1),1,colors.HexColor('#E5E7EB')),
-                             ('INNERGRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
-                             ('PADDING',(0,0),(-1,-1),10),('ALIGN',(0,0),(-1,-1),'CENTER')]))
-    story.append(mt)
-    story.append(Paragraph("Rooms: " + ", ".join(rooms), ss))
-
-    # Header: Product | [each room qty] | Total | (Mix % | Missing In) | Status
-    header = [Paragraph("Product", hs)]
-    for r in rooms:
-        header.append(Paragraph(r, hs))
-    header += [Paragraph("Total", hs), Paragraph(extra_col, hs), Paragraph("Status", hs)]
-    tdata = [header]
-
-    for _, row in dataframe.iterrows():
-        cells = [Paragraph(str(row['Product Name']), cs)]
-        for r in rooms:
-            cells.append(Paragraph(str(row[r]), cs))
-        cells.append(Paragraph(str(row['Total']), cs))
-        cells.append(Paragraph(str(row.get(extra_col, "")), cs))
-        status_txt = (str(row['Status']).replace("🔄", "").replace("✅", "")
-                      .replace("⚠️", "").strip())
-        cells.append(Paragraph(status_txt, cs))
-        tdata.append(cells)
-
-    n_rooms = len(rooms)
-    room_w = min(70, 150 / max(1, n_rooms))
-    prod_w = 150
-    total_w, extra_w, status_w = 40, 110, 78
-    col_widths = [prod_w] + [room_w]*n_rooms + [total_w, extra_w, status_w]
-
-    dt = Table(tdata, colWidths=col_widths, repeatRows=1)
-    style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1E293B')),
-             ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#E5E7EB')),
-             ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
-             ('PADDING',(0,0),(-1,-1),5),
-             ('ALIGN',(1,0),(-1,-1),'CENTER'),
-             ('ALIGN',(0,0),(0,-1),'LEFT')]
-    # Amber bar on rows needing attention; faint green bar on the rest
-    for i, (_, row) in enumerate(dataframe.iterrows(), start=1):
-        if flag_word in str(row['Status']):
-            style.append(('LINEBEFORE',(0,i),(0,i),3,colors.HexColor('#D97706')))
-        else:
-            style.append(('LINEBEFORE',(0,i),(0,i),3,colors.HexColor('#34D399')))
-    dt.setStyle(TableStyle(style))
-    story.append(dt)
-    doc.build(story)
-    buffer.seek(0)
-    return buffer.getvalue()
 
 def build_aging_pdf(groups, summary, today_date):
     """Print-ready aging-stock watch list: one line per aged Metrc package,
@@ -968,219 +879,109 @@ def _live_or_upload(page, upload_key, count_job=False, howto=""):
     return None, up
 
 
-# Dutchie categories Inventory balance leaves out to start (lower case): not
-# cannabis, so they only pad the list. Staff can add them back on the page.
-BALANCE_SKIP = {"accessories", "apparel", "vaporizer batteries", "promotional", "retired skus"}
-BULK_OPTION = "Bulk flower (BULK | …)"
-
-
 def render_inventory():
-    st.markdown('<div class="sec-head"><div class="sec-head-text">📊 Live Room Balance Analyzer</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    """Missing stock check: products with nothing in a selling room (Sales
+    Floor; Wayne's Curbside Room too) while the vault has some. Only zeros:
+    the old room-mix balancing made lists too long to work in a shift."""
+    st.markdown('<div class="sec-head"><div class="sec-head-text">📊 Missing Stock Check</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="instr-card"><div class="instr-title">✅ How to work this list</div>'
+        '<div class="instr-steps">'
+        + "".join(f'<div class="instr-step"><span class="instr-icon">{i}</span><span>{s}</span></div>'
+                  for i, s in enumerate(
+                      ["<b>Download the list</b> at the bottom and print it."]
+                      + balance_report.STEPS
+                      + ["Fixed items drop off this list within about 15 minutes."], 1))
+        + '</div></div>', unsafe_allow_html=True)
     howto = ("""
-    <div class="instr-card"><div class="instr-title">📋 How to Export from Dutchie</div>
+    <div class="instr-card"><div class="instr-title">📋 Uploading an export instead</div>
     <div class="instr-steps">
-      <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backoffice, select your rooms &amp; <strong>one category</strong></span></div>
-      <div class="instr-step"><span class="instr-icon fire">🔥</span><span>Export only <strong>Product</strong>, <strong>Room</strong>, &amp; <strong>Available</strong></span></div>
-      <div class="instr-step"><span class="instr-icon">🔄</span><span><strong>Rebalance</strong> = stock is lopsided <em>or</em> a room is running low while the other has plenty — move some over</span></div>
+      <div class="instr-step"><span class="instr-icon">1</span><span>In Dutchie Backoffice Inventory, pick your rooms and <strong>all categories</strong></span></div>
+      <div class="instr-step"><span class="instr-icon">2</span><span>Export with <strong>Product</strong>, <strong>Room</strong>, <strong>Available</strong> and <strong>Category</strong></span></div>
     </div></div>""")
     live, uploaded_file = _live_or_upload("Inventory balance", "restock_csv", count_job=True,
                                           howto=howto)
-    if live is not None or uploaded_file:
-        df = live if live is not None else pd.read_csv(uploaded_file)
-        df.columns = [str(col).strip('="').strip() for col in df.columns]
-        # Prefer "Available" (sellable stock) over "Quantity" (includes allocated)
-        def _pick_qty_col(cols):
-            for want in ("Available",):
-                for c in cols:
-                    if c.strip().lower() == want.lower():
-                        return c
-            for c in cols:
-                if "available" in c.lower():
-                    return c
-            for c in cols:
-                if "quantity" in c.lower() or c.strip().lower() == "qty":
-                    return c
-            return None
+    if live is None and not uploaded_file:
+        return
+    df = live if live is not None else pd.read_csv(uploaded_file)
+    df.columns = [str(col).strip('="').strip() for col in df.columns]
+    # "Available" is sellable stock; "Quantity" also counts allocated units.
+    qty_col = next((c for c in df.columns if c.strip().lower() == "available"), None) \
+        or next((c for c in df.columns if "available" in c.lower()), None) \
+        or next((c for c in df.columns if "quantity" in c.lower() or c.strip().lower() == "qty"), None)
+    if qty_col is None or "Product" not in df.columns or "Room" not in df.columns:
+        st.error("The export needs **Product**, **Room** and **Available** columns. "
+                 "Export again with those columns.")
+        st.stop()
+    df["Product"] = df["Product"].apply(lambda x: str(x).strip('="').strip())
+    df["Room"] = df["Room"].apply(lambda x: str(x).strip('="').strip())
+    df["Qty"] = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()),
+                              errors="coerce").fillna(0)
+    if live is None:
+        usage.loaded("Inventory balance", uploaded_file)
+    # Every room the store has, taken before the filters below: a category with
+    # nothing in the vault (Three Rivers' 510 carts) used to drop the Vault.
+    all_rooms = sorted(df["Room"].dropna().unique().tolist())
+    store = studio.context().get("store") or ""
 
-        qty_col = _pick_qty_col(list(df.columns))
-        if qty_col is None:
-            st.error("CSV needs an **Available** column (or a Quantity column). "
-                     "Re-export with Product, Room and Available.")
-            st.stop()
-        df['Product'] = df['Product'].apply(lambda x: str(x).strip('="').strip())
-        df['Room']    = df['Room'].apply(lambda x: str(x).strip('="').strip())
-        df['Qty']     = pd.to_numeric(df[qty_col].apply(lambda x: str(x).strip('="').strip()), errors='coerce').fillna(0)
-        if live is None:
-            st.caption(f"Counting stock from the **{qty_col}** column.")
-            usage.loaded("Inventory balance", uploaded_file)
-        # Every room the store has, taken before the filters below: a category with
-        # nothing in the vault (Three Rivers' 510 carts, accessories) used to drop
-        # the Vault from the room list, so its zeros couldn't be seen at all.
-        all_rooms = sorted(df['Room'].dropna().unique().tolist())
+    # Search, Category and Brand: the same bar as Shelf tags and Aging stock.
+    keep = stock_filter.bar(
+        "balance", df["Product"].tolist(),
+        df["Category"].astype(str).tolist() if "Category" in df.columns else None)
+    df = df[keep]
 
-        # Search, Category and Brand: the same bar as Shelf tags and Aging stock.
-        # An export is usually one category; live stock holds them all.
-        keep = stock_filter.bar(
-            "balance", df["Product"].tolist(),
-            df["Category"].astype(str).tolist() if "Category" in df.columns else None)
-        df = df[keep]
+    # Categories to leave out, so all categories can be run in one go. Bulk
+    # flower isn't a Dutchie category, so it is offered in the same box as one.
+    cats = (sorted(c for c in df["Category"].astype(str).unique() if c.strip())
+            if "Category" in df.columns else [])
+    has_bulk = df["Product"].map(aging.is_bulk).any()
+    options = ([balance_report.BULK_OPTION] if has_bulk else []) + cats
+    if options:
+        skip = st.multiselect(
+            "Leave out these categories", options,
+            default=balance_report.default_skip(options),
+            key="balance_skip_cats", placeholder="No categories left out",
+            help="Products in these categories are not checked or listed. "
+                 "Bulk flower, accessories, apparel, batteries and promo items "
+                 "are left out to start.")
+        df = balance_report.leave_out(df, skip)
 
-        # Categories to leave out, so "All categories" can be run in one go
-        # without accessories and other non-cannabis items padding the list.
-        # Bulk deli flower ("BULK | brand | strain") isn't a Dutchie category, so it
-        # is offered in the same box as one: it's weighed out, not moved by the unit.
-        cats = (sorted(c for c in df["Category"].astype(str).unique() if c.strip())
-                if "Category" in df.columns else [])
-        has_bulk = df["Product"].map(aging.is_bulk).any()
-        options = ([BULK_OPTION] if has_bulk else []) + cats
-        if options:
-            skip_default = [c for c in options
-                            if c == BULK_OPTION or c.strip().lower() in BALANCE_SKIP]
-            skip = st.multiselect(
-                "Leave out these categories", options, default=skip_default,
-                key="balance_skip_cats", placeholder="No categories left out",
-                help="Products in these categories are not counted or listed. "
-                     "Bulk flower, accessories, apparel, batteries and promo items "
-                     "are left out to start.")
-            if BULK_OPTION in skip:
-                df = df[~df["Product"].map(aging.is_bulk)]
-            if cats and skip:
-                df = df[~df["Category"].astype(str).isin(skip)]
-
-        # ── Controls: room filter + total-qty filter + balancing toggle ──────
-        rooms = st.multiselect("Rooms to include", all_rooms, default=all_rooms,
-                               key="balance_rooms")
-        balancing = st.toggle(
-            "⚖️ Balancing analysis", value=True, key="balance_mode",
-            help="On = flag lopsided or low/out-of-stock rooms to rebalance. "
-                 "Off = plain room comparison that surfaces products with zero in a room.")
-        min_total = st.slider(
-            "Hide products under this total qty", 0, 50, 0,
-            help="Skip any product whose TOTAL quantity across the selected rooms is "
-                 "below this. Leave at 0 to show everything.")
-        if balancing:
-            ctrl_l, ctrl_r = st.columns([1, 1])
-            with ctrl_l:
-                imbalance_pct = st.slider(
-                    "Flag when a room holds more than this % of stock", 50, 95, 70,
-                    help="A product is flagged 🔄 Rebalance when one room holds more "
-                         "than this share of its total. Lower = stricter.")
-            with ctrl_r:
-                min_stock = st.slider(
-                    "Minimum stock per room", 0, 25, 5,
-                    help="A room at or below this many units (while another room has "
-                         "more) is flagged 🔄 Rebalance so you can move stock over.")
-        else:
-            imbalance_pct, min_stock = 70, 5
-            st.caption("Balancing is **off** — showing a plain room comparison that "
-                       "highlights products missing (zero) from one or more rooms.")
-
-        # Storage rooms are back-stock: empty is normal there, so an empty storage
-        # room should not flag a gap on its own (that is what buries the report in
-        # pages of zeros). They still count toward totals and still show their qty.
-        default_store = [r for r in rooms if "vault" in r.lower()
-                         or "storage" in r.lower() or "back" in r.lower()]
+    # Rooms: set per store (Wayne adds Curbside and Upstairs Vault), with a
+    # way to change them tucked away for the odd export.
+    rooms = balance_report.rooms_for(store, all_rooms)
+    with st.expander(f"Rooms compared: {', '.join(rooms)}"):
+        rooms = st.multiselect("Rooms to compare", all_rooms, default=rooms,
+                               key=f"balance_rooms_{store}")
         store_rooms = st.multiselect(
-            "Storage rooms — zero here is OK", rooms, default=default_store,
-            key="balance_storage",
-            help="Rooms you hold back-stock in. A zero in these rooms will not be "
-                 "reported as a gap; a zero in a selling room still will.")
+            "Storage rooms (a zero here is normal, so it isn't listed)", rooms,
+            default=balance_report.storage_rooms(rooms), key=f"balance_storage_{store}")
+    if len(rooms) < 2:
+        st.info("Pick at least two rooms to compare.")
+        return
+    selling = [r for r in rooms if r not in store_rooms]
+    if not selling:
+        st.info("Every room picked is a storage room. Pick a selling room, like Sales Floor.")
+        return
 
-        if len(rooms) < 1:
-            st.info("Select at least one room to analyze.")
-        else:
-            sub = df[df['Room'].isin(rooms)]
-            pivot = sub.groupby(['Product', 'Room'])['Qty'].sum().unstack(fill_value=0)
-            # ensure all selected rooms are columns even if absent in data
-            for r in rooms:
-                if r not in pivot.columns:
-                    pivot[r] = 0
-            pivot = pivot[rooms]
-
-            rows = []
-            for product, prow in pivot.iterrows():
-                qtys = {r: int(prow[r]) for r in rooms}
-                total = sum(qtys.values())
-                if total <= 0 or total < min_total:
-                    continue  # nothing here, or below the total-qty filter
-                shares = {r: qtys[r] / total for r in rooms}
-                top_share = max(shares.values())
-                empty_rooms = [r for r in rooms if qtys[r] == 0]
-                # only zeros in SELLING rooms count as a gap
-                gap_rooms = [r for r in empty_rooms if r not in store_rooms]
-                mix = " / ".join(f"{r.split()[0]} {round(shares[r]*100)}%" for r in rooms)
-                entry = {"Product Name": product}
-                for r in rooms:
-                    entry[r] = qtys[r]
-                entry["Total"] = total
-                if balancing:
-                    # Trigger 1: lopsided beyond the imbalance threshold
-                    imbalanced = len(rooms) > 1 and (top_share * 100) > imbalance_pct
-                    # Trigger 2: a room at/below minimum while another has stock to move
-                    sell_rooms  = [r for r in rooms if r not in store_rooms] or rooms
-                    low_room    = any(qtys[r] <= min_stock for r in sell_rooms)
-                    source_room = any(qtys[r] > min_stock for r in rooms)
-                    low_flag    = len(rooms) > 1 and low_room and source_room
-                    status = "🔄 Rebalance" if (imbalanced or low_flag) else "✅ Balanced"
-                    entry["Mix %"] = mix
-                    entry["Status"] = status
-                else:
-                    gap = len(rooms) > 1 and len(gap_rooms) > 0
-                    entry["Missing In"] = ", ".join(gap_rooms) if gap_rooms else "—"
-                    entry["Status"] = "⚠️ Gap" if gap else "✅ In all rooms"
-                entry["_skew"] = top_share  # for sorting
-                rows.append(entry)
-
-            final_df = pd.DataFrame(rows)
-            flag_key = "Rebalance" if balancing else "Gap"
-            flag_mask = (final_df["Status"].str.contains(flag_key)
-                         if not final_df.empty else None)
-
-            # Default to showing only the ones needing attention, with a toggle
-            toggle_lbl = "Show balanced products too" if balancing else "Show products stocked in all rooms too"
-            show_all = st.checkbox(toggle_lbl, value=False)
-            if not final_df.empty and not show_all:
-                view_df = final_df[flag_mask].copy()
-            else:
-                view_df = final_df.copy()
-
-            if not final_df.empty:
-                n_total = len(final_df)
-                n_flag  = int(flag_mask.sum())
-                n_ok    = n_total - n_flag
-                lbl_flag = "🔄 Rebalance" if balancing else "⚠️ Gaps"
-                lbl_ok   = "✅ Balanced" if balancing else "✅ In all rooms"
-                st.markdown(f"""
-                <div class="metric-row">
-                  <div class="m-tile"><div class="m-num">{n_total}</div><div class="m-lbl">Products</div></div>
-                  <div class="m-tile"><div class="m-num">{n_flag}</div><div class="m-lbl">{lbl_flag}</div></div>
-                  <div class="m-tile"><div class="m-num">{n_ok}</div><div class="m-lbl">{lbl_ok}</div></div>
-                </div>""", unsafe_allow_html=True)
-
-                if view_df.empty:
-                    if balancing:
-                        st.success(f"✅ Nothing to rebalance across {', '.join(rooms)} "
-                                   f"at these settings. Rooms are balanced!")
-                    else:
-                        st.success("✅ Every product is stocked in all selected rooms — no gaps.")
-                else:
-                    # one single alphabetical list, case-insensitive
-                    view_df["_name_sort"] = view_df["Product Name"].astype(str).str.lower()
-                    view_df = view_df.sort_values(by="_name_sort").reset_index(drop=True)
-                    display_df = view_df.drop(columns=["_skew", "_name_sort"])
-                    st.dataframe(display_df, use_container_width=True, hide_index=True)
-                    if balancing:
-                        st.download_button("📥  Download Balance Report PDF",
-                                           build_pdf(display_df, imbalance_pct, rooms, min_stock,
-                                                     qty_label=qty_col),
-                                           "Ziggy_Balance_Report.pdf", "application/pdf")
-                    else:
-                        st.download_button("📥  Download Room Comparison PDF",
-                                           build_pdf(display_df, imbalance_pct, rooms, mode="gap",
-                                                     qty_label=qty_col),
-                                           "Ziggy_Room_Comparison.pdf", "application/pdf")
-            else:
-                st.success("✅ No stock found in the selected rooms at this total filter.")
+    rows, checked = balance_report.zero_rows(df, rooms, store_rooms)
+    st.markdown(f"""
+    <div class="metric-row">
+      <div class="m-tile"><div class="m-num">{len(rows):,}</div><div class="m-lbl">⚠️ To check</div></div>
+      <div class="m-tile"><div class="m-num">{checked:,}</div><div class="m-lbl">Products compared</div></div>
+    </div>""", unsafe_allow_html=True)
+    if rows.empty:
+        st.success(f"✅ Nothing missing: every product is in {' and '.join(selling)}.")
+        return
+    st.caption(f"Each line has **nothing in {' or '.join(selling)}** while another room has some.")
+    st.dataframe(rows, use_container_width=True, hide_index=True,
+                 column_config={"Missing in": None} if len(selling) < 2 else None)
+    from zoneinfo import ZoneInfo
+    stamp = datetime.now(ZoneInfo(STORE_TZ)).strftime("printed %a %m/%d %I:%M %p")
+    st.download_button(
+        "📥  Download the check list (PDF)",
+        balance_report.build_pdf(rows, rooms, store_rooms, store, stamp),
+        f"Missing_Stock_{store.replace(' ', '_') or 'Store'}.pdf", "application/pdf",
+        type="primary")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 3 — HOOK TAG GENERATOR
