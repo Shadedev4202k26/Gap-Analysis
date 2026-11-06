@@ -538,7 +538,7 @@ def render_home():
     with c2:
         body = (f'<b class="zb-big">{inv["rows"]:,}</b> packages loaded'
                 f'<br><span>{inv.get("cats", 0)} categories</span>'
-                if inv else "Compare rooms and shelves against a minimum stock level.")
+                if inv else "Find products missing from the sales floor that the vault has.")
         _card("inv", _page("inventory"),
               f'<div class="zb-card"><div class="zb-card-h">Inventory balance</div>'
               f'<div class="zb-card-b">{body}</div></div>')
