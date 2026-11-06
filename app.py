@@ -203,27 +203,40 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_se
     model = model or "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     headers = {"x-goog-api-key": (gemini_key or "").strip(), "Content-Type": "application/json"}
-    who = f' as sold by the brand "{brand}"' if brand else ""
-    disambig = (f' Different brands can sell different genetics under the same strain name, '
-                f'so prioritize the specific "{brand}" product.') if brand else ""
+    who = f' sold by the Michigan cannabis brand "{brand}"' if brand else ""
+    if brand:
+        searches = (f'Run several searches, for example: "{brand} {strain_name}", '
+                    f'"{brand} {strain_name} strain", "{brand} {strain_name} dutchie" and '
+                    f'"{brand} {strain_name} lineage". Prefer the brand\'s own site and its '
+                    f'dispensary menu listings (Dutchie, Weedmaps, Leafly, Jane), then reviews. '
+                    f'Different brands sell different genetics under the same name, and a short '
+                    f'name like "{strain_name}" can also be a nickname or number in the brand\'s '
+                    f'lineup (for example "#2" of a named line): use only sources about the '
+                    f'"{brand}" product and ignore other products with the same name.')
+    else:
+        searches = (f'Run several searches, for example: "{strain_name} strain", '
+                    f'"{strain_name} strain lineage" and "{strain_name} strain terpenes". Prefer '
+                    f'Leafly, Weedmaps, breeder sites and dispensary menus.')
     prompt = (
-        f'Use Google Search to find the most widely accepted, accurate profile for the '
-        f'cannabis strain "{strain_name}"{who}.{disambig} Return ONLY a compact JSON object — '
-        f'no markdown, no commentary — with exactly these keys: '
+        f'Use Google Search to find an accurate profile of the cannabis strain '
+        f'"{strain_name}"{who}. {searches} '
+        f'Return ONLY a compact JSON object (no markdown, no commentary) with exactly these keys: '
         f'"classification" (Sativa, Indica, or Hybrid, noting dominance if applicable), '
-        f'"lineage" (parent strains / cross), '
+        f'"lineage" (parent strains / cross; if sources only say what it is related to or '
+        f'part of, say that instead), '
         f'"terpenes" (dominant terpenes), '
         f'"flavor" (taste & aroma), '
-        f'"cannabinoids" (typical THC/CBD ranges), '
-        f'"effects" (commonly reported effects). '
-        f'If the strain genuinely cannot be found, set "lineage" to "Unknown strain".'
+        f'"cannabinoids" (typical THC range across the listings found, not one batch), '
+        f'"effects" (commonly reported effects, one short sentence). '
+        f'Write "Not listed" for a field no source covers. Set "lineage" to "Unknown strain" '
+        f'only if nothing at all can be found about this strain.'
     )
     payload = {"contents": [{"parts": [{"text": prompt}]}],
                "generationConfig": {"temperature": 0.1}}
     if use_search:
         payload["tools"] = [{"google_search": {}}]
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=20)
+        r = requests.post(url, headers=headers, json=payload, timeout=45)
         if r.status_code != 200:
             detail = ""
             try:
@@ -248,11 +261,74 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_se
             w = ch.get("web", {}) or {}
             if w.get("uri"):
                 sources.append({"title": str(w.get("title", "") or "")[:80], "uri": w["uri"]})
+        data = _plain(data)
+        seen = set()
+        sources = [x for x in sources if not (x["title"] in seen or seen.add(x["title"]))]
         if sources:
-            data["_sources"] = sources[:3]
+            data["_sources"] = sources[:4]
         return data
     except Exception as e:
         return {"error": f"{type(e).__name__}: {e}"}
+
+
+# The second model tried for a live Google lookup when the first fails (its
+# monthly search quota ran out, or it timed out).
+GEMINI_BACKUP = "gemini-2.5-flash"
+
+
+@st.cache_resource
+def _strain_memory():
+    """Good live lookups, shared by every store for a week: the same strain is
+    looked up again and again, and each search uses up Google's quota."""
+    return {}
+
+
+def lookup_strain(strain, brand, gem_key, gmodel, groq_key):
+    """(profile, mode, problem). Tries live Google Search on the set model, then
+    on GEMINI_BACKUP, then Gemini without search, then Groq, so a lookup never
+    comes back empty. mode: grounded, gemini or groq."""
+    import time
+    key = (strain.strip().lower(), (brand or "").strip().lower())
+    mem = _strain_memory()
+    hit = mem.get(key)
+    if hit and time.time() - hit[0] < 7 * 86400:
+        return hit[1], "grounded", ""
+    problems = []
+    if gem_key:
+        for m in dict.fromkeys([gmodel or GEMINI_BACKUP, GEMINI_BACKUP]):
+            g = generate_strain_profile_grounded(gem_key, strain, m, use_search=True, brand=brand)
+            if "error" not in g:
+                mem[key] = (time.time(), g)
+                return g, "grounded", ""
+            problems.append(g["error"])
+        g = generate_strain_profile_grounded(gem_key, strain, GEMINI_BACKUP, use_search=False, brand=brand)
+        if "error" not in g:
+            return g, "gemini", "\n".join(problems)
+        problems.append(g["error"])
+    return generate_strain_profile(groq_key, strain, brand), "groq", "\n".join(problems)
+
+
+def _in_store(strain, brand):
+    """This store's own Dutchie listings for the strain (and brand): [(product,
+    type, THC)]. Dutchie's numbers are the ones on the package, so they come
+    before anything found online."""
+    import re
+    store = studio.context().get("store")
+    got = live_stock.pin(init_supabase(), store, "strain_live_pin") if store else None
+    if not got:
+        return store, []
+    df = got[0]
+    want = re.compile(r"(?<![a-z0-9])" + re.escape(strain.strip().lower()) + r"(?![a-z0-9])")
+    out = {}
+    for _, r in df.iterrows():
+        name = str(r.get("Product", ""))
+        parts = [x.strip().lower() for x in name.split("|")]
+        if not any(want.search(x) for x in (parts[1:] or parts)):
+            continue
+        if brand and brand.strip().lower() not in name.lower():
+            continue
+        out.setdefault(name, (name, str(r.get("Strain", "") or ""), str(r.get("THC", "") or "")))
+    return store, list(out.values())[:8]
 
 
 def get_compound_profile(api_key, compound_name):
@@ -764,25 +840,31 @@ def render_strain_ai():
         gem_key = st.secrets.get("GEMINI_API_KEY", "")
         gmodel = st.secrets.get("GEMINI_MODEL")
         label = f"{strain} ({brand})" if brand else strain
-        data, mode, gerr = None, None, ""
-        if gem_key:
-            with st.spinner(f"Searching Google for {label}…"):
-                g = generate_strain_profile_grounded(gem_key, strain, gmodel, use_search=True, brand=brand)
-            if "error" not in g:
-                data, mode = g, "grounded"
-            else:
-                gerr = g["error"]
-                with st.spinner(f"Profiling {label}…"):
-                    g2 = generate_strain_profile_grounded(gem_key, strain, gmodel, use_search=False, brand=brand)
-                if "error" not in g2:
-                    data, mode = g2, "gemini"
-                else:
-                    gerr = g2["error"]
-        if data is None:
-            data = generate_strain_profile(st.secrets["GROQ_API_KEY"], strain, brand)
-            mode = mode or "groq"
-        if "error" not in data:
+        with st.spinner(f"Searching Google for {label}… this can take up to a minute"):
+            data, mode, gerr = lookup_strain(strain, brand, gem_key, gmodel,
+                                             st.secrets.get("GROQ_API_KEY", ""))
+        here, ours = _in_store(strain, brand)
+        if ours:
+            def _e(t):
+                return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            rows = "".join(
+                f'<div style="display:flex;gap:12px;justify-content:space-between;padding:4px 0;'
+                f'border-top:1px solid rgba(255,255,255,.06)"><span>{_e(n)}</span>'
+                f'<span style="white-space:nowrap;color:#22D3EE;font-weight:600">'
+                f'{_e(t) or "—"} · THC {_e(c) or "—"}</span></div>' for n, t, c in ours)
+            st.markdown(
+                f'<div class="sc" style="padding:14px 18px"><div class="attr-label">'
+                f'🏷️ In stock at {_e(here)}: from Dutchie, use these numbers</div>'
+                f'<div class="attr-val" style="margin-top:6px">{rows}</div></div>',
+                unsafe_allow_html=True)
+        if "error" in data:
+            st.error(f"Couldn't look up {label} right now. Try again in a minute.")
+            with st.expander("What went wrong?"):
+                st.code((gerr + "\n" + data["error"]).strip())
+        else:
             clf  = str(data.get('classification', 'HYBRID')).upper()
+            if len(clf) > 26:            # a sentence: the badge keeps just the type
+                clf = next((w for w in ("HYBRID", "INDICA", "SATIVA") if w in clf), "HYBRID")
             bcls = "sb-sativa" if "SATIVA" in clf else ("sb-indica" if "INDICA" in clf else "sb-hybrid")
             if brand:
                 bsearch = "https://www.google.com/search?q=" + quote_plus(f"{brand} cannabis brand official website")
@@ -816,15 +898,11 @@ def render_strain_ai():
                     f'<div style="font-size:11px;color:#6B7280;margin:-6px 2px 10px;'
                     f'font-family:\'Inter\',sans-serif">{note}</div>', unsafe_allow_html=True)
             elif mode == "gemini":
-                st.caption("✨ Gemini AI profile (free). Live Google Search sourcing needs billing "
-                           "enabled on your Gemini key — see the note below to turn it on.")
+                st.caption("⚠️ Google Search was unavailable, so this is the AI's own knowledge, "
+                           "without live sources. Check it before relying on it.")
                 if gerr:
                     with st.expander("Why no live Google sources?"):
                         st.code(gerr)
-                        st.markdown("Search grounding is a paid Gemini feature. Add billing/credits "
-                                    "at [AI Studio](https://ai.studio/projects). For the cheapest "
-                                    "grounding, set `GEMINI_MODEL = \"gemini-3.5-flash\"` in secrets "
-                                    "(5,000 free grounded prompts/month, then ~$14 per 1,000).")
             elif not gem_key:
                 st.caption("⚠️ Showing the offline AI profile. Add a `GEMINI_API_KEY` in app secrets "
                            "to pull live Google Search results instead.")
