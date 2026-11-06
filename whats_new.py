@@ -36,16 +36,18 @@ UPDATES = [
         ],
     },
     {
-        "id": "balance-skip-cats",
-        "until": dt.date(2026, 11, 23),
-        "title": "Inventory balance: leave out categories",
-        "body": ("Run **All categories** at once. A new **Leave out these categories** box "
-                 "skips the ones you don't need."),
+        "id": "missing-stock-check",
+        "until": dt.date(2026, 11, 30),
+        "title": "Inventory balance is now a short Missing Stock Check",
+        "body": ("It lists only what's **missing from the sales floor** while the vault has it. "
+                 "No more room percentages or long balancing reports."),
         "points": [
-            "**Bulk flower, Accessories, Apparel, Promotional and Vaporizer Batteries** "
-            "are left out to start",
-            "Click **✕** on one to count it again, or open the box to leave out more",
+            "**Print the list** and check each item against the wall",
+            "**On the wall?** Make the adjustment in Backoffice and tick it off",
+            "**Not on the wall?** Bring it out from the vault, move it in Backoffice, tick it off",
+            "Bulk flower, accessories, apparel, promo and batteries are left out to start",
         ],
+        "note": "Wayne also checks the Curbside Room and Upstairs Vault.",
         "page": "inventory",
         "page_label": "Inventory balance",
     },
