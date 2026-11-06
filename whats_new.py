@@ -46,8 +46,10 @@ UPDATES = [
             "**On the wall?** Make the adjustment in Backoffice and tick it off",
             "**Not on the wall?** Bring it out from the vault, move it in Backoffice, tick it off",
             "Bulk and tiered flower, accessories, apparel, promo and batteries are left out to start",
+            "**A slider skips products with only a few left**, too few to be worth moving",
         ],
-        "note": "Wayne also checks the Curbside Room and Upstairs Vault.",
+        "note": ("Wayne also checks the Curbside Room and Upstairs Vault, and skips "
+                 "products with fewer than 20 in stock to start."),
         "page": "inventory",
         "page_label": "Inventory balance",
     },
