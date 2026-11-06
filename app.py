@@ -968,6 +968,11 @@ def _live_or_upload(page, upload_key, count_job=False, howto=""):
     return None, up
 
 
+# Dutchie categories Inventory balance leaves out to start (lower case): not
+# cannabis, so they only pad the list. Staff can add them back on the page.
+BALANCE_SKIP = {"accessories", "apparel", "vaporizer batteries", "promotional", "retired skus"}
+
+
 def render_inventory():
     st.markdown('<div class="sec-head"><div class="sec-head-text">📊 Live Room Balance Analyzer</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     howto = ("""
@@ -1018,6 +1023,19 @@ def render_inventory():
             "balance", df["Product"].tolist(),
             df["Category"].astype(str).tolist() if "Category" in df.columns else None)
         df = df[keep]
+
+        # Categories to leave out, so "All categories" can be run in one go
+        # without accessories and other non-cannabis items padding the list.
+        if "Category" in df.columns:
+            cats = sorted(c for c in df["Category"].astype(str).unique() if c.strip())
+            skip_default = [c for c in cats if c.strip().lower() in BALANCE_SKIP]
+            skip = st.multiselect(
+                "Leave out these categories", cats, default=skip_default,
+                key="balance_skip_cats", placeholder="No categories left out",
+                help="Products in these categories are not counted or listed. "
+                     "Accessories, apparel, batteries and promo items are left out to start.")
+            if skip:
+                df = df[~df["Category"].astype(str).isin(skip)]
 
         # ── Controls: room filter + total-qty filter + balancing toggle ──────
         rooms = st.multiselect("Rooms to include", all_rooms, default=all_rooms,
