@@ -42,7 +42,8 @@ UPDATES = [
         "body": ("Run **All categories** at once. A new **Leave out these categories** box "
                  "skips the ones you don't need."),
         "points": [
-            "**Accessories, Apparel, Promotional and Vaporizer Batteries** are left out to start",
+            "**Bulk flower, Accessories, Apparel, Promotional and Vaporizer Batteries** "
+            "are left out to start",
             "Click **✕** on one to count it again, or open the box to leave out more",
         ],
         "page": "inventory",
