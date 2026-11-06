@@ -971,6 +971,7 @@ def _live_or_upload(page, upload_key, count_job=False, howto=""):
 # Dutchie categories Inventory balance leaves out to start (lower case): not
 # cannabis, so they only pad the list. Staff can add them back on the page.
 BALANCE_SKIP = {"accessories", "apparel", "vaporizer batteries", "promotional", "retired skus"}
+BULK_OPTION = "Bulk flower (BULK | …)"
 
 
 def render_inventory():
@@ -1026,15 +1027,24 @@ def render_inventory():
 
         # Categories to leave out, so "All categories" can be run in one go
         # without accessories and other non-cannabis items padding the list.
-        if "Category" in df.columns:
-            cats = sorted(c for c in df["Category"].astype(str).unique() if c.strip())
-            skip_default = [c for c in cats if c.strip().lower() in BALANCE_SKIP]
+        # Bulk deli flower ("BULK | brand | strain") isn't a Dutchie category, so it
+        # is offered in the same box as one: it's weighed out, not moved by the unit.
+        cats = (sorted(c for c in df["Category"].astype(str).unique() if c.strip())
+                if "Category" in df.columns else [])
+        has_bulk = df["Product"].map(aging.is_bulk).any()
+        options = ([BULK_OPTION] if has_bulk else []) + cats
+        if options:
+            skip_default = [c for c in options
+                            if c == BULK_OPTION or c.strip().lower() in BALANCE_SKIP]
             skip = st.multiselect(
-                "Leave out these categories", cats, default=skip_default,
+                "Leave out these categories", options, default=skip_default,
                 key="balance_skip_cats", placeholder="No categories left out",
                 help="Products in these categories are not counted or listed. "
-                     "Accessories, apparel, batteries and promo items are left out to start.")
-            if skip:
+                     "Bulk flower, accessories, apparel, batteries and promo items "
+                     "are left out to start.")
+            if BULK_OPTION in skip:
+                df = df[~df["Product"].map(aging.is_bulk)]
+            if cats and skip:
                 df = df[~df["Category"].astype(str).isin(skip)]
 
         # ── Controls: room filter + total-qty filter + balancing toggle ──────
