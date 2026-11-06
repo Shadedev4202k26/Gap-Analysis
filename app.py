@@ -942,7 +942,7 @@ def render_inventory():
             default=balance_report.default_skip(options),
             key="balance_skip_cats", placeholder="No categories left out",
             help="Products in these categories are not checked or listed. "
-                 "Bulk flower, accessories, apparel, batteries and promo items "
+                 "Bulk and tiered flower, accessories, apparel, batteries and promo items "
                  "are left out to start.")
         df = balance_report.leave_out(df, skip)
 

@@ -45,7 +45,7 @@ UPDATES = [
             "**Print the list** and check each item against the wall",
             "**On the wall?** Make the adjustment in Backoffice and tick it off",
             "**Not on the wall?** Bring it out from the vault, move it in Backoffice, tick it off",
-            "Bulk flower, accessories, apparel, promo and batteries are left out to start",
+            "Bulk and tiered flower, accessories, apparel, promo and batteries are left out to start",
         ],
         "note": "Wayne also checks the Curbside Room and Upstairs Vault.",
         "page": "inventory",

@@ -17,9 +17,13 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
 
 import aging
 
-# Dutchie categories left out to start (lower case): not cannabis, so they only
-# pad the list. Staff can add them back on the page.
-SKIP = {"accessories", "apparel", "vaporizer batteries", "promotional", "retired skus"}
+# Dutchie categories left out to start (lower case, without Dutchie's leading
+# "-"). Not cannabis, or tiered flower: the Red/White/Blue tiers, Secret Stash
+# and Outdoor are weighed out like bulk and never balanced between rooms (they
+# made Wayne's Curbside list ~1,000 lines long). Staff can add any back.
+SKIP = {"accessories", "apparel", "vaporizer batteries", "promotional", "retired skus",
+        "red tier", "white tier", "blue tier", "secret stash",
+        "secret stash infused flower", "outdoor flower"}
 # Bulk deli flower ("BULK | brand | strain") isn't a Dutchie category, so it is
 # offered as one: it's weighed out, not moved by the unit.
 BULK_OPTION = "Bulk flower (BULK | …)"
@@ -42,7 +46,7 @@ STEPS = [
 
 def default_skip(options):
     """The leave-out choices picked to start, from the ones on offer."""
-    return [c for c in options if c == BULK_OPTION or c.strip().lower() in SKIP]
+    return [c for c in options if c == BULK_OPTION or c.strip().lstrip("-").strip().lower() in SKIP]
 
 
 def leave_out(df, skip):
