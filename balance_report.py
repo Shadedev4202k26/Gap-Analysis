@@ -33,6 +33,15 @@ BULK_OPTION = "Bulk flower (BULK | …)"
 ROOMS = {"Wayne": ["Sales Floor", "Curbside Room", "Vault", "Upstairs Vault"]}
 ROOMS_DEFAULT = ["Sales Floor", "Vault"]
 
+# Products with fewer than this many in stock (all rooms together) aren't
+# worth moving: Wayne doesn't balance anything under about 20.
+MIN_STOCK = {"Wayne": 20}
+
+
+def min_stock(store):
+    """Where the page's "fewest in stock" slider starts for `store`."""
+    return MIN_STOCK.get(store, 0)
+
 # How to work the list: on the page and at the top of the PDF.
 STEPS = [
     "Take the list to the sales floor and check each item against what is really on the wall.",
@@ -77,11 +86,12 @@ def _qty(v):
     return int(v) if float(v).is_integer() else round(float(v), 2)
 
 
-def zero_rows(df, rooms, store_rooms):
+def zero_rows(df, rooms, store_rooms, min_total=0):
     """(rows, checked): one row per product with zero in a selling room while
     another room has some, sorted by category then name, and how many products
     were compared. Row columns: Category, Product, each room's qty, Missing in.
-    `df` needs Product, Room and Qty (Category if it has one)."""
+    `df` needs Product, Room and Qty (Category if it has one). Products with
+    fewer than `min_total` across the rooms are skipped and not counted."""
     sub = df[df["Room"].isin(rooms)]
     cols = ["Category", "Product"] + list(rooms) + ["Missing in"]
     if sub.empty:
@@ -92,8 +102,9 @@ def zero_rows(df, rooms, store_rooms):
     selling = [r for r in rooms if r not in store_rooms]
     rows, checked = [], 0
     for product, q in pivot.iterrows():
-        if q.clip(lower=0).sum() <= 0:
-            continue                      # none anywhere: nothing to move
+        total = q.clip(lower=0).sum()
+        if total <= 0 or total < min_total:
+            continue                      # none anywhere, or too few to move
         checked += 1
         missing = [r for r in selling if q[r] <= 0]
         if not missing:

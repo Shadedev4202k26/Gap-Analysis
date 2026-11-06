@@ -963,7 +963,12 @@ def render_inventory():
         st.info("Every room picked is a storage room. Pick a selling room, like Sales Floor.")
         return
 
-    rows, checked = balance_report.zero_rows(df, rooms, store_rooms)
+    min_total = st.slider(
+        "Skip products with fewer than this many in stock (all rooms together)",
+        0, 50, balance_report.min_stock(store), step=1, key=f"balance_min_{store}",
+        help="Too few to be worth moving. Wayne starts at 20; the other stores at 0 "
+             "(everything is checked).")
+    rows, checked = balance_report.zero_rows(df, rooms, store_rooms, min_total)
     st.markdown(f"""
     <div class="metric-row">
       <div class="m-tile"><div class="m-num">{len(rows):,}</div><div class="m-lbl">⚠️ To check</div></div>
