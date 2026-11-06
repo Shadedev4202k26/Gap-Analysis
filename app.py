@@ -151,6 +151,22 @@ def init_supabase():
         return None
 
 # ── AI helpers ────────────────────────────────────────────────────────────────
+# Groq retired its Llama models (Nov 2026); gpt-oss-120b is the strongest it still offers.
+GROQ_MODEL = "openai/gpt-oss-120b"
+
+
+def _plain(data):
+    """Profile values as plain text: the model sometimes answers a field with a
+    list or a dict, which would print on the card with brackets."""
+    def one(v):
+        if isinstance(v, list):
+            return ", ".join(one(x) for x in v)
+        if isinstance(v, dict):
+            return "; ".join(f"{k}: {one(x)}" for k, x in v.items())
+        return str(v)
+    return {k: (v if k.startswith("_") else one(v)) for k, v in data.items()}
+
+
 def generate_strain_profile(groq_key, strain_name, brand=""):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
@@ -161,7 +177,7 @@ def generate_strain_profile(groq_key, strain_name, brand=""):
               "If unrecognizable, output 'Unknown strain, please check Google' for lineage. "
               "Output clean JSON. Keys: classification, lineage, terpenes, flavor, effects, cannabinoids.")
     target = f'Target Strain: {strain_name}' + (f'\nBrand: {brand}' if brand else "")
-    payload = {"model": "llama-3.3-70b-versatile",
+    payload = {"model": GROQ_MODEL,
                "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": target}],
                "temperature": 0.1}
@@ -171,7 +187,7 @@ def generate_strain_profile(groq_key, strain_name, brand=""):
             c = r.json()['choices'][0]['message']['content'].strip()
             if "{" in c and "}" in c:
                 c = c[c.find("{"):c.rfind("}") + 1]
-            return json.loads(c)
+            return _plain(json.loads(c))
     except Exception as e:
         return {"error": str(e)}
     return {"classification": "HYBRID", "lineage": "N/A", "terpenes": "N/A",
@@ -239,10 +255,12 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_se
         return {"error": f"{type(e).__name__}: {e}"}
 
 
+def get_compound_profile(api_key, compound_name):
+    """A short profile of a cannabinoid for the Cannabinoid Encyclopedia."""
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     system = "You are an advanced cannabinoid science database. Output JSON. Keys: status, primary_effects, medical_benefits, customer_pitch."
-    payload = {"model": "llama-3.1-8b-instant",
+    payload = {"model": GROQ_MODEL,
                "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": f"Profile for: {compound_name}"}],
                "temperature": 0.1}
@@ -252,7 +270,7 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_se
             c = r.json()['choices'][0]['message']['content'].strip()
             if "{" in c and "}" in c:
                 c = c[c.find("{"):c.rfind("}") + 1]
-            return json.loads(c)
+            return _plain(json.loads(c))
         return {"error": f"Status {r.status_code}"}
     except Exception as e:
         return {"error": str(e)}
@@ -834,6 +852,10 @@ def render_strain_ai():
               <div class="sc-attr"><div class="attr-label">🩺 Medical Benefits</div><div class="attr-val">{chem_data.get('medical_benefits','—')}</div></div>
               <div class="sc-attr sc-attr-full"><div class="attr-label">🎯 Budtender Pitch</div><div class="attr-val attr-val-hi" style="font-style:italic;">"{chem_data.get('customer_pitch','—')}"</div></div>
             </div></div>""", unsafe_allow_html=True)
+        else:
+            st.warning(f"Couldn't look up {target_chem} right now. Try again in a minute.")
+            with st.expander("What went wrong?"):
+                st.code(chem_data["error"])
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 2 — INVENTORY INTEL
