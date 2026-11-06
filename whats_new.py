@@ -36,6 +36,19 @@ UPDATES = [
         ],
     },
     {
+        "id": "strain-lookup-store",
+        "until": dt.date(2026, 11, 23),
+        "title": "Strain lookup shows your store's own numbers",
+        "body": ("Search a strain and **{store}'s Dutchie listings** for it show first, with "
+                 "the type and THC on the package. Go by those numbers."),
+        "points": [
+            "**Add the brand** (like FAVRD) for that brand's version of the strain",
+            "The profile below is from a live Google search and can take up to a minute",
+        ],
+        "page": "strain",
+        "page_label": "Strain lookup",
+    },
+    {
         "id": "aging-slider",
         "until": dt.date(2026, 11, 23),
         "title": "Aging stock: pick how old",
