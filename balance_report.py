@@ -23,7 +23,8 @@ import aging
 # made Wayne's Curbside list ~1,000 lines long). Staff can add any back.
 SKIP = {"accessories", "apparel", "vaporizer batteries", "promotional", "retired skus",
         "red tier", "white tier", "blue tier", "secret stash",
-        "secret stash infused flower", "outdoor flower", "infused flower"}
+        "secret stash infused flower", "outdoor flower", "infused flower",
+        "infused shake"}
 # Bulk deli flower ("BULK | brand | strain") isn't a Dutchie category, so it is
 # offered as one: it's weighed out, not moved by the unit.
 BULK_OPTION = "Bulk flower (BULK | …)"
