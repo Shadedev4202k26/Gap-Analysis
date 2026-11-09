@@ -25,3 +25,4 @@ proof_*.pdf
 *_preview.png
 *_variants.png
 mock_*.py
+mailer_out/

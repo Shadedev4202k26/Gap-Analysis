@@ -129,13 +129,14 @@ def _esc(t):
     return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def build_pdf(rows, rooms, store_rooms, store="", stamp=""):
+def build_pdf(rows, rooms, store_rooms, store="", stamp="", title="Missing stock check"):
     """The printable check list: how to work it, then the products grouped by
-    category with each room's count and an empty Done box to tick."""
+    category with each room's count and an empty Done box to tick. The store
+    mailer calls the same list "Replenishment needed"."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30,
                             topMargin=30, bottomMargin=30,
-                            title=f"Missing stock check {store}".strip())
+                            title=f"{title} {store}".strip())
     base = getSampleStyleSheet()["Normal"]
     ts = ParagraphStyle("T", parent=base, fontSize=17, leading=20, fontName="Helvetica-Bold",
                         textColor=colors.HexColor("#0F172A"))
@@ -152,7 +153,7 @@ def build_pdf(rows, rooms, store_rooms, store="", stamp=""):
 
     selling = [r for r in rooms if r not in store_rooms]
     show_missing = len(selling) > 1        # one selling room: its zero says it all
-    head = f"Missing stock check · {_esc(store)}" if store else "Missing stock check"
+    head = f"{_esc(title)} · {_esc(store)}" if store else _esc(title)
     story = [Paragraph(head, ts),
              Paragraph(f"{len(rows)} items with nothing in "
                        f"{' or '.join(_esc(r) for r in selling)} while another room has some"
