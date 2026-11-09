@@ -360,14 +360,19 @@ SOURCE = {"lab": ("🧪 Lab tested", "#22D3EE"), "strain lab": ("🧪 Lab, same 
           "estimated": ("≈ Estimated", "#F59E0B")}
 
 
-def _card(s, p, m, src, target, like):
+def _card(s, p, m, src, target, like, photo=""):
     out_front = any(r in OUT_FRONT for r in p["rooms"])
     where = "Out front" if out_front else "Vault only"
     tag, col = SOURCE[src]
     deal = (f'<div style="margin-top:6px;font-size:12.5px;color:#FCA5A5;font-weight:600">🔥 {_esc(p["deal"])}</div>'
             if p["deal"] else "")
     qty = f'{p["qty"]:g}'
-    html = f"""<div class="sc tm" style="padding:12px 16px;margin-bottom:10px">
+    pic = (f'<img src="{_esc(photo)}" alt="" loading="lazy" style="width:76px;height:76px;object-fit:cover;'
+           f'border-radius:10px;background:#fff;flex:none">' if photo else
+           '<div style="width:76px;height:76px;border-radius:10px;flex:none;display:flex;align-items:center;'
+           'justify-content:center;font-size:26px;background:rgba(255,255,255,.05)">🌿</div>')
+    html = f"""<div class="sc tm" style="padding:12px 16px;margin-bottom:10px;display:flex;gap:14px">{pic}
+      <div style="flex:1;min-width:0">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
         <div style="font-weight:700">{_esc(p["name"])}</div>
         <div style="white-space:nowrap;color:#22D3EE;font-weight:700">{_esc(closeness(s))}</div></div>
@@ -375,7 +380,7 @@ def _card(s, p, m, src, target, like):
       {_bars(m)}
       <div style="font-size:12px;color:#9CA3AF;margin-top:4px">
         <span style="color:{col}">{tag}</span> · {_esc(p["type"].title())} · THC {_esc(p["thc"] or "—")} ·
-        {_esc(p["price"] or "—")} · {where} ({qty} on hand)</div>{deal}</div>"""
+        {_esc(p["price"] or "—")} · {where} ({qty} on hand)</div>{deal}</div></div>"""
     # One line, no indents: Markdown reads an indented line after a <style> tag as code.
     return " ".join(line.strip() for line in html.splitlines())
 
@@ -419,12 +424,14 @@ def results(target, key, like="", exclude=None, stores=(), store=""):
         st.caption("Nothing on the shelves matches with these filters. Try All categories or a higher price.")
         return
     labs = sum(1 for _, _, _, src in ranked[:SHOW] if src != "estimated")
+    pics = live_stock.photos(db, store)
     st.caption(f"Closest {min(SHOW, len(ranked))} of {len(ranked)} products · {labs} from lab tests"
                + (f" · {waiting} untested strains still being estimated in the background; "
                   f"they join the list over the next few minutes" if waiting else ""))
     # .sc is the strain card's frame; its "STRAIN.PROFILE" corner label doesn't belong on a match.
     st.markdown("<style>.sc.tm::before{display:none}</style>"
-                + "".join(_card(s, p, m, src, target, like) for s, p, m, src in ranked[:SHOW]),
+                + "".join(_card(s, p, m, src, target, like, pics.get(p["name"], ""))
+                          for s, p, m, src in ranked[:SHOW]),
                 unsafe_allow_html=True)
 
 
