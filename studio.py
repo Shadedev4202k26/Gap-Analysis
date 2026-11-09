@@ -468,7 +468,7 @@ def _first_store():
 
 
 # Strain Sniffer's three ways in; terp_match.MODES holds the same list.
-SNIFF_MODES = ["A strain they love", "Something we sell", "Feel & flavor"]
+SNIFF_MODES = ["🔍 Look up a strain", "🛍️ Like something we sell", "✨ By feel & flavor"]
 
 
 def render_home():
@@ -502,7 +502,7 @@ def render_home():
             b1, b2 = st.columns(2, gap="small")
             like = b1.button("Something we sell", icon=":material/inventory_2:",
                              key="zb_home_like", use_container_width=True,
-                             help="Pick one of our products, or one that's sold out")
+                             help="Pick one of our products they like to find others like it")
             feel = b2.button("Feel & flavor", icon=":material/mood:",
                              key="zb_home_feel", use_container_width=True,
                              help="Relaxed, energetic, citrus, piney…")

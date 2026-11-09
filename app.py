@@ -756,31 +756,45 @@ def render_strain_ai():
     st.markdown('<div class="sec-head"><div class="sec-head-text">👃 Strain Sniffer</div>'
                 '<div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     st.caption(f"Find what's on **{ctx['store']}**'s shelves for a customer, matched on real lab "
-               f"terpenes. Start from what they tell you:")
-    mode = st.segmented_control("Start from", terp_match.MODES, default=terp_match.MODES[0],
-                                key="sniff_mode", label_visibility="collapsed")
+               f"terpenes. Look up any strain, or match from something we sell or a feel.")
+    _strain_form()
+    # Set through session state only (Home and the search box set it too): a
+    # default as well would make Streamlit warn.
+    if st.session_state.get("sniff_mode") not in terp_match.MODES:
+        st.session_state.sniff_mode = terp_match.MODES[0]
+    mode = st.segmented_control("Show", terp_match.MODES, key="sniff_mode",
+                                label_visibility="collapsed")
     if mode in terp_match.MODES[1:]:
         terp_match.match_section(ctx["store"], ctx["stores"], mode)
     else:
-        _strain_search()
+        _strain_result()
     st.markdown('<hr>', unsafe_allow_html=True)
     with st.expander("🧪 Cannabinoid encyclopedia"):
         _cannabinoids()
 
 
-def _strain_search():
+def _strain_form():
+    """The strain search, at the top in every mode. A search shows its result
+    under "Look up a strain", whichever mode was open."""
     with st.form("strain_form", clear_on_submit=True):
-        c_strain, c_brand = st.columns([2, 1])
-        with c_strain:
-            user_input = st.text_input("Strain they love", placeholder="e.g., Permanent Marker, Bacio Gelato… (we don't have to carry it)")
-        with c_brand:
-            brand_input = st.text_input("Brand (optional)", placeholder="e.g., FAVRD")
-        submitted = st.form_submit_button("👃  SNIFF IT OUT")
+        c_strain, c_brand, c_go = st.columns([3, 1.4, 1], vertical_alignment="bottom")
+        user_input = c_strain.text_input(
+            "Look up a strain", placeholder="Any strain, even one we don't carry, e.g. Gary Payton")
+        brand_input = c_brand.text_input("Brand (optional)", placeholder="e.g. FAVRD")
+        submitted = c_go.form_submit_button("🔍  Look it up", use_container_width=True)
     if submitted and user_input:
         usage.log("used", "Strain Sniffer", f"Searched {user_input.strip()[:60]}")
         st.session_state.last_strain = user_input
         st.session_state.last_brand = (brand_input or "").strip()
+        st.session_state.sniff_mode = terp_match.MODES[0]
         st.rerun()
+
+
+def _strain_result():
+    if not (st.session_state.get("last_strain") or st.session_state.get("strain_result")):
+        st.caption("Type a strain in the box above to see its profile and what's closest to it "
+                   "on our shelves.")
+        return
     gem_key = st.secrets.get("GEMINI_API_KEY", "")
     if st.session_state.get("last_strain"):
         strain = st.session_state.last_strain

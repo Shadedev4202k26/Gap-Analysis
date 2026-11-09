@@ -447,7 +447,7 @@ def picker_target(selected):
     return mix(t)
 
 
-MODES = ["A strain they love", "Something we sell", "Feel & flavor"]
+MODES = ["🔍 Look up a strain", "🛍️ Like something we sell", "✨ By feel & flavor"]
 
 
 def match_section(store, stores, mode):
@@ -462,11 +462,11 @@ def match_section(store, stores, mode):
         prods = products(got[0], context().get("deals") or [])
         library = lab_library(tuple(stores))
         names = sorted(p["name"] for p in prods if profile(p, library)[0])
-        pick = st.selectbox("What they like (or what's sold out)", names, index=None,
+        pick = st.selectbox("A product we have that they like", names, index=None,
                             placeholder="Type to search our products…", key="tm_like")
         if not pick:
             st.caption("Pick a product to find others with the closest terpene mix. "
-                       "Handy when something is sold out.")
+                       "The list is what's in stock here now.")
             return
         p = next(x for x in prods if x["name"] == pick)
         m, src = profile(p, library)
