@@ -32,9 +32,9 @@ UPDATES = [
                  "customer likes and it lists what's on **{store}**'s shelves with the closest "
                  "**terpene mix**, from real lab tests."),
         "points": [
-            "**A strain they love**: even one we don't carry",
-            "**Something we sell**: great when their usual is sold out",
-            "**Feel & flavor**: relaxed, energetic, citrus, piney and more",
+            "**🔍 Look up a strain**: any strain, even one we don't carry. The search box stays at the top",
+            "**🛍️ Like something we sell**: great when their usual is sold out",
+            "**✨ By feel & flavor**: relaxed, energetic, citrus, piney and more",
             "Each match shows **why** it matches, price, THC, out front or vault, and this week's **deal**",
         ],
         "note": ("Matches marked *Estimated* have no lab test yet; lab-tested ones come first. "

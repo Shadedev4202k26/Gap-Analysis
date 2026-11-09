@@ -447,7 +447,7 @@ def picker_target(selected):
     return mix(t)
 
 
-MODES = ["A strain they love", "Something we sell", "Feel & flavor"]
+MODES = ["🔍 Look up a strain", "🛍️ Like something we sell", "✨ By feel & flavor"]
 
 
 def match_section(store, stores, mode):

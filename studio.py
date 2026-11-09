@@ -468,7 +468,7 @@ def _first_store():
 
 
 # Strain Sniffer's three ways in; terp_match.MODES holds the same list.
-SNIFF_MODES = ["A strain they love", "Something we sell", "Feel & flavor"]
+SNIFF_MODES = ["🔍 Look up a strain", "🛍️ Like something we sell", "✨ By feel & flavor"]
 
 
 def render_home():
