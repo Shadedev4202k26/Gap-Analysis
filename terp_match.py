@@ -176,25 +176,65 @@ def _norm_strain(s):
     return re.sub(r"[^a-z0-9]+", " ", str(s or "").lower()).strip()
 
 
-@st.cache_data(ttl=300, show_spinner=False, max_entries=4)
+# Products whose terpenes are the plant's own. Distillate carts, disposables
+# and infused prerolls usually have terpenes added (one Runtz cart tests 90%
+# limonene), so they never speak for a strain: Runtz built from them came out
+# limonene-heavy and matched Orange Tree, a citrus sativa.
+NOT_NATURAL = re.compile(r"infused|distillate|cart|vape|disposable|pod|gumm|edible|beverage|chocolate", re.I)
+
+
+def natural(category, name):
+    return group_of(category) in ("Flower", "Pre-rolls", "Concentrates") \
+        and not NOT_NATURAL.search(f"{category} {name}")
+
+
+# A small step down when the strain type differs (half that against a hybrid).
+# Tested on strains several brands sell: it keeps the same strain from another
+# brand near the top while pushing a sativa below a matching hybrid or indica.
+TYPE_STEP = 0.03
+
+
+def type_gap(a, b):
+    a, b = str(a or "").lower(), str(b or "").lower()
+    if a not in ("indica", "sativa", "hybrid") or b not in ("indica", "sativa", "hybrid") or a == b:
+        return 0.0
+    return TYPE_STEP / 2 if "hybrid" in (a, b) else TYPE_STEP
+
+
 def lab_library(stores):
-    """Strain -> average lab mix over every tested package at every store. This
-    is what corrects an estimate: one tested package anywhere beats a guess."""
+    """Strain -> average lab mix over every tested natural product at every
+    store. This is what corrects an estimate: one tested package anywhere beats
+    a guess."""
+    return _library(stores)[0]
+
+
+def strain_types(stores):
+    """Strain -> its usual type (indica / sativa / hybrid) across our products."""
+    return _library(stores)[1]
+
+
+@st.cache_data(ttl=300, show_spinner=False, max_entries=4)
+def _library(stores):
     db = _deps.get("db") and _deps["db"]()
-    per = {}
+    per, types = {}, {}
     for store in stores:
         got = live_stock.latest(db, store)
         if not got or "Terpenes" not in got[0].columns:
             continue
         df = got[0]
         rows = _deps["build_rows"](df)
-        strain_of = {r["product"]: _norm_strain(r["strain"]) for r in rows}
-        for prod, lab in zip(df["Product"], df["Terpenes"]):
+        strain_of = {r["product"]: (_norm_strain(r["strain"]), r["type"]) for r in rows}
+        for prod, lab, cat in zip(df["Product"], df["Terpenes"], df["Category"]):
+            name = str(prod).strip('="').strip()
+            s, typ = strain_of.get(name, (None, None))
+            if not s:
+                continue
+            types.setdefault(s, {})[typ] = types.get(s, {}).get(typ, 0) + 1
             m = mix(parse_lab(lab))
-            s = strain_of.get(str(prod).strip('="').strip())
-            if m and s:
-                per.setdefault(s, {})[str(prod)] = m     # one vote per product, not per package
-    return {s: average(list(p.values())) for s, p in per.items()}
+            if m and natural(cat, name):
+                per.setdefault(s, {})[name] = m          # one vote per product, not per package
+    return ({s: average(list(p.values())) for s, p in per.items()},
+            {s: max(t, key=t.get) for s, t in types.items()})
 
 
 def products(df, deals):
@@ -346,7 +386,7 @@ def sellers(prods, units):
     return pct, hot
 
 
-def rank(target, prods, library, exclude=None, pct=None):
+def rank(target, prods, library, exclude=None, pct=None, ttype=None):
     """Closest first. Within a closeness band: a real lab test before an
     estimate, then the store's better sellers, then the closer mix."""
     pct = pct or {}
@@ -357,7 +397,7 @@ def rank(target, prods, library, exclude=None, pct=None):
         m, src = profile(p, library)
         if not m:
             continue
-        s = similarity(target, m)
+        s = similarity(target, m) - type_gap(ttype, p["type"])
         band = 3 if s >= 0.95 else 2 if s >= 0.88 else 1 if s >= 0.75 else 0
         out.append(((band, {"lab": 2, "strain lab": 1}.get(src, 0), round(pct.get(p["name"], 0), 1), s),
                     s, p, m, src))
@@ -441,7 +481,7 @@ def _price(p):
         return None
 
 
-def results(target, key, like="", exclude=None, stores=(), store=""):
+def results(target, key, like="", exclude=None, stores=(), store="", ttype=None):
     """Filters, then the closest products for a target mix."""
     db = _deps["db"]()
     got = live_stock.latest(db, store) if store else None   # newest copy: no tags are picked here, so nothing to hold still
@@ -470,7 +510,7 @@ def results(target, key, like="", exclude=None, stores=(), store=""):
             and (not deal_only or p["deal"])]
     units, through, days = live_stock.popular(db, store)
     pct, hot = sellers(prods, units)
-    ranked = rank(target, pool, library, exclude, pct)
+    ranked = rank(target, pool, library, exclude, pct, ttype)
     if not ranked:
         st.caption("Nothing on the shelves matches with these filters. Try All categories or a higher price.")
         return
@@ -489,15 +529,19 @@ def results(target, key, like="", exclude=None, stores=(), store=""):
                 unsafe_allow_html=True)
 
 
-def strain_target(strain, profile_terps, stores):
-    """The mix to match a searched strain: our own lab tests of it when any
-    store has them, else the terpenes from its online profile."""
+def strain_target(strain, profile_terps, stores, classification=""):
+    """(mix, source, type) to match a searched strain: our own lab tests of its
+    flower, pre-rolls and live concentrates when any store has them, else the
+    terpenes from its online profile. Type: what we sell it as, else the
+    profile's classification."""
     lib = lab_library(tuple(stores))
     k = _norm_strain(strain)
+    typ = strain_types(tuple(stores)).get(k) or next(
+        (t for t in ("indica", "sativa", "hybrid") if t in str(classification).lower()), None)
     if k in lib:
-        return lib[k], "lab"
+        return lib[k], "lab", typ
     m = from_text(profile_terps)
-    return (m, "profile") if m else ({}, None)
+    return (m, "profile", typ) if m else ({}, None, typ)
 
 
 def picker_target(selected):
@@ -532,7 +576,8 @@ def match_section(store, stores, mode):
         p = next(x for x in prods if x["name"] == pick)
         m, src = profile(p, library)
         st.markdown(_bars(m), unsafe_allow_html=True)
-        results(m, "tm_like", like=p["strain"].title() or pick, exclude=lambda x: x["name"] == pick, stores=stores, store=store)
+        results(m, "tm_like", like=p["strain"].title() or pick, exclude=lambda x: x["name"] == pick,
+                stores=stores, store=store, ttype=p["type"])
         return
     feel = st.pills("Feel they're after", list(FEELS), selection_mode="multi", key="tm_feel")
     flav = st.pills("Flavors they like", list(FLAVORS), selection_mode="multi", key="tm_flav")
