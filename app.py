@@ -67,6 +67,7 @@ from types import SimpleNamespace
 import support
 import usage
 import ziggy
+import terp_match
 
 try:
     import deal_store
@@ -97,7 +98,7 @@ def _fresh_local_modules():
     import sys
     for name in ("aging", "deals", "deal_store", "sale_badges", "preroll_tags", "combine_tags",
                  "build_dual", "build_split", "break_store", "support", "shell", "ziggy", "whats_new", "usage", "studio",
-                 "crossword_data", "crossword_gen", "hangman_data"):
+                 "terp_match", "crossword_data", "crossword_gen", "hangman_data"):
         mod = sys.modules.get(name)
         path = getattr(mod, "__file__", None)
         if not path:
@@ -731,6 +732,23 @@ def _smilez_mark():
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 1 — STRAIN SNIFFER
 # ════════════════════════════════════════════════════════════════════════════════
+def _shelf_matches(strain, terps_text):
+    """'Closest on our shelves' under a strain profile."""
+    ctx = studio.context()
+    target, src = terp_match.strain_target(strain, terps_text, ctx["stores"])
+    if not target:
+        return
+    note = ("from our own lab tests of it" if src == "lab"
+            else "from its online profile (none of our packages of it have terpene lab results)")
+    st.markdown(f'<div class="sec-head"><div class="sec-head-text">🎯 Closest to {strain.title()} '
+                f'on our shelves</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    st.caption(f"Matched on {strain.title()}'s terpene mix, {note}.")
+    st.markdown(terp_match._bars(target), unsafe_allow_html=True)
+    same = terp_match._norm_strain(strain)
+    terp_match.results(target, "tm_strain", like=strain.title(), stores=ctx["stores"],
+                       store=ctx["store"], exclude=lambda p: p["skey"] == same)
+
+
 def render_strain_ai():
     st.markdown('<div class="sec-head"><div class="sec-head-text">⚡ Verified AI Strain Profiler</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     with st.form("strain_form", clear_on_submit=True):
@@ -745,15 +763,20 @@ def render_strain_ai():
         st.session_state.last_strain = user_input
         st.session_state.last_brand = (brand_input or "").strip()
         st.rerun()
-    if "last_strain" in st.session_state and st.session_state.last_strain:
+    gem_key = st.secrets.get("GEMINI_API_KEY", "")
+    if st.session_state.get("last_strain"):
         strain = st.session_state.last_strain
         brand = st.session_state.get("last_brand", "")
-        gem_key = st.secrets.get("GEMINI_API_KEY", "")
-        gmodel = st.secrets.get("GEMINI_MODEL")
         label = f"{strain} ({brand})" if brand else strain
         with st.spinner(f"Searching Google for {label}… this can take up to a minute"):
-            data, mode, gerr = lookup_strain(strain, brand, gem_key, gmodel,
+            data, mode, gerr = lookup_strain(strain, brand, gem_key, st.secrets.get("GEMINI_MODEL"),
                                              st.secrets.get("GROQ_API_KEY", ""))
+        # Kept, so the match filters below can be changed without searching again.
+        st.session_state.strain_result = (strain, brand, data, mode, gerr)
+        st.session_state.last_strain = None
+    if st.session_state.get("strain_result"):
+        strain, brand, data, mode, gerr = st.session_state.strain_result
+        label = f"{strain} ({brand})" if brand else strain
         here, ours = _in_store(strain, brand)
         if ours:
             def _e(t):
@@ -822,7 +845,10 @@ def render_strain_ai():
                 if gerr:
                     with st.expander("What went wrong?"):
                         st.code(gerr)
-        st.session_state.last_strain = None
+            _shelf_matches(strain, data.get("terpenes", ""))
+    st.markdown('<hr>', unsafe_allow_html=True)
+    ctx = studio.context()
+    terp_match.match_section(ctx["store"], ctx["stores"])
     st.markdown('<hr>', unsafe_allow_html=True)
     st.markdown('<div class="sec-head"><div class="sec-head-text">🧪 Cannabinoid Encyclopedia</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     col_sel, col_cust = st.columns([2, 2])
@@ -3170,6 +3196,9 @@ studio.configure(
            "inventory": _by_path["inventory"], "strain": _by_path["strain"],
            "tools": _by_path["store-tools"], "settings": _by_path["settings"]})
 studio.new_run()
+terp_match.configure(build_rows=build_tag_rows, fix_prices=fix_outdoor_prices,
+                     groq_key=st.secrets.get("GROQ_API_KEY", ""), groq_model=GROQ_MODEL,
+                     db=init_supabase)
 support.configure(init_db=init_supabase, context=studio.context,
                   page_title=lambda: _nav.title)
 usage.configure(init_db=init_supabase, context=studio.context,
