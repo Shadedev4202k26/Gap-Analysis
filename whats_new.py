@@ -33,7 +33,7 @@ UPDATES = [
                  "**terpene mix**, from real lab tests."),
         "points": [
             "**🔍 Look up a strain**: any strain, even one we don't carry. The search box stays at the top",
-            "**🛍️ Like something we sell**: great when their usual is sold out",
+            "**🛍️ Like something we sell**: pick a product they like, see others like it",
             "**✨ By feel & flavor**: relaxed, energetic, citrus, piney and more",
             "Each match shows **why** it matches, price, THC, out front or vault, and this week's **deal**",
         ],
