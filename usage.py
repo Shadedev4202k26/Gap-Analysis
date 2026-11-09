@@ -26,8 +26,8 @@ import streamlit as st
 
 TABLE = "ziggy_usage"
 SKIP = {"Settings"}                 # Chad's own page, not a store tool
-# Pages taken off the menu: their old lines stay in the table, not in the charts.
-RETIRED = {"Hook tags · classic", "Preroll tags · classic"}
+# Pages taken off the menu: their lines count for the page that replaced them.
+RETIRED = {"Hook tags · classic": "Shelf tags", "Preroll tags · classic": "Shelf tags"}
 
 _deps = {}
 
@@ -90,10 +90,13 @@ def loaded(tool, file):
 def track_downloads():
     """Count every download button as a finished job, without touching each of
     the dozen call sites: st.download_button gets an on_click that logs the
-    file, unless the call already has its own."""
-    if getattr(st.download_button, "_zb_tracked", False):
-        return
-    original = st.download_button
+    file, unless the call already has its own.
+
+    Wrapped again on every run, always around Streamlit's own button. When an
+    update is deployed, Streamlit Cloud reloads this file but keeps the `st`
+    module, so a wrapper made only once kept calling the old copy of log(),
+    which failed quietly: no download was counted from 2 Nov to 9 Nov 2026."""
+    original = getattr(st.download_button, "_zb_original", st.download_button)
 
     def download_button(*args, **kw):
         if "on_click" not in kw:
@@ -105,7 +108,7 @@ def track_downloads():
             kw["args"] = ("used", tool, f"Downloaded {name}" if name else "Downloaded")
         return original(*args, **kw)
 
-    download_button._zb_tracked = True
+    download_button._zb_original = original
     st.download_button = download_button
 
 
@@ -165,7 +168,7 @@ def settings_view(tz_name, stores, tools):
     # until a store is picked (Nov 2026) there are no new ones, only old lines.
     picked = df[df["store_chosen"]].groupby("visit")["store"].last()
     df["store"] = df["store"].where(df["store_chosen"], df["visit"].map(picked))
-    df = df[df["store"].notna() & ~df["tool"].isin(RETIRED)]
+    df = df[df["store"].notna()].assign(tool=df["tool"].replace(RETIRED))
     act = df[df["action"] == MEASURES[measure]]
 
     store_order = list(stores)
