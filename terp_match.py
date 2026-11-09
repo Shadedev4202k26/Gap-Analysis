@@ -20,6 +20,7 @@ the strain profile Strain Sniffer found online), something we sell, or feel and
 flavor picks. The feel and flavor words are what customers commonly say about
 each terpene, never health claims.
 """
+import datetime as dt
 import json
 import math
 import re
@@ -317,7 +318,38 @@ def profile(p, library):
     return (est, "estimated") if est else ({}, None)
 
 
-def rank(target, prods, library, exclude=None):
+POPULAR_TOP = 0.10        # the top 10% of sellers in a category at the store get "Popular here"
+POPULAR_MIN = 3           # and must have sold at least this many
+
+
+def pool_of(p):
+    """Bulk flower is sold by the gram, so it's ranked apart from bags and jars."""
+    return (p["group"], p["name"].upper().startswith("BULK"))
+
+
+def sellers(prods, units):
+    """{product name: (share of its category it outsells, 0..1)} for the store's
+    products with sales, and the set of names that are Popular here."""
+    pools = {}
+    for p in prods:
+        pools.setdefault(pool_of(p), []).append(units.get(p["name"], 0))
+    pct, hot = {}, set()
+    for p in prods:
+        n = units.get(p["name"], 0)
+        if not n:
+            continue
+        others = pools[pool_of(p)]
+        beaten = sum(1 for x in others if x < n)
+        pct[p["name"]] = beaten / max(len(others) - 1, 1)
+        if n >= POPULAR_MIN and pct[p["name"]] >= 1 - POPULAR_TOP:
+            hot.add(p["name"])
+    return pct, hot
+
+
+def rank(target, prods, library, exclude=None, pct=None):
+    """Closest first. Within a closeness band: a real lab test before an
+    estimate, then the store's better sellers, then the closer mix."""
+    pct = pct or {}
     out = []
     for p in prods:
         if exclude and exclude(p):
@@ -326,9 +358,9 @@ def rank(target, prods, library, exclude=None):
         if not m:
             continue
         s = similarity(target, m)
-        # Closeness band first, then a real lab test before an estimate.
         band = 3 if s >= 0.95 else 2 if s >= 0.88 else 1 if s >= 0.75 else 0
-        out.append(((band, {"lab": 2, "strain lab": 1}.get(src, 0), s), s, p, m, src))
+        out.append(((band, {"lab": 2, "strain lab": 1}.get(src, 0), round(pct.get(p["name"], 0), 1), s),
+                    s, p, m, src))
     out.sort(key=lambda x: x[0], reverse=True)
     return [(s, p, m, src) for _, s, p, m, src in out]
 
@@ -360,12 +392,21 @@ SOURCE = {"lab": ("🧪 Lab tested", "#22D3EE"), "strain lab": ("🧪 Lab, same 
           "estimated": ("≈ Estimated", "#F59E0B")}
 
 
-def _card(s, p, m, src, target, like, photo=""):
+def _sold(p, units, days):
+    n = units.get(p["name"], 0)
+    unit = "g" if p["name"].upper().startswith("BULK") else ""
+    return f"⭐ Popular here · {n:,.0f}{unit} sold in {days // 7} weeks"
+
+
+def _card(s, p, m, src, target, like, photo="", hot=""):
     out_front = any(r in OUT_FRONT for r in p["rooms"])
     where = "Out front" if out_front else "Vault only"
     tag, col = SOURCE[src]
     deal = (f'<div style="margin-top:6px;font-size:12.5px;color:#FCA5A5;font-weight:600">🔥 {_esc(p["deal"])}</div>'
             if p["deal"] else "")
+    if hot:
+        deal = (f'<div style="margin-top:6px;font-size:12.5px;color:#FDE68A;font-weight:600">{_esc(hot)}</div>'
+                + deal)
     qty = f'{p["qty"]:g}'
     pic = (f'<img src="{_esc(photo)}" alt="" loading="lazy" style="width:76px;height:76px;object-fit:cover;'
            f'border-radius:10px;background:#fff;flex:none">' if photo else
@@ -383,6 +424,14 @@ def _card(s, p, m, src, target, like, photo=""):
         {_esc(p["price"] or "—")} · {where} ({qty} on hand)</div>{deal}</div></div>"""
     # One line, no indents: Markdown reads an indented line after a <style> tag as code.
     return " ".join(line.strip() for line in html.splitlines())
+
+
+def _day(iso):
+    try:
+        d = dt.date.fromisoformat(str(iso)[:10])
+        return f"{d:%b} {d.day}"
+    except ValueError:
+        return str(iso or "")
 
 
 def _price(p):
@@ -419,7 +468,9 @@ def results(target, key, like="", exclude=None, stores=(), store=""):
             and (cap == "Any" or (_price(p) is not None and _price(p) <= float(cap[1:])))
             and (not front or any(r in OUT_FRONT for r in p["rooms"]))
             and (not deal_only or p["deal"])]
-    ranked = rank(target, pool, library, exclude)
+    units, through, days = live_stock.popular(db, store)
+    pct, hot = sellers(prods, units)
+    ranked = rank(target, pool, library, exclude, pct)
     if not ranked:
         st.caption("Nothing on the shelves matches with these filters. Try All categories or a higher price.")
         return
@@ -427,10 +478,13 @@ def results(target, key, like="", exclude=None, stores=(), store=""):
     pics = live_stock.photos(db, store)
     st.caption(f"Closest {min(SHOW, len(ranked))} of {len(ranked)} products · {labs} from lab tests"
                + (f" · {waiting} untested strains still being estimated in the background; "
-                  f"they join the list over the next few minutes" if waiting else ""))
+                  f"they join the list over the next few minutes" if waiting else "")
+               + (f" · ⭐ Popular here: {store}'s top sellers in that category, {days // 7} weeks to "
+                  f"{_day(through)}" if units else ""))
     # .sc is the strain card's frame; its "STRAIN.PROFILE" corner label doesn't belong on a match.
     st.markdown("<style>.sc.tm::before{display:none}</style>"
-                + "".join(_card(s, p, m, src, target, like, pics.get(p["name"], ""))
+                + "".join(_card(s, p, m, src, target, like, pics.get(p["name"], ""),
+                                _sold(p, units, days) if p["name"] in hot else "")
                           for s, p, m, src in ranked[:SHOW]),
                 unsafe_allow_html=True)
 

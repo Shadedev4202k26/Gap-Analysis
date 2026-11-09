@@ -57,37 +57,51 @@ def _decode(payload):
 
 
 PHOTOS = " · photos"                   # Reports' photo row for a store: "<store> · photos"
+POPULAR = " · popular"                 # and its units-sold row: "<store> · popular"
 
 
-@st.cache_data(ttl=1800, show_spinner=False, max_entries=16)
-def _fetch_photos(_db, store):
+@st.cache_data(ttl=1800, show_spinner=False, max_entries=32)
+def _fetch_extra(_db, store, suffix):
+    """One of Reports' extra rows for a store, decoded, or None. Both change
+    rarely (photos when the list changes, units after a sales import)."""
     folder = os.environ.get("ZIGGY_STOCK_DIR")         # local testing only, as in _fetch
     if folder:
-        f = os.path.join(folder, f"ziggy_photos_{store.lower().replace(' ', '-')}.txt")
-        return open(f, encoding="utf-8").read() if os.path.exists(f) else None
+        kind = suffix.split()[-1]
+        f = os.path.join(folder, f"ziggy_{kind}_{store.lower().replace(' ', '-')}.txt")
+        raw = open(f, encoding="utf-8").read() if os.path.exists(f) else None
+    else:
+        try:
+            data = (_db.table(TABLE).select("payload").eq("store", store + suffix)
+                    .limit(1).execute().data)
+        except Exception:                                    # noqa: BLE001
+            return None
+        raw = data[0]["payload"] if data else None
+    if not raw:
+        return None
     try:
-        data = (_db.table(TABLE).select("payload").eq("store", store + PHOTOS)
-                .limit(1).execute().data)
+        return json.loads(gzip.decompress(base64.b64decode(raw)))
     except Exception:                                        # noqa: BLE001
         return None
-    return data[0]["payload"] if data else None
 
 
 def photos(db, store):
     """{full product name: photo address} for the store's products, for Strain
     Sniffer. Reports sends them in a row of their own, only when they change,
     so the stock row every page reads stays small. {} when there are none."""
-    if db is None or not store:
-        return {}
-    raw = _fetch_photos(db, store)
-    if not raw:
-        return {}
-    try:
-        body = json.loads(gzip.decompress(base64.b64decode(raw)))
-    except Exception:                                        # noqa: BLE001
+    body = _fetch_extra(db, store, PHOTOS) if db is not None and store else None
+    if not body:
         return {}
     base = body.get("base", "")
     return {name: (f if f.startswith("http") else base + f) for name, f in body.get("photos", {}).items()}
+
+
+def popular(db, store):
+    """({full product name: units sold}, last sales day as text, days) for the
+    store's in-stock products, from its sales data, or ({}, None, 0)."""
+    body = _fetch_extra(db, store, POPULAR) if db is not None and store else None
+    if not body:
+        return {}, None, 0
+    return body.get("units", {}), body.get("through"), body.get("days", 28)
 
 
 def latest(db, store):
