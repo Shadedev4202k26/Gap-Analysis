@@ -24,6 +24,25 @@ STORE_TZ = ZoneInfo("America/Detroit")
 
 UPDATES = [
     {
+        "id": "strain-sniffer",
+        "until": dt.date(2026, 12, 7),
+        "highlight": True,
+        "title": "New: Strain Sniffer finds what a customer will like",
+        "body": ("Strain lookup is now **Strain Sniffer**, the big card on Home. Tell it what a "
+                 "customer likes and it lists what's on **{store}**'s shelves with the closest "
+                 "**terpene mix**, from real lab tests."),
+        "points": [
+            "**A strain they love**: even one we don't carry",
+            "**Something we sell**: great when their usual is sold out",
+            "**Feel & flavor**: relaxed, energetic, citrus, piney and more",
+            "Each match shows **why** it matches, price, THC, out front or vault, and this week's **deal**",
+        ],
+        "note": ("Matches marked *Estimated* have no lab test yet; lab-tested ones come first. "
+                 "Feel and flavor words are what customers commonly report, not medical advice."),
+        "page": "strain",
+        "page_label": "Strain Sniffer",
+    },
+    {
         "id": "store-required",
         "until": dt.date(2026, 11, 16),
         "highlight": True,
@@ -56,7 +75,7 @@ UPDATES = [
     {
         "id": "strain-lookup-store",
         "until": dt.date(2026, 11, 23),
-        "title": "Strain lookup shows your store's own numbers",
+        "title": "Strain Sniffer shows your store's own numbers",
         "body": ("Search a strain and **{store}'s Dutchie listings** for it show first, with "
                  "the type and THC on the package. Go by those numbers."),
         "points": [
@@ -64,7 +83,7 @@ UPDATES = [
             "The profile below is from a live Google search and can take up to a minute",
         ],
         "page": "strain",
-        "page_label": "Strain lookup",
+        "page_label": "Strain Sniffer",
     },
     {
         "id": "aging-slider",

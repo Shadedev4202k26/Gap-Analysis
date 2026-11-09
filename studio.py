@@ -467,6 +467,10 @@ def _first_store():
         _pick_store()
 
 
+# Strain Sniffer's three ways in; terp_match.MODES holds the same list.
+SNIFF_MODES = ["A strain they love", "Something we sell", "Feel & flavor"]
+
+
 def render_home():
     ctx = context()
     inv = _inventory_stats()
@@ -484,21 +488,33 @@ def render_home():
     with left:
         with st.container(key="zbhero"):
             st.markdown(
-                '<div class="zb-hero"><div class="zb-hero-k">PRINT</div>'
-                '<h2>Shelf tags</h2><p>Hook, 3.5″ and 4″ preroll, and split tags — one flow, three steps. '
-                'Pick from today\'s inventory with the sheet drawing itself beside you.</p>'
-                '<div class="zb-hero-steps"><span>1 · Source &amp; format</span>'
-                '<span>2 · Pick tags</span><span>3 · Review &amp; print</span></div></div>',
+                '<div class="zb-hero"><div class="zb-hero-k">FIND · FOR A CUSTOMER</div>'
+                '<h2>👃 Strain Sniffer</h2><p>Tell Ziggy what they like and see what&#39;s on '
+                f'<b>{esc(ctx["store"] or "your store")}</b>&#39;s shelves that matches, '
+                'by real lab terpenes, with this week&#39;s deals.</p></div>',
                 unsafe_allow_html=True)
+            with st.form("zb_home_sniff", clear_on_submit=True, border=False):
+                q, go = st.columns([3, 1], vertical_alignment="bottom", gap="small")
+                strain = q.text_input("A strain they love", placeholder="e.g. Gary Payton, Runtz…",
+                                      label_visibility="collapsed")
+                sniff = go.form_submit_button("Sniff", type="primary", icon=":material/arrow_forward:",
+                                              use_container_width=True)
             b1, b2 = st.columns(2, gap="small")
-            if b1.button("Start", type="primary", icon=":material/arrow_forward:",
-                         key="zb_home_start", use_container_width=True):
-                st.session_state["zb_step"] = 1
-                st.switch_page(_page("studio"))
-            if b2.button("Custom tags", icon=":material/edit_note:",
-                         key="zb_home_custom", use_container_width=True,
-                         help="Type your own tags — straight to the typing table"):
-                start_custom()
+            like = b1.button("Something we sell", icon=":material/inventory_2:",
+                             key="zb_home_like", use_container_width=True,
+                             help="Pick one of our products, or one that's sold out")
+            feel = b2.button("Feel & flavor", icon=":material/mood:",
+                             key="zb_home_feel", use_container_width=True,
+                             help="Relaxed, energetic, citrus, piney…")
+            ss = st.session_state
+            if sniff and strain.strip():
+                import usage
+                usage.log("used", "Strain Sniffer", f"Searched {strain.strip()[:60]}")
+                ss.update(sniff_mode=SNIFF_MODES[0], last_strain=strain.strip(), last_brand="")
+                st.switch_page(_page("strain"))
+            if like or feel:
+                ss["sniff_mode"] = SNIFF_MODES[1] if like else SNIFF_MODES[2]
+                st.switch_page(_page("strain"))
     with right:
         if ctx["sheet"]:
             botw = sum(1 for d in ctx["deals"] if getattr(d, "kind", "") == "botw")
@@ -522,8 +538,13 @@ def render_home():
                 'above and drop this week\'s export — tags print without sale bubbles '
                 'until then.</div></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="zb-sec">Stock &amp; tools</div>', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4, gap="small")
+    st.markdown('<div class="zb-sec">Print, stock &amp; tools</div>', unsafe_allow_html=True)
+    c0, c1, c2, c4 = st.columns(4, gap="small")
+    with c0:
+        _card("tags", _page("studio"),
+              '<div class="zb-card"><div class="zb-card-h">Shelf tags</div>'
+              '<div class="zb-card-b">Hook, preroll and split tags with this week&#39;s deals, '
+              'in three steps. Custom tags are in the menu.</div></div>')
     with c1:
         if inv and "aged" in inv:
             body = (f'<b class="zb-big">{inv["aged"]:,}</b> packages received '
@@ -531,7 +552,7 @@ def render_home():
                     f'<br><span>{inv["over180"]:,} past 180 · of {inv["packages"]:,} '
                     f'in {esc(inv["name"])}</span>')
         else:
-            body = 'Your store\'s oldest packages, from Dutchie or an inventory export.'
+            body = "Your store's oldest packages, from Dutchie or an inventory export."
         _card("aging", _page("aging"),
               f'<div class="zb-card"><div class="zb-card-h">Aging stock</div>'
               f'<div class="zb-card-b">{body}</div></div>')
@@ -542,11 +563,6 @@ def render_home():
         _card("inv", _page("inventory"),
               f'<div class="zb-card"><div class="zb-card-h">Inventory balance</div>'
               f'<div class="zb-card-b">{body}</div></div>')
-    with c3:
-        _card("strain", _page("strain"),
-              '<div class="zb-card"><div class="zb-card-h">Strain lookup</div>'
-              '<div class="zb-card-b">Effects, terpenes and lineage for any strain, '
-              'grounded in a web search.</div></div>')
     with c4:
         _card("tools", _page("tools"),
               '<div class="zb-card"><div class="zb-card-h">Store tools</div>'
