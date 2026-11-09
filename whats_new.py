@@ -24,23 +24,28 @@ STORE_TZ = ZoneInfo("America/Detroit")
 
 UPDATES = [
     {
-        "id": "strain-sniffer",
-        "until": dt.date(2026, 12, 7),
+        "id": "sell-more",
+        "until": dt.date(2026, 12, 14),
         "highlight": True,
-        "title": "New: Strain Sniffer finds what a customer will like",
-        "body": ("Strain lookup is now **Strain Sniffer**, the big card on Home. Tell it what a "
-                 "customer likes and it lists what's on **{store}**'s shelves with the closest "
-                 "**terpene mix**, from real lab tests."),
+        "tag": "Sell more",
+        "title": "Help every customer find their next favorite",
+        "body": ("Two tools to turn \"what do you have like…?\" into a sale: **Strain Sniffer** "
+                 "for the conversation, **hook tags** so every deal is on the wall."),
         "points": [
-            "**🔍 Look up a strain**: any strain, even one we don't carry. The search box stays at the top",
-            "**🛍️ Like something we sell**: pick a product they like, see others like it",
-            "**✨ By feel & flavor**: relaxed, energetic, citrus, piney and more",
-            "Each match shows **why** it matches, price, THC, out front or vault, and this week's **deal**",
+            "**Ask what they like**, then open **Strain Sniffer**, the big card on Home: a strain "
+            "(even one we don't carry), a product they love, or a feel or flavor",
+            "**Lead with ⭐ Popular here**: what's selling best at {store} right now",
+            "**Mention the 🔥 deal** on a match: a 3-for or 2-for deal is an easy second item",
+            "**Out front or vault only** is on every match, so you grab it fast",
+            "**Hook tags print this week's deals by themselves**: the sheet arrives from Smilez "
+            "Reports and stock comes live from Dutchie, no exports",
+            "**Only what changed** reprints just the tags whose deal changed, so the wall stays right",
+            "**Custom tags** take a sale price or your own bubble (BOGO, 2/$30) for anything off the sheet",
         ],
-        "note": ("Matches marked *Estimated* have no lab test yet; lab-tested ones come first. "
-                 "Feel and flavor words are what customers commonly report, not medical advice."),
+        "note": ("Feel and flavor words are what customers commonly report. Never promise "
+                 "medical effects."),
         "page": "strain",
-        "page_label": "Strain Sniffer",
+        "page_label": "Open Strain Sniffer",
     },
     {
         "id": "store-required",
@@ -73,19 +78,6 @@ UPDATES = [
         "page_label": "Inventory balance",
     },
     {
-        "id": "strain-lookup-store",
-        "until": dt.date(2026, 11, 23),
-        "title": "Strain Sniffer shows your store's own numbers",
-        "body": ("Search a strain and **{store}'s Dutchie listings** for it show first, with "
-                 "the type and THC on the package. Go by those numbers."),
-        "points": [
-            "**Add the brand** (like FAVRD) for that brand's version of the strain",
-            "The profile below is from a live Google search and can take up to a minute",
-        ],
-        "page": "strain",
-        "page_label": "Strain Sniffer",
-    },
-    {
         "id": "aging-slider",
         "until": dt.date(2026, 11, 23),
         "title": "Aging stock: pick how old",
@@ -95,91 +87,6 @@ UPDATES = [
             "**Slide right** to see only the oldest stock, **left** to look further back (down to 45 days)",
             "The counts and the **PDF** follow the slider",
         ],
-        "page": "aging",
-        "page_label": "Aging stock",
-    },
-    {
-        "id": "live-stock",
-        "until": dt.date(2026, 12, 7),
-        "title": "No more inventory exports",
-        "body": ("**Shelf tags**, **Inventory balance** and **Aging stock** now load "
-                 "{store}'s stock straight from Dutchie. It updates every 15 minutes."),
-        "points": [
-            "**Shelf tags:** pick **Live stock** on the first step (it's picked for you)",
-            "**Curbside, Sales Floor and both vaults** are included; the Waiting Room isn't",
-            "Need an export anyway? It still works: pick **Import inventory CSV**",
-        ],
-        "note": "Each page shows when the stock was last updated. Refresh takes the newest.",
-        "page": "studio",
-        "page_label": "Shelf tags",
-    },
-    {
-        "id": "deals-from-reports",
-        "until": dt.date(2026, 12, 7),
-        "title": "The weekly deals sheet arrives by itself",
-        "body": ("No need to upload the deals sheet here any more. It comes over from "
-                 "Smilez Reports within a couple of minutes of being uploaded there."),
-        "points": [
-            "**Next week's sheet** shows up in the **Week** menu as soon as it's in, "
-            "usually Tuesday or Wednesday; this week's stays in use until Monday",
-            "**Only what changed** now always compares with last week's sheet",
-        ],
-        "note": "The upload in the Week menu still works if a sheet is ever missing.",
-    },
-    {
-        "id": "custom-deals",
-        "until": dt.date(2026, 11, 30),
-        "title": "Custom tags: sale prices and your own bubbles",
-        "body": "The typing table in **Custom tags** has two new columns.",
-        "points": [
-            "**Sale:** crosses out the Price and prints the sale price beside it",
-            "**Bubble:** prints a red bubble with your text, like BOGO or 2/$30",
-            "A row with its own Sale or Bubble keeps it over this week's deals",
-        ],
-        "page": "custom",
-        "page_label": "Custom tags",
-    },
-    {
-        "id": "classic-retired",
-        "until": dt.date(2026, 11, 30),
-        "title": "Classic tag pages are gone",
-        "body": ("**Hook tags · classic** and **Preroll tags · classic** are off the menu. "
-                 "Everything they did is in **Shelf tags** now."),
-        "points": [
-            "**Deals tags:** Shelf tags, then pick Hook, 3.5″, 4″ or Split tag",
-            "**Typed tags** (curbside, notes): **Custom tags** in the Print menu",
-            "Old bookmarks still work. They open Shelf tags.",
-        ],
-    },
-    {
-        "id": "split-tags",
-        "until": dt.date(2026, 11, 16),
-        "title": "Split tags are now in Shelf tags",
-        "body": ("Two strains on one preroll tag, to save space in the bins. Pick "
-                 "**Split tag** on the first step of Shelf tags, then 3.5″ or 4″."),
-        "points": [
-            "**Each half keeps its own colour** and its own sale bubble",
-            "**From the inventory:** halves pair up in the order you tick them",
-            "**Typed by hand:** rows 1 and 2 share a tag, then 3 and 4",
-        ],
-        "page": "studio",
-        "page_label": "Split tags",
-        "state": {"zb_split": True, "zb_fmt": "pr4", "zb_step": 1},
-    },
-    {
-        "id": "aging-per-package",
-        "until": dt.date(2026, 11, 4),
-        "title": "Aging stock now shows each Metrc package",
-        "body": ("Each package now gets its own line with its **received date**, age, and "
-                 "**Metrc tag**. You'll no longer see one old unit making a whole product "
-                 "look old."),
-        "points": [
-            ("**First in, first out:** pull the oldest package forward first"),
-            ("**Counts:** match each line to a tag on the shelf or in the vault"),
-            ("**Flags:** on sale, expiring within 60 days, expired"),
-        ],
-        "note": ("Export from Dutchie with Package ID, Product, Available, Inventory date "
-                 "and Room."),
         "page": "aging",
         "page_label": "Aging stock",
     },
@@ -223,17 +130,21 @@ def show(page_for, store=""):
     def _pop():
         st.markdown(CSS, unsafe_allow_html=True)
         for u in ups:
-            body = u["body"].replace("{store}", store or "your store")
+            here = store or "your store"
+            body = u["body"].replace("{store}", here)
+            points = [p.replace("{store}", here) for p in u["points"]]
             if u.get("highlight"):
+                note = (f'<p style="margin-top:8px;font-size:.85em;opacity:.8">{_md(u["note"])}</p>'
+                        if u.get("note") else "")
                 st.markdown(
-                    '<div class="zb-new-hl"><span class="zb-new-tag">Important</span>'
+                    f'<div class="zb-new-hl"><span class="zb-new-tag">{_md(u.get("tag", "Important"))}</span>'
                     f'<h4>{_md(u["title"])}</h4><p>{_md(body)}</p><ul>'
-                    + "".join(f"<li>{_md(p)}</li>" for p in u["points"])
-                    + "</ul></div>", unsafe_allow_html=True)
+                    + "".join(f"<li>{_md(p)}</li>" for p in points)
+                    + f"</ul>{note}</div>", unsafe_allow_html=True)
                 continue
             st.markdown(f"#### {u['title']}")
             st.markdown(body)
-            st.markdown("\n".join(f"- {p}" for p in u["points"]))
+            st.markdown("\n".join(f"- {p}" for p in points))
             if u.get("note"):
                 st.caption(u["note"])
         left, right = st.columns(2)
