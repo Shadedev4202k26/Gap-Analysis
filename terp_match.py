@@ -13,10 +13,10 @@ The match itself is arithmetic on the terpene mix (each terpene's share of the
 total), so a search costs no AI calls and never waits for one. Estimates for
 untested strains are made by one background worker, 40 strains per Groq call,
 one call every 30 seconds: inside Groq's free limits (1,000 calls a day, 8,000
-tokens a minute) with room left for Strain lookup's own calls.
+tokens a minute) with room left for Strain Sniffer's strain profiles.
 
 Three ways in: a strain the customer likes (lab numbers when we carry it, else
-the strain profile Strain lookup found online), something we sell, or feel and
+the strain profile Strain Sniffer found online), something we sell, or feel and
 flavor picks. The feel and flavor words are what customers commonly say about
 each terpene, never health claims.
 """
@@ -259,7 +259,7 @@ def estimate(strains):
 def _work(e, key, model):
     """Estimate EST_BATCH strains at a time, one call every EST_PAUSE seconds,
     which keeps well inside Groq's free limit (8,000 tokens a minute) and
-    leaves room for Strain lookup's own calls. Stops when the queue is empty
+    leaves room for Strain Sniffer's strain profiles. Stops when the queue is empty
     or after repeated failures (it starts again on the next search)."""
     fails = 0
     while fails < 3:
@@ -447,14 +447,12 @@ def picker_target(selected):
     return mix(t)
 
 
-def match_section(store, stores):
-    """The "Match a customer" block: by feel and flavor, or like something we sell."""
-    st.markdown('<div class="sec-head"><div class="sec-head-text">🎯 Match a customer</div>'
-                '<div class="sec-head-line"></div></div>', unsafe_allow_html=True)
-    mode = st.segmented_control("How", ["By feel & flavor", "Like something we sell"],
-                                default="By feel & flavor", key="tm_mode",
-                                label_visibility="collapsed")
-    if mode == "Like something we sell":
+MODES = ["A strain they love", "Something we sell", "Feel & flavor"]
+
+
+def match_section(store, stores, mode):
+    """Strain Sniffer's other two modes: like something we sell, or by feel and flavor."""
+    if mode == MODES[1]:
         db = _deps["db"]()
         got = live_stock.pin(db, store, "terp_match_pin") if store else None
         if not got:

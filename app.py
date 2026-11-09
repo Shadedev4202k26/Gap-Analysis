@@ -750,16 +750,34 @@ def _shelf_matches(strain, terps_text):
 
 
 def render_strain_ai():
-    st.markdown('<div class="sec-head"><div class="sec-head-text">⚡ Verified AI Strain Profiler</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    """Strain Sniffer: three ways to find what's on this store's shelves for a
+    customer. Home's hero opens it on a mode by setting sniff_mode first."""
+    ctx = studio.context()
+    st.markdown('<div class="sec-head"><div class="sec-head-text">👃 Strain Sniffer</div>'
+                '<div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    st.caption(f"Find what's on **{ctx['store']}**'s shelves for a customer, matched on real lab "
+               f"terpenes. Start from what they tell you:")
+    mode = st.segmented_control("Start from", terp_match.MODES, default=terp_match.MODES[0],
+                                key="sniff_mode", label_visibility="collapsed")
+    if mode in terp_match.MODES[1:]:
+        terp_match.match_section(ctx["store"], ctx["stores"], mode)
+    else:
+        _strain_search()
+    st.markdown('<hr>', unsafe_allow_html=True)
+    with st.expander("🧪 Cannabinoid encyclopedia"):
+        _cannabinoids()
+
+
+def _strain_search():
     with st.form("strain_form", clear_on_submit=True):
         c_strain, c_brand = st.columns([2, 1])
         with c_strain:
-            user_input = st.text_input("Strain Name", placeholder="e.g., Permanent Marker, Bacio Gelato…")
+            user_input = st.text_input("Strain they love", placeholder="e.g., Permanent Marker, Bacio Gelato… (we don't have to carry it)")
         with c_brand:
             brand_input = st.text_input("Brand (optional)", placeholder="e.g., FAVRD")
-        submitted = st.form_submit_button("🔍  SEARCH STRAIN")
+        submitted = st.form_submit_button("👃  SNIFF IT OUT")
     if submitted and user_input:
-        usage.log("used", "Strain lookup", f"Searched {user_input.strip()[:60]}")
+        usage.log("used", "Strain Sniffer", f"Searched {user_input.strip()[:60]}")
         st.session_state.last_strain = user_input
         st.session_state.last_brand = (brand_input or "").strip()
         st.rerun()
@@ -846,11 +864,9 @@ def render_strain_ai():
                     with st.expander("What went wrong?"):
                         st.code(gerr)
             _shelf_matches(strain, data.get("terpenes", ""))
-    st.markdown('<hr>', unsafe_allow_html=True)
-    ctx = studio.context()
-    terp_match.match_section(ctx["store"], ctx["stores"])
-    st.markdown('<hr>', unsafe_allow_html=True)
-    st.markdown('<div class="sec-head"><div class="sec-head-text">🧪 Cannabinoid Encyclopedia</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+
+
+def _cannabinoids():
     col_sel, col_cust = st.columns([2, 2])
     with col_sel:
         selected_chem = st.selectbox("Quick-select compound", ["— Choose —", "THC", "THCV", "THCP", "CBD", "CBG", "CBN", "Delta-8 THC"])
@@ -3161,6 +3177,11 @@ _CUSTOM = st.Page(studio.page_custom, title="Custom tags", icon=":material/edit_
                   url_path="custom-tags")
 _SECTIONS = {
     "": [_HOME],
+    # Strain Sniffer is ZiggyBot's main feature, so it sits first.
+    "Find": [
+        st.Page(render_strain_ai, title="Strain Sniffer", icon=":material/spa:",
+                url_path="strain"),
+    ],
     "Print": [
         _STUDIO,
         _CUSTOM,
@@ -3172,8 +3193,6 @@ _SECTIONS = {
                 url_path="aging-stock"),
     ],
     "Tools": [
-        st.Page(render_strain_ai, title="Strain lookup", icon=":material/bolt:",
-                url_path="strain"),
         st.Page(render_store_tools, title="Store tools", icon=":material/handyman:",
                 url_path="store-tools"),
     ],

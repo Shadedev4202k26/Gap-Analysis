@@ -27,7 +27,8 @@ import streamlit as st
 TABLE = "ziggy_usage"
 SKIP = {"Settings"}                 # Chad's own page, not a store tool
 # Pages taken off the menu: their lines count for the page that replaced them.
-RETIRED = {"Hook tags · classic": "Shelf tags", "Preroll tags · classic": "Shelf tags"}
+RETIRED = {"Hook tags · classic": "Shelf tags", "Preroll tags · classic": "Shelf tags",
+           "Strain lookup": "Strain Sniffer"}      # renamed Nov 2026
 
 _deps = {}
 
