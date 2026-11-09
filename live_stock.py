@@ -56,6 +56,40 @@ def _decode(payload):
     return pd.DataFrame(body["rows"], columns=body["cols"]).astype(str)
 
 
+PHOTOS = " · photos"                   # Reports' photo row for a store: "<store> · photos"
+
+
+@st.cache_data(ttl=1800, show_spinner=False, max_entries=16)
+def _fetch_photos(_db, store):
+    folder = os.environ.get("ZIGGY_STOCK_DIR")         # local testing only, as in _fetch
+    if folder:
+        f = os.path.join(folder, f"ziggy_photos_{store.lower().replace(' ', '-')}.txt")
+        return open(f, encoding="utf-8").read() if os.path.exists(f) else None
+    try:
+        data = (_db.table(TABLE).select("payload").eq("store", store + PHOTOS)
+                .limit(1).execute().data)
+    except Exception:                                        # noqa: BLE001
+        return None
+    return data[0]["payload"] if data else None
+
+
+def photos(db, store):
+    """{full product name: photo address} for the store's products, for Strain
+    Sniffer. Reports sends them in a row of their own, only when they change,
+    so the stock row every page reads stays small. {} when there are none."""
+    if db is None or not store:
+        return {}
+    raw = _fetch_photos(db, store)
+    if not raw:
+        return {}
+    try:
+        body = json.loads(gzip.decompress(base64.b64decode(raw)))
+    except Exception:                                        # noqa: BLE001
+        return {}
+    base = body.get("base", "")
+    return {name: (f if f.startswith("http") else base + f) for name, f in body.get("photos", {}).items()}
+
+
 def latest(db, store):
     """(DataFrame, updated_at as Michigan time) for the store, or None when
     there is no copy (not set up yet, or the store isn't sent)."""
