@@ -390,7 +390,7 @@ def _price(p):
 def results(target, key, like="", exclude=None, stores=(), store=""):
     """Filters, then the closest products for a target mix."""
     db = _deps["db"]()
-    got = live_stock.pin(db, store, "terp_match_pin") if store else None
+    got = live_stock.latest(db, store) if store else None   # newest copy: no tags are picked here, so nothing to hold still
     if not got:
         st.info(f"No live stock for {store} right now, so there's nothing to match against.")
         return
@@ -454,7 +454,7 @@ def match_section(store, stores, mode):
     """Strain Sniffer's other two modes: like something we sell, or by feel and flavor."""
     if mode == MODES[1]:
         db = _deps["db"]()
-        got = live_stock.pin(db, store, "terp_match_pin") if store else None
+        got = live_stock.latest(db, store) if store else None   # newest copy: no tags are picked here, so nothing to hold still
         if not got:
             st.info(f"No live stock for {store} right now.")
             return
