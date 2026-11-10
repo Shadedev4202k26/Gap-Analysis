@@ -475,6 +475,32 @@ def _day(iso):
         return str(iso or "")
 
 
+POTENCY = ["Mild", "Medium", "Strong"]
+
+
+def _thc(p):
+    m = re.search(r"\d+(?:\.\d+)?", str(p.get("thc") or ""))
+    return float(m.group()) if m and "%" in str(p.get("thc")) else None
+
+
+def potency_cuts(prods):
+    """Per category, the THC levels that split its in-stock products into
+    thirds: a 30% flower is strong, a 30% concentrate is not."""
+    cuts = {}
+    for g in {p["group"] for p in prods}:
+        vals = sorted(v for v in (_thc(p) for p in prods if p["group"] == g) if v)
+        if len(vals) >= 3:
+            cuts[g] = (vals[len(vals) // 3], vals[2 * len(vals) // 3])
+    return cuts
+
+
+def potency_of(p, cuts):
+    v, c = _thc(p), cuts.get(p["group"])
+    if v is None or not c:
+        return None
+    return POTENCY[0] if v < c[0] else POTENCY[2] if v >= c[1] else POTENCY[1]
+
+
 def _price(p):
     try:
         return float(str(p["price"]).replace("$", ""))
@@ -498,17 +524,23 @@ def results(target, key, like="", exclude=None, stores=(), store="", ttype=None,
     library = lab_library(tuple(stores))
     waiting = estimate([p["skey"] for p in prods if not p["labs"] and p["skey"] not in library])
 
-    c1, c2, c3, c4, c5 = st.columns([2, 2, 1.3, 1.1, 1.5], vertical_alignment="bottom")
+    c1, c2, c3 = st.columns([2, 2, 2], vertical_alignment="bottom")
     grp = c1.selectbox("Category", [ALL] + [g for g, _ in GROUPS], key=f"{key}_grp")
     cap = c2.select_slider("Price up to", ["Any", "$10", "$20", "$30", "$40", "$50", "$75", "$100"],
                            value="Any", key=f"{key}_cap")
-    front = c3.toggle("Out front only", value=True, key=f"{key}_front")
-    deal_only = c4.toggle("On deal", key=f"{key}_deal")
-    use_ai = c5.toggle("🤖 AI double-check", value=True, key=f"{key}_ai",
+    strength = c3.pills("Potency", POTENCY, selection_mode="multi", key=f"{key}_pot",
+                        help="Compared with the rest of its category at this store: a strong "
+                             "flower and a strong concentrate are different THC levels.")
+    c4, c5, c6 = st.columns(3, vertical_alignment="center")
+    front = c4.toggle("Out front only", value=True, key=f"{key}_front")
+    deal_only = c5.toggle("On deal", key=f"{key}_deal")
+    use_ai = c6.toggle("🤖 AI double-check", value=True, key=f"{key}_ai",
                        help="Groq re-sorts the closest 20 by each strain's lineage and reported "
                             "effects. Off: lab terpenes only.")
+    cuts = potency_cuts(prods)
     pool = [p for p in prods
             if (grp == ALL or p["group"] == grp)
+            and (not strength or potency_of(p, cuts) in strength)
             and (cap == "Any" or (_price(p) is not None and _price(p) <= float(cap[1:])))
             and (not front or any(r in OUT_FRONT for r in p["rooms"]))
             and (not deal_only or p["deal"])]
@@ -518,6 +550,8 @@ def results(target, key, like="", exclude=None, stores=(), store="", ttype=None,
     if not ranked:
         st.caption("Nothing on the shelves matches with these filters. Try All categories or a higher price.")
         return
+    if ref:
+        _log_ask(ref)
     notes, used = {}, False
     if use_ai:
         with st.spinner("Ziggy is double-checking the picks…"):
@@ -537,6 +571,22 @@ def results(target, key, like="", exclude=None, stores=(), store="", ttype=None,
                                 _sold(p, units, days) if p["name"] in hot else "", notes.get(p["name"], ""))
                           for s, p, m, src in ranked[:SHOW]),
                 unsafe_allow_html=True)
+
+
+def _log_ask(ref):
+    """One usage line per distinct question per visit, for Settings' demand
+    report: "Like: <product>" or "Feel: <words>". Strain searches are already
+    logged as "Searched <strain>" when the search is made."""
+    if ref.startswith("the strain "):
+        return
+    detail = ("Feel: " + ref.split(": ", 1)[1] if ref.startswith("a feel and flavor: ")
+              else "Like: " + ref.split(" (", 1)[0])
+    seen = st.session_state.setdefault("tm_logged", set())
+    if detail in seen:
+        return
+    seen.add(detail)
+    import usage
+    usage.log("used", "Strain Sniffer", detail[:120])
 
 
 AI_POOL = 20             # how many of the lab ranking's best the AI double-check may reorder
@@ -628,6 +678,92 @@ def picker_target(selected):
 MODES = ["🔍 Look up a strain", "🛍️ Like something we sell", "✨ By feel & flavor"]
 
 
+# Feels that pull opposite ways can't both be picked: the newer pick stays.
+CLASH = [("🌙 Sleepy", "⚡ Energetic"), ("🌙 Sleepy", "🎯 Focused"), ("🌙 Sleepy", "🎨 Creative"),
+         ("😌 Relaxed", "⚡ Energetic")]
+
+
+def _no_clash():
+    ss = st.session_state
+    now, before = list(ss.get("tm_feel") or []), set(ss.get("tm_feel_prev") or [])
+    new = [f for f in now if f not in before]
+    for added in new:
+        for a, b in CLASH:
+            other = b if added == a else a if added == b else None
+            if other in now:
+                now.remove(other)
+                ss["tm_clash_note"] = True
+                ss["tm_clash_msg"] = (f"{_bare(added)} and {_bare(other)} pull opposite ways, "
+                                      f"so Ziggy kept {_bare(added)}.")
+    ss["tm_feel"] = now
+    ss["tm_feel_prev"] = now
+
+
+def _bare(label):
+    return re.sub(r"^\W+\s*", "", label)
+
+
+def demand_view(stores, tz_name):
+    """Settings: what customers asked Strain Sniffer for, by store, from the
+    usage log: strains looked up, feels and flavors picked, products they like."""
+    import collections
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+    import pandas as pd
+    st.markdown('<div class="cat-hdr">👃 What customers ask for</div>', unsafe_allow_html=True)
+    db = _deps["db"]()
+    if db is None:
+        st.warning("No Supabase connection — the usage log lives there.")
+        return
+    c1, c2 = st.columns(2)
+    days = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90}
+    period = c1.segmented_control("Period", list(days), default="Last 30 days", key="tm_dem_period") \
+        or "Last 30 days"
+    where = c2.selectbox("Store", ["All stores"] + list(stores), key="tm_dem_store")
+    since = _dt.datetime.now(ZoneInfo(tz_name)) - _dt.timedelta(days=days[period])
+    rows, start = [], 0
+    try:
+        while True:
+            page = (db.table("ziggy_usage").select("store,tool,detail")
+                    .in_("tool", ["Strain Sniffer", "Strain lookup"]).eq("action", "used")
+                    .gte("at", since.isoformat()).range(start, start + 999).execute().data or [])
+            rows += page
+            if len(page) < 1000:
+                break
+            start += 1000
+    except Exception as e:                                   # noqa: BLE001
+        st.error(f"Couldn't read the usage log. (`{e}`)")
+        return
+    if where != "All stores":
+        rows = [r for r in rows if r.get("store") == where]
+    strains, feels, likes = collections.Counter(), collections.Counter(), collections.Counter()
+    for r in rows:
+        d = str(r.get("detail") or "")
+        if d.startswith("Searched "):
+            strains[d[9:].strip().title()] += 1
+        elif d.startswith("Feel: "):
+            for w in d[6:].split(","):
+                if w.strip():
+                    feels[w.strip()] += 1
+        elif d.startswith("Like: "):
+            likes[d[6:].strip()] += 1
+    if not (strains or feels or likes):
+        st.info(f"No Strain Sniffer searches in the {period.lower()} yet.")
+        return
+    st.caption(f"{len(rows):,} searches · {'all stores' if where == 'All stores' else where}. Use it for buying: "
+               f"what people ask for that we don't carry, and the feels and flavors in demand.")
+    a, b, c = st.columns(3)
+    for col, title, counter, label in ((a, "Strains looked up", strains, "Strain"),
+                                       (b, "Feels & flavors picked", feels, "Feel or flavor"),
+                                       (c, "Products they like", likes, "Product")):
+        col.markdown(f"**{title}**")
+        if counter:
+            col.dataframe(pd.DataFrame(counter.most_common(15), columns=[label, "Times"]),
+                          hide_index=True, width="stretch")
+        else:
+            col.caption("None yet.")
+
+
 def match_section(store, stores, mode):
     """Strain Sniffer's other two modes: like something we sell, or by feel and flavor."""
     if mode == MODES[1]:
@@ -654,7 +790,10 @@ def match_section(store, stores, mode):
                 ref=f'{pick} ({p["type"] or "type unknown"}; top terpenes '
                     + ", ".join(top(m)) + ")")
         return
-    feel = st.pills("Feel they're after", list(FEELS), selection_mode="multi", key="tm_feel")
+    feel = st.pills("Feel they're after", list(FEELS), selection_mode="multi", key="tm_feel",
+                    on_change=_no_clash)
+    if st.session_state.pop("tm_clash_note", None):
+        st.toast(st.session_state.pop("tm_clash_msg", ""), icon=":material/swap_horiz:")
     flav = st.pills("Flavors they like", list(FLAVORS), selection_mode="multi", key="tm_flav")
     picked = list(feel or []) + list(flav or [])
     if not picked:
