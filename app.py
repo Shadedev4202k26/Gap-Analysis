@@ -747,7 +747,8 @@ def _shelf_matches(strain, terps_text, classification=""):
     st.markdown(terp_match._bars(target), unsafe_allow_html=True)
     same = terp_match._norm_strain(strain)
     terp_match.results(target, "tm_strain", like=strain.title(), stores=ctx["stores"],
-                       store=ctx["store"], exclude=lambda p: p["skey"] == same, ttype=typ)
+                       store=ctx["store"], exclude=lambda p: p["skey"] == same, ttype=typ,
+                       ref=f"the strain {strain.title()}" + (f" ({typ})" if typ else ""))
 
 
 def render_strain_ai():
