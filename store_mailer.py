@@ -1,35 +1,44 @@
-"""Daily "Replenishment needed" emails: each store's list of products with
-nothing on the selling floor while the vault has some, built exactly like the
+"""Daily "Replenishment needed" lists: each store's products with nothing on
+the selling floor while another room has some, built exactly like the
 Inventory balance page (balance_report), from the live stock in Supabase.
 
 - Every store compares Sales Floor and Vault. Wayne also compares Curbside
   Room and Upstairs Vault, and skips products with under 20 left in all.
 - Bulk and tiered flower, accessories, apparel, promo and batteries are left out.
-- Each store's manager gets their own store; the summary list (Chad, Firas)
-  gets the counts for every store with all the PDFs attached.
+
+How it reaches the managers (fully automatic, nothing to run or approve):
+1. GitHub runs this every morning (.github/workflows/replenishment.yml). It
+   empties the Dropbox folder /Replenishment, then puts in one PDF per store
+   ("Allegan - 93 items - Tue 11-10.pdf") and, last, every store's lists in one
+   PDF ("All stores - 448 items - Tue 11-10.pdf").
+2. Chad's Power Automate flow "Daily replenishment email" starts on each new
+   file there and emails it from chad@shopsmilez.com: a store's file to its
+   manager, the All stores file to the summary list. The addresses live in
+   the flow, never in this (public) repo.
+If the stock is too old or anything fails, no file is written for that store,
+so nothing stale is sent; GitHub emails the repo owner about a failed run.
 
 Run it:
-    python store_mailer.py                 # dry run: writes PDFs + .eml files, sends nothing
-    python store_mailer.py --send          # really sends
-    python store_mailer.py --store Wayne   # one store only
+    python store_mailer.py                  # test: writes the PDFs to mailer_out/, nothing uploaded
+    python store_mailer.py --dropbox        # really uploads (the flow then sends the emails)
+    python store_mailer.py --store Wayne    # one store only
 
-Settings come from environment variables, never from this (public) repo:
-    SUPABASE_URL, SUPABASE_KEY              live stock (or ZIGGY_STOCK_DIR for local test files)
-    MAILER_RECIPIENTS   path to a JSON file: {"Allegan": ["manager@..."], ...,
-                        "summary": ["chad@...", "firas@..."]}
-    SMTP_HOST, SMTP_PORT (587), SMTP_USER, SMTP_PASSWORD, MAIL_FROM   only for --send
+Settings (environment variables / GitHub secrets, never in the repo):
+    SUPABASE_URL, SUPABASE_KEY                    live stock (or ZIGGY_STOCK_DIR for local test files)
+    DROPBOX_APP_KEY, DROPBOX_REFRESH_TOKEN        only for --dropbox
 """
 import argparse
 import datetime as dt
 import json
 import os
-import smtplib
 import sys
-from email.message import EmailMessage
+from io import BytesIO
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import requests
+from pypdf import PdfReader, PdfWriter
 
 import balance_report
 import live_stock
@@ -38,6 +47,10 @@ STORES = ["Allegan", "Burton", "Corunna", "Quincy", "Reading", "Sturgis",
           "Three Rivers", "Wayne"]
 TITLE = "Replenishment needed"
 TZ = ZoneInfo("America/Detroit")
+FOLDER = "/Replenishment"
+# Reports pushes stock every 15 minutes while stores are open, so before
+# opening the newest copy is from last night's close. Older than this: skip.
+TOO_OLD = dt.timedelta(hours=20)
 
 
 def _clean(v):
@@ -61,19 +74,68 @@ def prepare(df):
 
 
 def store_report(df, store, stamp=""):
-    """(rows, pdf bytes, rooms) for one store, with the page's default settings."""
+    """(rows, pdf bytes) for one store, with the page's default settings."""
     df = prepare(df)
     all_rooms = sorted(df["Room"].dropna().unique().tolist())
     cats = sorted(c for c in df["Category"].astype(str).unique() if c.strip()) \
         if "Category" in df.columns else []
-    options = [balance_report.BULK_OPTION] + cats
-    df = balance_report.leave_out(df, balance_report.default_skip(options))
+    df = balance_report.leave_out(df, balance_report.default_skip(
+        [balance_report.BULK_OPTION] + cats))
     rooms = balance_report.rooms_for(store, all_rooms)
     store_rooms = balance_report.storage_rooms(rooms)
     rows, _ = balance_report.zero_rows(df, rooms, store_rooms,
                                        balance_report.min_stock(store))
     pdf = balance_report.build_pdf(rows, rooms, store_rooms, store, stamp, title=TITLE)
-    return rows, pdf, rooms
+    return rows, pdf
+
+
+def file_name(who, n, day):
+    """'Allegan - 93 items - Tue 11-10.pdf': the flow reads the store from the
+    part before the first ' - ' and uses the rest in the subject."""
+    count = "nothing missing" if n == 0 else f"{n} item{'s' * (n != 1)}"
+    return f"{who} - {count} - {day:%a %m-%d}.pdf"
+
+
+def combine(pdfs):
+    out = PdfWriter()
+    for pdf in pdfs:
+        for page in PdfReader(BytesIO(pdf)).pages:
+            out.add_page(page)
+    buf = BytesIO()
+    out.write(buf)
+    return buf.getvalue()
+
+
+# ---------- Dropbox ----------
+class Dropbox:
+    def __init__(self, app_key, refresh_token):
+        r = requests.post("https://api.dropboxapi.com/oauth2/token", timeout=30, data={
+            "grant_type": "refresh_token", "refresh_token": refresh_token, "client_id": app_key})
+        if not r.ok:
+            raise RuntimeError(f"Dropbox sign-in failed ({r.status_code}); connect Dropbox again.")
+        self.h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    def _rpc(self, path, body):
+        r = requests.post(f"https://api.dropboxapi.com/2/{path}", json=body, headers=self.h, timeout=60)
+        return r
+
+    def files(self, folder):
+        r = self._rpc("files/list_folder", {"path": folder})
+        if r.status_code == 409 and "not_found" in r.text:
+            self._rpc("files/create_folder_v2", {"path": folder})
+            return []
+        r.raise_for_status()
+        return [e["path_lower"] for e in r.json()["entries"] if e[".tag"] == "file"]
+
+    def delete(self, path):
+        self._rpc("files/delete_v2", {"path": path}).raise_for_status()
+
+    def upload(self, path, data):
+        arg = json.dumps({"path": path, "mode": "overwrite", "mute": True})
+        r = requests.post("https://content.dropboxapi.com/2/files/upload", data=data, timeout=120,
+                          headers={**self.h, "Dropbox-API-Arg": arg,
+                                   "Content-Type": "application/octet-stream"})
+        r.raise_for_status()
 
 
 def _db():
@@ -83,108 +145,51 @@ def _db():
     return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 
-def _filename(store, day):
-    return f"Replenishment_{store.replace(' ', '_')}_{day:%Y-%m-%d}.pdf"
-
-
-def store_email(store, rows, pdf, rooms, at, day, to):
-    selling = [r for r in rooms if r not in balance_report.storage_rooms(rooms)]
-    n = len(rows)
-    msg = EmailMessage()
-    msg["Subject"] = (f"{TITLE}: {store} · {n} item{'s' * (n != 1)} · {day:%a %m/%d}" if n
-                      else f"{TITLE}: {store} · nothing today · {day:%a %m/%d}")
-    msg["To"] = ", ".join(to)
-    where = " or ".join(selling)
-    if n:
-        body = (f"Good morning {store},\n\n"
-                f"{n} product{'s have' if n != 1 else ' has'} nothing in {where} while another "
-                f"room has some. The list is attached: bring each one out, move it in "
-                f"Backoffice, and tick it off.\n\n"
-                f"Stock as of {at:%a %m/%d %I:%M %p}.\n\n— ZiggyBot")
-        msg.set_content(body)
-        msg.add_attachment(pdf, maintype="application", subtype="pdf",
-                           filename=_filename(store, day))
-    else:
-        msg.set_content(f"Good morning {store},\n\nEverything in stock is in {where}. "
-                        f"Nothing to bring out today.\n\nStock as of "
-                        f"{at:%a %m/%d %I:%M %p}.\n\n— ZiggyBot")
-    return msg
-
-
-def summary_email(results, day, to):
-    """results: [(store, count or None, pdf or None, note)]."""
-    msg = EmailMessage()
-    total = sum(c or 0 for _, c, _, _ in results)
-    msg["Subject"] = f"{TITLE}: all stores · {total} items · {day:%a %m/%d}"
-    msg["To"] = ", ".join(to)
-    lines = [f"{s:<13} {('' if c is None else c):>5}  {note}".rstrip()
-             for s, c, _, note in results]
-    msg.set_content("Replenishment needed today, by store:\n\n"
-                    + "\n".join(lines) + "\n\nEach store's list is attached.\n\n— ZiggyBot")
-    for store, c, pdf, _ in results:
-        if pdf and c:
-            msg.add_attachment(pdf, maintype="application", subtype="pdf",
-                               filename=_filename(store, day))
-    return msg
-
-
-def run(stores, send=False, out="mailer_out"):
-    recipients = {}
-    if os.environ.get("MAILER_RECIPIENTS"):
-        recipients = json.loads(Path(os.environ["MAILER_RECIPIENTS"]).read_text("utf-8"))
+def run(stores, upload=False, out="mailer_out"):
     db = _db()
     now = dt.datetime.now(TZ)
     day = now.date()
-    messages, results = [], []
+    files, lines, problems = [], [], []
     for store in stores:
         got = live_stock.latest(db, store)
         if not got:
-            results.append((store, None, None, "no live stock — not sent"))
+            problems.append(f"{store}: no live stock")
             continue
         df, at = got
-        note = " (stock is over 2 hours old)" if live_stock.is_old(at, now) else ""
-        rows, pdf, rooms = store_report(df, store, f"stock as of {at:%a %m/%d %I:%M %p}")
-        results.append((store, len(rows), pdf, f"stock {at:%a %I:%M %p}{note}"))
-        to = recipients.get(store) or []
-        if to:
-            messages.append(store_email(store, rows, pdf, rooms, at, day, to))
-        else:
-            results[-1] = results[-1][:3] + (results[-1][3] + " · no manager email set",)
-    summary_to = recipients.get("summary") or []
-    if summary_to:
-        messages.append(summary_email(results, day, summary_to))
+        if now - at > TOO_OLD:
+            problems.append(f"{store}: stock is from {at:%a %m/%d %I:%M %p}, too old")
+            continue
+        rows, pdf = store_report(df, store, f"stock as of {at:%a %m/%d %I:%M %p}")
+        files.append((file_name(store, len(rows), day), pdf, len(rows)))
+        lines.append(f"{store:<13} {len(rows):>5}")
+    for line in lines + problems:
+        print(line)
+    if not files:
+        print("No store had fresh stock: nothing written.")
+        return 1
+    total = sum(n for _, _, n in files)
+    files.append((file_name("All stores", total, day), combine([p for _, p, _ in files]), total))
 
-    for store, c, _, note in results:
-        print(f"{store:<13} {'' if c is None else c:>5}  {note}")
-    if not send:
+    if not upload:
         folder = Path(out)
         folder.mkdir(exist_ok=True)
-        for store, c, pdf, _ in results:
-            if pdf:
-                (folder / _filename(store, day)).write_bytes(pdf)
-        for i, m in enumerate(messages, 1):
-            (folder / f"email_{i}.eml").write_bytes(bytes(m))
-        print(f"Dry run: nothing sent. {len(messages)} email(s) and the PDFs are in {folder}/")
-        return results
-    if not messages:
-        print("No recipients set (MAILER_RECIPIENTS); nothing sent.")
-        return results
-    sender = os.environ["MAIL_FROM"]
-    with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ.get("SMTP_PORT", 587))) as s:
-        s.starttls()
-        s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASSWORD"])
-        for m in messages:
-            m["From"] = sender
-            s.send_message(m)
-    print(f"Sent {len(messages)} email(s).")
-    return results
+        for name, pdf, _ in files:
+            (folder / name).write_bytes(pdf)
+        print(f"Test run: nothing uploaded. {len(files)} PDFs in {folder}/")
+        return 1 if problems else 0
+    box = Dropbox(os.environ["DROPBOX_APP_KEY"], os.environ["DROPBOX_REFRESH_TOKEN"])
+    for old in box.files(FOLDER):            # yesterday's lists out first
+        box.delete(old)
+    for name, pdf, _ in files:               # All stores last
+        box.upload(f"{FOLDER}/{name}", pdf)
+    print(f"Uploaded {len(files)} PDFs to Dropbox {FOLDER}.")
+    return 1 if problems else 0
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="Email each store its Replenishment needed list.")
-    ap.add_argument("--send", action="store_true", help="really send (default: dry run)")
+    ap = argparse.ArgumentParser(description="Make each store's Replenishment needed list.")
+    ap.add_argument("--dropbox", action="store_true", help="upload to Dropbox (the flow emails them)")
     ap.add_argument("--store", action="append", choices=STORES, help="only this store")
-    ap.add_argument("--out", default="mailer_out", help="dry-run folder")
+    ap.add_argument("--out", default="mailer_out", help="test-run folder")
     a = ap.parse_args()
-    run(a.store or STORES, send=a.send, out=a.out)
-    sys.exit(0)
+    sys.exit(run(a.store or STORES, upload=a.dropbox, out=a.out))
