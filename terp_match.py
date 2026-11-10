@@ -209,32 +209,59 @@ def lab_library(stores):
 
 
 def strain_types(stores):
-    """Strain -> its usual type (indica / sativa / hybrid) across our products."""
+    """Strain -> its usual type (indica / sativa / hybrid) across our products,
+    from Dutchie's own type (products with none don't vote)."""
     return _library(stores)[1]
+
+
+def brand_types(stores):
+    """Strain -> {brand: {type: products}} from Dutchie, across every store."""
+    return _library(stores)[2]
+
+
+def brand_of(name):
+    """The brand: "BULK | Brand | Strain" or "Brand | Strain | Size"."""
+    parts = [x.strip() for x in str(name).split("|")]
+    return parts[1] if parts[0].upper() == "BULK" and len(parts) > 2 else parts[0]
+
+
+def dutchie_type(value):
+    t = str(value or "").strip().lower()
+    return t if t in ("indica", "sativa", "hybrid") else None
 
 
 @st.cache_data(ttl=300, show_spinner=False, max_entries=4)
 def _library(stores):
     db = _deps.get("db") and _deps["db"]()
-    per, types = {}, {}
+    per, votes, by_brand = {}, {}, {}
     for store in stores:
         got = live_stock.latest(db, store)
         if not got or "Terpenes" not in got[0].columns:
             continue
         df = got[0]
         rows = _deps["build_rows"](df)
-        strain_of = {r["product"]: (_norm_strain(r["strain"]), r["type"]) for r in rows}
-        for prod, lab, cat in zip(df["Product"], df["Terpenes"], df["Category"]):
+        strain_of = {r["product"]: _norm_strain(r["strain"]) for r in rows}
+        for prod, lab, cat, raw in zip(df["Product"], df["Terpenes"], df["Category"], df["Strain"]):
             name = str(prod).strip('="').strip()
-            s, typ = strain_of.get(name, (None, None))
+            s = strain_of.get(name)
             if not s:
                 continue
-            types.setdefault(s, {})[typ] = types.get(s, {}).get(typ, 0) + 1
+            typ = dutchie_type(raw)
+            if typ:
+                votes.setdefault(s, {}).setdefault(name, typ)     # one vote per product
+                b = by_brand.setdefault(s, {}).setdefault(brand_of(name), {})
+                b.setdefault(typ, set()).add(name)
             m = mix(parse_lab(lab))
             if m and natural(cat, name):
                 per.setdefault(s, {})[name] = m          # one vote per product, not per package
-    return ({s: average(list(p.values())) for s, p in per.items()},
-            {s: max(t, key=t.get) for s, t in types.items()})
+    majority = {}
+    for s, v in votes.items():
+        count = {}
+        for t in v.values():
+            count[t] = count.get(t, 0) + 1
+        majority[s] = max(count, key=count.get)
+    return ({s: average(list(p.values())) for s, p in per.items()}, majority,
+            {s: {b: {t: len(n) for t, n in ts.items()} for b, ts in bs.items()} for s, bs in by_brand.items()})
 
 
 def products(df, deals):
@@ -261,6 +288,7 @@ def products(df, deals):
                              "group": grp, "rooms": set(), "qty": 0.0, "labs": [],
                              "deal": d.text if d else "",
                              "ppg": per_gram(name, r["price"]),
+                             "dtype": dutchie_type(rec.get("Strain")),
                              "infused": bool(LOW_GRADE.search(f'{name} {rec.get("Category", "")}'))}
         p["rooms"].add(str(rec.get("Room", "")))
         try:
@@ -399,7 +427,7 @@ def rank(target, prods, library, exclude=None, pct=None, ttype=None):
         m, src = profile(p, library)
         if not m:
             continue
-        s = similarity(target, m) - type_gap(ttype, p["type"])
+        s = similarity(target, m) - type_gap(ttype, p["dtype"])
         band = 3 if s >= 0.95 else 2 if s >= 0.88 else 1 if s >= 0.75 else 0
         out.append(((band, {"lab": 2, "strain lab": 1}.get(src, 0), round(pct.get(p["name"], 0), 1), s),
                     s, p, m, src))
@@ -440,7 +468,18 @@ def _sold(p, units, days):
     return f"⭐ Popular here · {n:,.0f}{unit} sold in {days // 7} weeks"
 
 
-def _card(s, p, m, src, target, like, photo="", hot="", note="", shelf=""):
+def type_warning(p, usual):
+    """A line for a card whose type would surprise: no type in Dutchie, or the
+    opposite of how the strain is usually listed (indica vs sativa)."""
+    if not p.get("dtype"):
+        return "No type in Dutchie for this product: check the package before saying indica or sativa"
+    if usual and {p["dtype"], usual} == {"indica", "sativa"}:
+        return (f'{brand_of(p["name"])} lists this as {p["dtype"].title()}; most '
+                f'{p["strain"].title()} we carry is {usual.title()}')
+    return ""
+
+
+def _card(s, p, m, src, target, like, photo="", hot="", note="", shelf="", warn=""):
     out_front = any(r in OUT_FRONT for r in p["rooms"])
     where = "Out front" if out_front else "Vault only"
     tag, col = SOURCE[src]
@@ -448,6 +487,9 @@ def _card(s, p, m, src, target, like, photo="", hot="", note="", shelf=""):
             if p["deal"] else "")
     if hot:
         deal = (f'<div style="margin-top:6px;font-size:12.5px;color:#FDE68A;font-weight:600">{_esc(hot)}</div>'
+                + deal)
+    if warn:
+        deal = (f'<div style="margin-top:6px;font-size:12.5px;color:#FDBA74;font-weight:600">⚠ {_esc(warn)}</div>'
                 + deal)
     qty = f'{p["qty"]:g}'
     pic = (f'<img src="{_esc(photo)}" alt="" loading="lazy" style="width:76px;height:76px;object-fit:cover;'
@@ -463,7 +505,7 @@ def _card(s, p, m, src, target, like, photo="", hot="", note="", shelf=""):
       {f'<div style="font-size:12.5px;color:#C4B5FD;margin-top:2px">🤖 {_esc(note)}</div>' if note else ""}
       {_bars(m)}
       <div style="font-size:12px;color:#9CA3AF;margin-top:4px">
-        <span style="color:{col}">{tag}</span> · {_esc(p["type"].title())} · THC {_esc(p["thc"] or "—")} ·
+        <span style="color:{col}">{tag}</span> · {_esc((p["dtype"] or "no type").title())} · THC {_esc(p["thc"] or "—")} ·
         {_esc(p["price"] or "—")}{" · " + _esc(shelf) if shelf else ""} · {where} ({qty} on hand)</div>{deal}</div></div>"""
     # One line, no indents: Markdown reads an indented line after a <style> tag as code.
     return " ".join(line.strip() for line in html.splitlines())
@@ -643,6 +685,7 @@ def results(target, key, like="", exclude=None, stores=(), store="", ttype=None,
             ranked, notes, used = ai_rerank(ref or like, ranked)
     labs = sum(1 for _, _, _, src in ranked[:SHOW] if src != "estimated")
     pics = live_stock.photos(db, store)
+    usual = strain_types(tuple(stores))
     st.caption(f"Closest {min(SHOW, len(ranked))} of {len(ranked)} products · {labs} from lab tests"
                + (f" · {waiting} untested strains still being estimated in the background; "
                   f"they join the list over the next few minutes" if waiting else "")
@@ -656,7 +699,7 @@ def results(target, key, like="", exclude=None, stores=(), store="", ttype=None,
     st.markdown("<style>.sc.tm::before{display:none}</style>"
                 + "".join(_card(s, p, m, src, target, like, pics.get(p["name"], ""),
                                 _sold(p, units, days) if p["name"] in hot else "", notes.get(p["name"], ""),
-                                shelf_of(p, scuts) or "")
+                                shelf_of(p, scuts) or "", type_warning(p, usual.get(p["skey"])))
                           for s, p, m, src in ranked[:SHOW]),
                 unsafe_allow_html=True)
 
@@ -681,7 +724,7 @@ AI_POOL = 20             # how many of the lab ranking's best the AI double-chec
 
 
 def _ai_line(p, m):
-    return f'{p["name"]} | {p["type"] or "?"} | ' + ", ".join(f"{t} {m[t]:.0%}" for t in top(m))
+    return f'{p["name"]} | {p["dtype"] or "type not listed"} | ' + ", ".join(f"{t} {m[t]:.0%}" for t in top(m))
 
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=256)
@@ -852,6 +895,78 @@ def demand_view(stores, tz_name):
             col.caption("None yet.")
 
 
+def type_check_view(stores, brand_check):
+    """Settings: products whose strain type needs fixing in Dutchie: none at
+    all, or the opposite of every other brand's (indica vs sativa). A product
+    can be checked against its brand's own site, one at a time."""
+    import pandas as pd
+    st.markdown('<div class="cat-hdr">🧬 Strain type check</div>', unsafe_allow_html=True)
+    st.caption("Fix these in Dutchie Backoffice: the type sets the shelf tag colour, the online "
+               "menu and Strain Sniffer's matching. Products without a strain (accessories, most "
+               "edibles) are left out.")
+    db = _deps["db"]()
+    usual = strain_types(tuple(stores))
+    missing, clash = {}, {}
+    for store in stores:
+        got = live_stock.latest(db, store)
+        if not got:
+            continue
+        rows = _deps["build_rows"](got[0])
+        strain_of = {r["product"]: (r["strain"], _norm_strain(r["strain"])) for r in rows}
+        for rec in got[0].to_dict("records"):
+            name = str(rec.get("Product", "")).strip('="').strip()
+            strain, key = strain_of.get(name, ("", ""))
+            if not key or not group_of(rec.get("Category")):
+                continue
+            t = dutchie_type(rec.get("Strain"))
+            if not t:
+                missing.setdefault(name, {"Product": name, "Category": rec.get("Category"), "Stores": set(),
+                                          "_strain": strain.title()})
+                missing[name]["Stores"].add(store)
+            elif usual.get(key) and {t, usual[key]} == {"indica", "sativa"}:
+                clash.setdefault(name, {"Product": name, "In Dutchie": t.title(),
+                                        "Most of this strain": usual[key].title(), "Stores": set(),
+                                        "_strain": strain.title()})
+                clash[name]["Stores"].add(store)
+    a, b = st.columns(2)
+    a.metric("No type in Dutchie", f"{len(missing):,}")
+    b.metric("Opposite of the usual type", f"{len(clash):,}")
+    where = st.selectbox("Store", ["All stores"] + list(stores), key="tm_tc_store")
+
+    def table(d):
+        out = [dict(v, Stores=", ".join(sorted(v["Stores"]))) for v in d.values()
+               if where == "All stores" or where in v["Stores"]]
+        return pd.DataFrame([{k: v for k, v in r.items() if not k.startswith("_")} for r in out])
+    t1, t2 = st.tabs([f"No type ({len(missing):,})", f"Opposite type ({len(clash):,})"])
+    with t1:
+        df = table(missing)
+        st.dataframe(df, hide_index=True, width="stretch") if len(df) else st.caption("None.")
+    with t2:
+        df = table(clash)
+        st.dataframe(df, hide_index=True, width="stretch") if len(df) else st.caption("None.")
+    st.markdown("**Check one against its brand's own site**")
+    pool = sorted(set(missing) | set(clash))
+    pick = st.selectbox("Product", pool, index=None, placeholder="Pick a product from the lists above…",
+                        key="tm_tc_pick", label_visibility="collapsed")
+    if pick and st.button("🔎 Check the brand's site", key="tm_tc_go"):
+        strain = (clash.get(pick) or missing.get(pick))["_strain"]
+        with st.spinner(f"Searching {brand_of(pick)}'s pages for {strain}… up to a minute"):
+            bt, src, common = brand_check(strain, brand_of(pick))
+        if bt:
+            if src.startswith("http"):
+                from urllib.parse import urlparse
+                host = urlparse(src).netloc.replace("www.", "")
+                src = f"[{'Google result' if 'vertexaisearch' in host or not host else host}]({src})"
+            now = str(clash.get(pick, {}).get("In Dutchie", "")).lower()
+            st.success(f"{brand_of(pick)} lists {strain} as **{bt.title()}**"
+                       + (f" ({src})" if src else "")
+                       + (". Dutchie already matches: this brand's version just differs from the usual."
+                          if now == bt else ". Enter that in Dutchie."))
+        else:
+            st.warning(f"{brand_of(pick)}'s own type for {strain} wasn't found. Check the package or COA"
+                       + (f"; strain databases say {common.title()}." if common else "."))
+
+
 def match_section(store, stores, mode):
     """Strain Sniffer's other two modes: like something we sell, or by feel and flavor."""
     if mode == MODES[1]:
@@ -874,9 +989,9 @@ def match_section(store, stores, mode):
         m, src = profile(p, library)
         st.markdown(_bars(m), unsafe_allow_html=True)
         results(m, "tm_like", like=p["strain"].title() or pick, exclude=lambda x: x["name"] == pick,
-                stores=stores, store=store, ttype=p["type"],
+                stores=stores, store=store, ttype=p["dtype"],
                 shelf_from={"product": pick}, infused=p["infused"],
-                ref=f'{pick} ({p["type"] or "type unknown"}; top terpenes '
+                ref=f'{pick} ({p["dtype"] or "type not listed"}; top terpenes '
                     + ", ".join(top(m)) + ")")
         return
     feel = st.pills("Feel they're after", list(FEELS), selection_mode="multi", key="tm_feel",
