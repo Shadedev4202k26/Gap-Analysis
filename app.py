@@ -229,9 +229,15 @@ def generate_strain_profile_grounded(gemini_key, strain_name, model=None, use_se
         f'"terpenes" (dominant terpenes), '
         f'"flavor" (taste & aroma), '
         f'"cannabinoids" (typical THC range across the listings found, not one batch), '
-        f'"effects" (commonly reported effects, one short sentence). '
-        f'Write "Not listed" for a field no source covers. Set "lineage" to "Unknown strain" '
-        f'only if nothing at all can be found about this strain.'
+        f'"effects" (commonly reported effects, one short sentence), '
+        f'"common_type" (Indica, Sativa or Hybrid: what most strain databases such as Leafly say)'
+        + (f', "brand_type" (Indica, Sativa or Hybrid exactly as "{brand}" itself labels THIS '
+           f'product on its own website, its packaging photos or its own menu listings; write '
+           f'"Not listed" if no page from or about the brand says, and never fill it in from '
+           f'general strain databases), "brand_type_source" (the website or page where that label '
+           f'was found, or "")' if brand else "")
+        + '. Write "Not listed" for a field no source covers. Set "lineage" to "Unknown strain" '
+        'only if nothing at all can be found about this strain.'
     )
     payload = {"contents": [{"parts": [{"text": prompt}]}],
                "generationConfig": {"temperature": 0.1}}
@@ -290,7 +296,7 @@ def lookup_strain(strain, brand, gem_key, gmodel, groq_key):
     on GEMINI_BACKUP, then Gemini without search, then Groq, so a lookup never
     comes back empty. mode: grounded, gemini or groq."""
     import time
-    key = (strain.strip().lower(), (brand or "").strip().lower())
+    key = (strain.strip().lower(), (brand or "").strip().lower(), "types-v2")
     mem = _strain_memory()
     hit = mem.get(key)
     if hit and time.time() - hit[0] < 7 * 86400:
@@ -732,10 +738,83 @@ def _smilez_mark():
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 1 — STRAIN SNIFFER
 # ════════════════════════════════════════════════════════════════════════════════
-def _shelf_matches(strain, terps_text, classification="", brand=""):
+def _kind(text):
+    t = str(text or "").lower()
+    found = [k for k in ("indica", "sativa", "hybrid") if k in t]
+    return found[0] if len(found) == 1 else ("hybrid" if "hybrid" in found else None)
+
+
+def _type_check(strain, brand, data, mode):
+    """Strain type, from every source side by side, for the catalog manager:
+    what the brand itself says (with where), strain databases, and how we list
+    it in Dutchie brand by brand. Ends with what to enter, or what to check."""
+    def e(t):
+        return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    ctx = studio.context()
+    ours = terp_match.brand_types(tuple(ctx["stores"])).get(terp_match._norm_strain(strain), {})
+    common = _kind(data.get("common_type")) or _kind(data.get("classification"))
+    bt = _kind(data.get("brand_type")) if brand and mode == "grounded" else None
+    src = str(data.get("brand_type_source") or "").strip()
+    mine = {b: t for b, t in ours.items() if brand and brand.lower() in b.lower()}
+    mine_types = sorted({t for ts in mine.values() for t in ts})
+    rows = []
+    if brand:
+        if src.startswith("http"):
+            from urllib.parse import urlparse
+            host = urlparse(src).netloc.replace("www.", "")
+            label = "Google result" if "vertexaisearch" in host or not host else host
+            src_html = f' · <a href="{e(src)}" target="_blank" style="color:#22D3EE">{e(label)}</a>'
+        else:
+            src_html = f" · from {e(src)}" if src else ""
+        rows.append(("🏷️ " + e(brand) + "'s type<br><span style='font-size:11px'>its site, or menus listing it</span>",
+                     f"<b>{bt.title()}</b>" + src_html if bt else
+                     "Not found on the brand's own pages" if mode == "grounded" else
+                     "Not checked (Google search unavailable)"))
+    rows.append(("📚 Strain databases", common.title() if common else "Not listed"))
+    if ours:
+        listed = " · ".join(f"{e(b)}: " + "/".join(t.title() for t in sorted(ts))
+                            for b, ts in sorted(ours.items(), key=lambda kv: kv[0].lower())[:8])
+        more = f" (+{len(ours) - 8} more brands)" if len(ours) > 8 else ""
+        rows.append(("🧾 Our Dutchie listings", listed + more))
+    kinds = {t for ts in ours.values() for t in ts}
+    if brand and bt:
+        verdict = f"✅ For the catalog, use <b>{e(brand)}'s own type: {bt.title()}</b>."
+        if mine_types and mine_types != [bt]:
+            verdict += (f" ⚠ We list {e(brand)}'s {e(strain.title())} as "
+                        f"{'/'.join(t.title() for t in mine_types)} in Dutchie: fix it there.")
+        elif common and common != bt:
+            verdict += f" It differs from the usual {common.title()}, so expect questions."
+    elif brand:
+        verdict = (f"⚠ {e(brand)}'s own type wasn't found. Check the package or COA before entering; "
+                   + (f"strain databases say {common.title()}." if common else "no source agrees yet."))
+    else:
+        verdict = ("ℹ️ The type depends on the brand. Add the brand above to check its own listing"
+                   + (f"; brands we carry list it as {', '.join(sorted(t.title() for t in kinds))}."
+                      if len(kinds) > 1 else "."))
+    body = "".join(f'<div style="display:flex;gap:14px;padding:5px 0;border-top:1px solid rgba(255,255,255,.06)">'
+                   f'<span style="min-width:190px;color:#9CA3AF">{k}</span><span>{v}</span></div>'
+                   for k, v in rows)
+    st.markdown(f'<div class="sc tm" style="padding:14px 18px"><div class="attr-label">🧬 Strain type check</div>'
+                f'<div class="attr-val" style="margin-top:6px">{body}</div>'
+                f'<div style="margin-top:8px;font-weight:600">{verdict}</div></div>'
+                '<style>.sc.tm::before{display:none}</style>', unsafe_allow_html=True)
+
+
+def _brand_check(strain, brand):
+    """One product's brand-site check for Settings' Type check list."""
+    data, mode, _ = lookup_strain(strain, brand, st.secrets.get("GEMINI_API_KEY", ""),
+                                  st.secrets.get("GEMINI_MODEL"), st.secrets.get("GROQ_API_KEY", ""))
+    if "error" in data or mode != "grounded":
+        return None, "", ""
+    return _kind(data.get("brand_type")), str(data.get("brand_type_source") or ""), \
+        _kind(data.get("common_type")) or _kind(data.get("classification"))
+
+
+def _shelf_matches(strain, terps_text, classification="", brand="", brand_type=None):
     """'Closest on our shelves' under a strain profile."""
     ctx = studio.context()
     target, src, typ = terp_match.strain_target(strain, terps_text, ctx["stores"], classification)
+    typ = brand_type or typ          # a brand's own type beats how the strain usually runs
     if not target:
         return
     note = ("from our own lab tests of its flower, pre-rolls and live concentrates" if src == "lab"
@@ -854,6 +933,7 @@ def _strain_result():
               <div class="sc-attr"><div class="attr-label">⚡ Cannabinoids</div><div class="attr-val attr-val-hi">{data.get('cannabinoids','—')}</div></div>
               <div class="sc-attr"><div class="attr-label">🧠 Effects</div><div class="attr-val">{data.get('effects','—')}</div></div>
             </div></div>""", unsafe_allow_html=True)
+            _type_check(strain, brand, data, mode)
             if mode == "grounded":
                 src = data.get("_sources", [])
                 note = "🔎 Pulled live from Google Search"
@@ -880,7 +960,8 @@ def _strain_result():
                 if gerr:
                     with st.expander("What went wrong?"):
                         st.code(gerr)
-            _shelf_matches(strain, data.get("terpenes", ""), data.get("classification", ""), brand)
+            _shelf_matches(strain, data.get("terpenes", ""), data.get("classification", ""), brand,
+                           _kind(data.get("brand_type")) if brand and mode == "grounded" else None)
 
 
 def _cannabinoids():
@@ -2921,6 +3002,7 @@ def render_settings():
     usage.settings_view(STORE_TZ, studio.KNOWN_STORES,
                         [pg.title for pages in _SECTIONS.values() for pg in pages])
     terp_match.demand_view(studio.KNOWN_STORES, STORE_TZ)
+    terp_match.type_check_view(studio.KNOWN_STORES, _brand_check)
     usage.store_links(studio.KNOWN_STORES, "https://ziggyz.streamlit.app")
 
 
