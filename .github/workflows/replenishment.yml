@@ -6,6 +6,9 @@ name: Replenishment lists
 on:
   schedule:
     - cron: "0 11 * * *"
+  # TEMPORARY test trigger: remove before merging to main.
+  push:
+    branches: [store-zero-report-mailer]
   workflow_dispatch:
     inputs:
       upload:
@@ -32,4 +35,4 @@ jobs:
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
         run: >
           python store_mailer.py
-          ${{ (github.event_name == 'schedule' || inputs.upload) && '--dropbox' || '' }}
+          ${{ (github.event_name != 'workflow_dispatch' || inputs.upload) && '--dropbox' || '' }}
