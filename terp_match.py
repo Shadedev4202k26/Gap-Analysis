@@ -259,7 +259,9 @@ def products(df, deals):
             p = out[name] = {"name": name, "strain": r["strain"], "skey": _norm_strain(r["strain"]),
                              "type": r["type"], "thc": r["thc"], "price": r["price"],
                              "group": grp, "rooms": set(), "qty": 0.0, "labs": [],
-                             "deal": d.text if d else ""}
+                             "deal": d.text if d else "",
+                             "ppg": per_gram(name, r["price"]),
+                             "infused": bool(LOW_GRADE.search(f'{name} {rec.get("Category", "")}'))}
         p["rooms"].add(str(rec.get("Room", "")))
         try:
             p["qty"] += float(rec.get("Available") or 0)
@@ -438,7 +440,7 @@ def _sold(p, units, days):
     return f"⭐ Popular here · {n:,.0f}{unit} sold in {days // 7} weeks"
 
 
-def _card(s, p, m, src, target, like, photo="", hot="", note=""):
+def _card(s, p, m, src, target, like, photo="", hot="", note="", shelf=""):
     out_front = any(r in OUT_FRONT for r in p["rooms"])
     where = "Out front" if out_front else "Vault only"
     tag, col = SOURCE[src]
@@ -462,7 +464,7 @@ def _card(s, p, m, src, target, like, photo="", hot="", note=""):
       {_bars(m)}
       <div style="font-size:12px;color:#9CA3AF;margin-top:4px">
         <span style="color:{col}">{tag}</span> · {_esc(p["type"].title())} · THC {_esc(p["thc"] or "—")} ·
-        {_esc(p["price"] or "—")} · {where} ({qty} on hand)</div>{deal}</div></div>"""
+        {_esc(p["price"] or "—")}{" · " + _esc(shelf) if shelf else ""} · {where} ({qty} on hand)</div>{deal}</div></div>"""
     # One line, no indents: Markdown reads an indented line after a <style> tag as code.
     return " ".join(line.strip() for line in html.splitlines())
 
@@ -473,6 +475,76 @@ def _day(iso):
         return f"{d:%b} {d.day}"
     except ValueError:
         return str(iso or "")
+
+
+# Shelf level: price per gram against the rest of the category at the store,
+# so a search for a top-shelf brand starts with top-shelf matches.
+SHELF = ["Value", "Mid", "Top shelf"]
+# Infused, ground, shake and trim: cheaper, and their terpenes are mostly added,
+# so they're left out of strain and product matches unless switched on.
+LOW_GRADE = re.compile(r"infused|ground|shake|trim", re.I)
+
+
+def per_gram(name, price):
+    """Price per gram from the price and the size in the name, or None.
+    BULK is priced by the gram; packs multiply ("28 x 1G", ".6G ... 5CT")."""
+    try:
+        p = float(str(price).replace("$", ""))
+    except ValueError:
+        return None
+    if p <= 0:
+        return None
+    n = str(name).upper()
+    if n.startswith("BULK"):
+        return p
+    m = re.search(r"(\d+)\s*X\s*(\d*\.?\d+)\s*G\b", n)
+    if m:
+        g = int(m.group(1)) * float(m.group(2))
+    else:
+        one = re.search(r"(\d*\.?\d+)\s*G\b", n)
+        if not one:
+            return None
+        ct = re.search(r"(\d+)\s*(?:CT|PK|PACK)\b", n)
+        g = float(one.group(1)) * (int(ct.group(1)) if ct else 1)
+    return p / g if g else None
+
+
+def shelf_cuts(prods):
+    cuts = {}
+    for g in {p["group"] for p in prods}:
+        vals = sorted(p["ppg"] for p in prods if p["group"] == g and p.get("ppg"))
+        if len(vals) >= 3:
+            cuts[g] = (vals[len(vals) // 3], vals[2 * len(vals) // 3])
+    return cuts
+
+
+def shelf_of(p, cuts):
+    v, c = p.get("ppg"), cuts.get(p["group"])
+    if not v or not c:
+        return None
+    level = SHELF[0] if v < c[0] else SHELF[2] if v >= c[1] else SHELF[1]
+    # Smalls and popcorn are a lower grade whatever they cost: never top shelf.
+    if level == SHELF[2] and re.search(r"\bsmalls?\b|popcorn", p["name"], re.I):
+        level = SHELF[1]
+    return level
+
+
+def start_shelf(prods, cuts, shelf_from):
+    """The shelf level to start from: the picked product's own, else the
+    middle level of what we stock from the searched brand (and strain)."""
+    if not shelf_from:
+        return None
+    if shelf_from.get("product"):
+        p = next((x for x in prods if x["name"] == shelf_from["product"]), None)
+        return shelf_of(p, cuts) if p else None
+    brand = str(shelf_from.get("brand") or "").lower().strip()
+    strain = _norm_strain(shelf_from.get("strain"))
+    if not brand:
+        return None
+    mine = [p for p in prods if brand in p["name"].lower() and not p["infused"]]
+    both = [p for p in mine if strain and p["skey"] == strain]
+    levels = sorted(SHELF.index(s) for s in (shelf_of(p, cuts) for p in (both or mine)) if s)
+    return SHELF[levels[len(levels) // 2]] if levels else None
 
 
 POTENCY = ["Mild", "Medium", "Strong"]
@@ -508,7 +580,8 @@ def _price(p):
         return None
 
 
-def results(target, key, like="", exclude=None, stores=(), store="", ttype=None, ref=""):
+def results(target, key, like="", exclude=None, stores=(), store="", ttype=None, ref="",
+            shelf_from=None, infused=False):
     """Filters, then the closest products for a target mix."""
     db = _deps["db"]()
     got = live_stock.latest(db, store) if store else None   # newest copy: no tags are picked here, so nothing to hold still
@@ -524,23 +597,35 @@ def results(target, key, like="", exclude=None, stores=(), store="", ttype=None,
     library = lab_library(tuple(stores))
     waiting = estimate([p["skey"] for p in prods if not p["labs"] and p["skey"] not in library])
 
-    c1, c2, c3 = st.columns([2, 2, 2], vertical_alignment="bottom")
+    scuts = shelf_cuts(prods)
+    first = start_shelf(prods, scuts, shelf_from)
+    c1, c2, c3, c0 = st.columns([1.6, 1.6, 1.7, 2.1], vertical_alignment="bottom")
     grp = c1.selectbox("Category", [ALL] + [g for g, _ in GROUPS], key=f"{key}_grp")
     cap = c2.select_slider("Price up to", ["Any", "$10", "$20", "$30", "$40", "$50", "$75", "$100"],
                            value="Any", key=f"{key}_cap")
     strength = c3.pills("Potency", POTENCY, selection_mode="multi", key=f"{key}_pot",
                         help="Compared with the rest of its category at this store: a strong "
                              "flower and a strong concentrate are different THC levels.")
-    c4, c5, c6 = st.columns(3, vertical_alignment="center")
+    # Keyed by the starting level, so a new search starts from its own level.
+    shelves = c0.pills("Shelf", SHELF, selection_mode="multi", key=f"{key}_shelf_{first}",
+                       default=SHELF[SHELF.index(first):] if first else None,
+                       help="Price per gram compared with the rest of its category at this "
+                            "store. A brand or product search starts at its own level and up.")
+    c4, c5, c6, c7 = st.columns(4, vertical_alignment="center")
     front = c4.toggle("Out front only", value=True, key=f"{key}_front")
     deal_only = c5.toggle("On deal", key=f"{key}_deal")
-    use_ai = c6.toggle("🤖 AI double-check", value=True, key=f"{key}_ai",
+    with_low = c6.toggle("Include infused & shake", value=infused, key=f"{key}_low",
+                         help="Infused, ground, shake and trim: usually cheaper, and their "
+                              "terpenes are mostly added after.")
+    use_ai = c7.toggle("🤖 AI double-check", value=True, key=f"{key}_ai",
                        help="Groq re-sorts the closest 20 by each strain's lineage and reported "
                             "effects. Off: lab terpenes only.")
     cuts = potency_cuts(prods)
     pool = [p for p in prods
             if (grp == ALL or p["group"] == grp)
             and (not strength or potency_of(p, cuts) in strength)
+            and (not shelves or shelf_of(p, scuts) in shelves)
+            and (with_low or not p["infused"])
             and (cap == "Any" or (_price(p) is not None and _price(p) <= float(cap[1:])))
             and (not front or any(r in OUT_FRONT for r in p["rooms"]))
             and (not deal_only or p["deal"])]
@@ -563,12 +648,15 @@ def results(target, key, like="", exclude=None, stores=(), store="", ttype=None,
                   f"they join the list over the next few minutes" if waiting else "")
                + (f" · ⭐ Popular here: {store}'s top sellers in that category, {days // 7} weeks to "
                   f"{_day(through)}" if units else "")
+               + (f" · starting at **{first}**, like {shelf_from.get('brand') or shelf_from.get('product')}"
+                  if first else "")
                + (" · 🤖 order double-checked by AI on lineage and reported effects" if used else
                   " · 🤖 AI double-check unavailable right now, lab order shown" if use_ai and ref + like else ""))
     # .sc is the strain card's frame; its "STRAIN.PROFILE" corner label doesn't belong on a match.
     st.markdown("<style>.sc.tm::before{display:none}</style>"
                 + "".join(_card(s, p, m, src, target, like, pics.get(p["name"], ""),
-                                _sold(p, units, days) if p["name"] in hot else "", notes.get(p["name"], ""))
+                                _sold(p, units, days) if p["name"] in hot else "", notes.get(p["name"], ""),
+                                shelf_of(p, scuts) or "")
                           for s, p, m, src in ranked[:SHOW]),
                 unsafe_allow_html=True)
 
@@ -787,6 +875,7 @@ def match_section(store, stores, mode):
         st.markdown(_bars(m), unsafe_allow_html=True)
         results(m, "tm_like", like=p["strain"].title() or pick, exclude=lambda x: x["name"] == pick,
                 stores=stores, store=store, ttype=p["type"],
+                shelf_from={"product": pick}, infused=p["infused"],
                 ref=f'{pick} ({p["type"] or "type unknown"}; top terpenes '
                     + ", ".join(top(m)) + ")")
         return
@@ -801,5 +890,5 @@ def match_section(store, stores, mode):
                    "not medical advice.")
         return
     words = ", ".join(re.sub(r"^\W+\s*", "", w) for w in picked)
-    results(picker_target(picked), "tm_pick", stores=stores, store=store,
+    results(picker_target(picked), "tm_pick", stores=stores, store=store, infused=True,
             ref=f"a feel and flavor: {words}")

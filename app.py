@@ -732,7 +732,7 @@ def _smilez_mark():
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 1 — STRAIN SNIFFER
 # ════════════════════════════════════════════════════════════════════════════════
-def _shelf_matches(strain, terps_text, classification=""):
+def _shelf_matches(strain, terps_text, classification="", brand=""):
     """'Closest on our shelves' under a strain profile."""
     ctx = studio.context()
     target, src, typ = terp_match.strain_target(strain, terps_text, ctx["stores"], classification)
@@ -748,6 +748,7 @@ def _shelf_matches(strain, terps_text, classification=""):
     same = terp_match._norm_strain(strain)
     terp_match.results(target, "tm_strain", like=strain.title(), stores=ctx["stores"],
                        store=ctx["store"], exclude=lambda p: p["skey"] == same, ttype=typ,
+                       shelf_from={"brand": brand, "strain": strain},
                        ref=f"the strain {strain.title()}" + (f" ({typ})" if typ else ""))
 
 
@@ -879,7 +880,7 @@ def _strain_result():
                 if gerr:
                     with st.expander("What went wrong?"):
                         st.code(gerr)
-            _shelf_matches(strain, data.get("terpenes", ""), data.get("classification", ""))
+            _shelf_matches(strain, data.get("terpenes", ""), data.get("classification", ""), brand)
 
 
 def _cannabinoids():
