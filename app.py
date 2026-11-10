@@ -732,21 +732,22 @@ def _smilez_mark():
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 1 — STRAIN SNIFFER
 # ════════════════════════════════════════════════════════════════════════════════
-def _shelf_matches(strain, terps_text):
+def _shelf_matches(strain, terps_text, classification=""):
     """'Closest on our shelves' under a strain profile."""
     ctx = studio.context()
-    target, src = terp_match.strain_target(strain, terps_text, ctx["stores"])
+    target, src, typ = terp_match.strain_target(strain, terps_text, ctx["stores"], classification)
     if not target:
         return
-    note = ("from our own lab tests of it" if src == "lab"
+    note = ("from our own lab tests of its flower, pre-rolls and live concentrates" if src == "lab"
             else "from its online profile (none of our packages of it have terpene lab results)")
     st.markdown(f'<div class="sec-head"><div class="sec-head-text">🎯 Closest to {strain.title()} '
                 f'on our shelves</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
-    st.caption(f"Matched on {strain.title()}'s terpene mix, {note}.")
+    st.caption(f"Matched on {strain.title()}'s terpene mix, {note}."
+               + (f" {typ.title()}s rank a little higher." if typ else ""))
     st.markdown(terp_match._bars(target), unsafe_allow_html=True)
     same = terp_match._norm_strain(strain)
     terp_match.results(target, "tm_strain", like=strain.title(), stores=ctx["stores"],
-                       store=ctx["store"], exclude=lambda p: p["skey"] == same)
+                       store=ctx["store"], exclude=lambda p: p["skey"] == same, ttype=typ)
 
 
 def render_strain_ai():
@@ -877,7 +878,7 @@ def _strain_result():
                 if gerr:
                     with st.expander("What went wrong?"):
                         st.code(gerr)
-            _shelf_matches(strain, data.get("terpenes", ""))
+            _shelf_matches(strain, data.get("terpenes", ""), data.get("classification", ""))
 
 
 def _cannabinoids():
