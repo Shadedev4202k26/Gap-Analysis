@@ -2919,6 +2919,7 @@ def render_settings():
     support.settings_inbox(STORE_TZ)
     usage.settings_view(STORE_TZ, studio.KNOWN_STORES,
                         [pg.title for pages in _SECTIONS.values() for pg in pages])
+    terp_match.demand_view(studio.KNOWN_STORES, STORE_TZ)
     usage.store_links(studio.KNOWN_STORES, "https://ziggyz.streamlit.app")
 
 
