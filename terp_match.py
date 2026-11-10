@@ -438,7 +438,7 @@ def _sold(p, units, days):
     return f"⭐ Popular here · {n:,.0f}{unit} sold in {days // 7} weeks"
 
 
-def _card(s, p, m, src, target, like, photo="", hot=""):
+def _card(s, p, m, src, target, like, photo="", hot="", note=""):
     out_front = any(r in OUT_FRONT for r in p["rooms"])
     where = "Out front" if out_front else "Vault only"
     tag, col = SOURCE[src]
@@ -458,6 +458,7 @@ def _card(s, p, m, src, target, like, photo="", hot=""):
         <div style="font-weight:700">{_esc(p["name"])}</div>
         <div style="white-space:nowrap;color:#22D3EE;font-weight:700">{_esc(closeness(s))}</div></div>
       <div style="font-size:12.5px;color:#D1D5DB;margin-top:3px">{_esc(why(target, m, like))}</div>
+      {f'<div style="font-size:12.5px;color:#C4B5FD;margin-top:2px">🤖 {_esc(note)}</div>' if note else ""}
       {_bars(m)}
       <div style="font-size:12px;color:#9CA3AF;margin-top:4px">
         <span style="color:{col}">{tag}</span> · {_esc(p["type"].title())} · THC {_esc(p["thc"] or "—")} ·
@@ -481,7 +482,7 @@ def _price(p):
         return None
 
 
-def results(target, key, like="", exclude=None, stores=(), store="", ttype=None):
+def results(target, key, like="", exclude=None, stores=(), store="", ttype=None, ref=""):
     """Filters, then the closest products for a target mix."""
     db = _deps["db"]()
     got = live_stock.latest(db, store) if store else None   # newest copy: no tags are picked here, so nothing to hold still
@@ -497,12 +498,15 @@ def results(target, key, like="", exclude=None, stores=(), store="", ttype=None)
     library = lab_library(tuple(stores))
     waiting = estimate([p["skey"] for p in prods if not p["labs"] and p["skey"] not in library])
 
-    c1, c2, c3, c4 = st.columns([2, 2, 1.4, 1.4], vertical_alignment="bottom")
+    c1, c2, c3, c4, c5 = st.columns([2, 2, 1.3, 1.1, 1.5], vertical_alignment="bottom")
     grp = c1.selectbox("Category", [ALL] + [g for g, _ in GROUPS], key=f"{key}_grp")
     cap = c2.select_slider("Price up to", ["Any", "$10", "$20", "$30", "$40", "$50", "$75", "$100"],
                            value="Any", key=f"{key}_cap")
     front = c3.toggle("Out front only", value=True, key=f"{key}_front")
     deal_only = c4.toggle("On deal", key=f"{key}_deal")
+    use_ai = c5.toggle("🤖 AI double-check", value=True, key=f"{key}_ai",
+                       help="Groq re-sorts the closest 20 by each strain's lineage and reported "
+                            "effects. Off: lab terpenes only.")
     pool = [p for p in prods
             if (grp == ALL or p["group"] == grp)
             and (cap == "Any" or (_price(p) is not None and _price(p) <= float(cap[1:])))
@@ -514,19 +518,88 @@ def results(target, key, like="", exclude=None, stores=(), store="", ttype=None)
     if not ranked:
         st.caption("Nothing on the shelves matches with these filters. Try All categories or a higher price.")
         return
+    notes, used = {}, False
+    if use_ai:
+        with st.spinner("Ziggy is double-checking the picks…"):
+            ranked, notes, used = ai_rerank(ref or like, ranked)
     labs = sum(1 for _, _, _, src in ranked[:SHOW] if src != "estimated")
     pics = live_stock.photos(db, store)
     st.caption(f"Closest {min(SHOW, len(ranked))} of {len(ranked)} products · {labs} from lab tests"
                + (f" · {waiting} untested strains still being estimated in the background; "
                   f"they join the list over the next few minutes" if waiting else "")
                + (f" · ⭐ Popular here: {store}'s top sellers in that category, {days // 7} weeks to "
-                  f"{_day(through)}" if units else ""))
+                  f"{_day(through)}" if units else "")
+               + (" · 🤖 order double-checked by AI on lineage and reported effects" if used else
+                  " · 🤖 AI double-check unavailable right now, lab order shown" if use_ai and ref + like else ""))
     # .sc is the strain card's frame; its "STRAIN.PROFILE" corner label doesn't belong on a match.
     st.markdown("<style>.sc.tm::before{display:none}</style>"
                 + "".join(_card(s, p, m, src, target, like, pics.get(p["name"], ""),
-                                _sold(p, units, days) if p["name"] in hot else "")
+                                _sold(p, units, days) if p["name"] in hot else "", notes.get(p["name"], ""))
                           for s, p, m, src in ranked[:SHOW]),
                 unsafe_allow_html=True)
+
+
+AI_POOL = 20             # how many of the lab ranking's best the AI double-check may reorder
+
+
+def _ai_line(p, m):
+    return f'{p["name"]} | {p["type"] or "?"} | ' + ", ".join(f"{t} {m[t]:.0%}" for t in top(m))
+
+
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=256)
+def _ai_order(ref, lines, key, model):
+    """Groq's order for the candidates, as [(index, note)], or None. Cached an
+    hour per question and list, so moving filters back and forth is free."""
+    system = (
+        "You help budtenders at a Michigan cannabis dispensary. A customer described what they "
+        "like. Below are products on our shelves, already shortlisted by lab-tested terpene mix "
+        "(name | type | top terpenes). Reorder them from best to worst fit for this customer, "
+        "using what you know about each strain's lineage, typically reported effects and "
+        "flavor, as well as the terpenes and type shown. Put products whose strain is known to "
+        "feel very different (for example an energetic sativa for someone who likes a relaxing "
+        "hybrid) last. For each, add a note of at most 8 words saying why it fits, about "
+        "lineage, flavor or feel only. Never make medical or health claims. Answer with JSON: "
+        '{"order": [{"i": <number>, "note": "<why>"}, ...]} using every number once.')
+    user = f"Customer likes: {ref}\n\n" + "\n".join(f"{i}. {line}" for i, line in enumerate(lines))
+    payload = {"model": model, "temperature": 0.2, "reasoning_effort": "low",
+               "response_format": {"type": "json_object"},
+               "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+    try:
+        r = requests.post("https://api.groq.com/openai/v1/chat/completions", timeout=12, json=payload,
+                          headers={"Authorization": f"Bearer {key}"})
+        if r.status_code != 200:
+            return None
+        c = r.json()["choices"][0]["message"]["content"]
+        got = json.loads(c[c.find("{"):c.rfind("}") + 1]).get("order", [])
+    except Exception:                                        # noqa: BLE001
+        return None
+    out, seen = [], set()
+    for item in got:
+        try:
+            i = int(item.get("i"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if 0 <= i < len(lines) and i not in seen:
+            seen.add(i)
+            out.append((i, str(item.get("note") or "")[:80]))
+    return out or None
+
+
+def ai_rerank(ref, ranked):
+    """The lab ranking's top AI_POOL, reordered by Groq on lineage and reported
+    effects; anything it leaves out keeps its lab order after. Returns
+    (ranked, {name: note}, used). Any trouble: the lab order, untouched."""
+    key, model = _deps.get("groq_key"), _deps.get("groq_model")
+    head = ranked[:AI_POOL]
+    if not (key and ref and len(head) > 1):
+        return ranked, {}, False
+    got = _ai_order(ref, tuple(_ai_line(p, m) for _, p, m, _ in head), key, model)
+    if not got:
+        return ranked, {}, False
+    order = [head[i] for i, _ in got]
+    notes = {head[i][1]["name"]: n for i, n in got if n}
+    order += [x for x in head if x not in order]
+    return order + ranked[AI_POOL:], notes, True
 
 
 def strain_target(strain, profile_terps, stores, classification=""):
@@ -577,7 +650,9 @@ def match_section(store, stores, mode):
         m, src = profile(p, library)
         st.markdown(_bars(m), unsafe_allow_html=True)
         results(m, "tm_like", like=p["strain"].title() or pick, exclude=lambda x: x["name"] == pick,
-                stores=stores, store=store, ttype=p["type"])
+                stores=stores, store=store, ttype=p["type"],
+                ref=f'{pick} ({p["type"] or "type unknown"}; top terpenes '
+                    + ", ".join(top(m)) + ")")
         return
     feel = st.pills("Feel they're after", list(FEELS), selection_mode="multi", key="tm_feel")
     flav = st.pills("Flavors they like", list(FLAVORS), selection_mode="multi", key="tm_flav")
@@ -586,4 +661,6 @@ def match_section(store, stores, mode):
         st.caption("Pick a feel, a flavor, or both. These are what customers commonly report, "
                    "not medical advice.")
         return
-    results(picker_target(picked), "tm_pick", stores=stores, store=store)
+    words = ", ".join(re.sub(r"^\W+\s*", "", w) for w in picked)
+    results(picker_target(picked), "tm_pick", stores=stores, store=store,
+            ref=f"a feel and flavor: {words}")
