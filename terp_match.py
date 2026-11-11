@@ -18,6 +18,12 @@ untested strains are made by one background worker, 40 strains per Groq call,
 one call every 30 seconds: inside Groq's free limits (1,000 calls a day, 8,000
 tokens a minute) with room left for Strain Sniffer's strain profiles.
 
+"Like something we sell" is ordered by what shoppers of that product really go
+on to buy (same brand, same shelf level, what the same shoppers came back for:
+see BUY_BRAND and comeback), with the terpene mix as the tie-breaker and the
+reason on the card. The other two ways in have no purchase to go on, so they
+stay on the terpene mix.
+
 Three ways in: a strain the customer likes (lab numbers when we carry it, else
 the strain profile Strain Sniffer found online), something we sell, or feel and
 flavor picks. The feel and flavor words are what customers commonly say about
@@ -558,10 +564,11 @@ SOURCE_RANK = {"lab": 3, "brand lab": 2, "strain lab": 1, "estimated": 0}
 
 
 def rank(target, prods, library, exclude=None, pct=None, ttype=None, brands=None, how="mix",
-         base=None, cuts=None, best=4):
+         base=None, cuts=None, best=4, back=()):
     """Closest first, as (score, product, mix, source, label). Within a label:
-    a real lab test before a borrowed one or an estimate, then the store's
-    better sellers, then the closer mix. how="lean" scores a feel or flavor
+    a real lab test before a borrowed one or an estimate, then products
+    shoppers come back for (back), then the store's better sellers, then the
+    closer mix. how="lean" scores a feel or flavor
     pick. base is the product being matched ("like something we sell"). best
     holds every label down when the target itself is only a guess (a strain
     profile found online)."""
@@ -579,7 +586,8 @@ def rank(target, prods, library, exclude=None, pct=None, ttype=None, brands=None
         if how == "mix":
             band = min(band, BEST_BAND[src], best)
         label = (LABELS if how == "mix" else LEAN_LABELS)[band]
-        out.append(((band, SOURCE_RANK[src], round(pct.get(p["name"], 0), 1), s), s, p, m, src, label))
+        out.append(((band, SOURCE_RANK[src], p["name"] in back, round(pct.get(p["name"], 0), 1), s),
+                    s, p, m, src, label))
     out.sort(key=lambda x: x[0], reverse=True)
     return [(s, p, m, src, label) for _, s, p, m, src, label in out]
 
@@ -589,9 +597,125 @@ def why(target, m, like=""):
     if shared:
         words = " and ".join(t.lower() for t in shared[:2])
         aroma = "; ".join(AROMA[t] for t in shared[:2])
-        return f"Both lead with {words} ({aroma})"
+        # "lead with" only when the strongest terpene really is the same one
+        return f"Both {'lead with' if top(m, 1) == top(target, 1) else 'carry'} {words} ({aroma})"
     lead = top(m, 1)
     return f"Leads with {lead[0].lower()} ({AROMA[lead[0]]})" if lead else ""
+
+
+# ── what shoppers come back for ─────────────────────────────────────────────
+# Smilez Reports works out, once a day and for all stores together, how often
+# shoppers buy a product again on a later day and what else the same shoppers
+# buy later (its rebuy.py; counts only, never who). They are the stores' own
+# reviews: a product people buy twice is one they liked.
+COMEBACK_TOP = 0.20       # the top fifth of a category for come-back share get the badge
+COMEBACK_MIN = 5          # and at least this many shoppers must have bought it again
+
+# How much each thing two products share raised the odds that a returning
+# shopper's next product was that one: 17,000 shoppers, Oct 26 to Nov 10 2026,
+# each later purchase set against a random product sold in the same store, day
+# and category. Same brand x5.8, same shelf level x1.9, a Very close terpene
+# mix x1.5, same type x1.3; a Close or Similar mix added nothing once the brand
+# was counted. Set against a random product of any category, the same kind of
+# product (same category, and infused or not like the first) came out x2.9. The
+# numbers are the logs of those odds, the same on both halves of the shoppers.
+# Only discounted sales carry their items, and 16 days is short: fit them again
+# when Reports holds a few months.
+BUY_BRAND, BUY_KIND, BUY_SHELF, BUY_VERY_CLOSE, BUY_TYPE = 1.75, 1.05, 0.6, 0.4, 0.3
+BUY_ALSO_MAX = 1.5        # the most "its shoppers also came back for this" adds (log of how many times more often)
+SAME_BRAND_SHOW = 5       # of the first 10, at most this many from the picked product's own brand
+
+
+def comeback(db):
+    """Reports' numbers ready to look up, or None: {"key": {product name:
+    line}, "rate": {line: (shoppers, came back)}, "also": {line: {other line:
+    (shared shoppers, times more often)}}, "days", "through"}."""
+    body = live_stock.rebuy(db)
+    if not body or not body.get("names"):
+        return None
+    try:
+        return {"key": body["names"],
+                "rate": {int(k): (v[0], v[1]) for k, v in (body.get("lines") or {}).items()},
+                "also": {int(k): {int(b): (n, lift / 100) for b, n, lift in v}
+                         for k, v in (body.get("also") or {}).items()},
+                "days": body.get("days") or 0, "through": body.get("through")}
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def comeback_hot(prods, cb):
+    """{product name: (came back, shoppers)} for the store's products in the
+    top COMEBACK_TOP of their category for the share of shoppers who bought
+    them again."""
+    if not cb:
+        return {}
+    pools = {}
+    for p in prods:
+        got = cb["rate"].get(cb["key"].get(p["name"]))
+        if got and got[0]:
+            pools.setdefault(pool_of(p), []).append((got[1] / got[0], p["name"], got))
+    hot = {}
+    for rows in pools.values():
+        if len(rows) < 5:
+            continue
+        shares = sorted(r for r, _, _ in rows)
+        cut = shares[min(len(shares) - 1, int(len(shares) * (1 - COMEBACK_TOP)))]
+        for share, name, (shoppers, back) in rows:
+            if share >= cut and back >= COMEBACK_MIN:
+                hot[name] = (back, shoppers)
+    return hot
+
+
+def buy_order(base, ranked, scuts, cb, like=""):
+    """ "Like something we sell", put in the order shoppers of the picked
+    product really go on to buy: what the same shoppers came back for, the
+    same brand, the same kind of product, the same shelf level, the same type
+    and a Very close terpene mix, each weighted by how much it raised the odds
+    (BUY_BRAND...). The
+    terpene score breaks ties. At most SAME_BRAND_SHOW of the first SHOW are
+    the picked product's own brand, so other brands get seen too. Returns
+    (ranked, {product name: the reason for the card})."""
+    shelf = shelf_of(base, scuts)
+    key = (cb["key"].get if cb else lambda name: None)
+    partners = cb["also"].get(key(base["name"]), {}) if cb else {}
+    scored, reasons = [], {}
+    for row in ranked:
+        s, p, _, _, label = row
+        pts, why_ = 0.0, []
+        also = partners.get(key(p["name"]))
+        if also:
+            pts += min(BUY_ALSO_MAX, max(0.0, math.log(also[1])))
+            why_.append(f"{also[0]} shoppers who bought {like or 'it'} later bought this")
+        if p["brand"] == base["brand"]:
+            pts += BUY_BRAND
+            why_.append("same brand")
+        if p["group"] == base["group"] and p["infused"] == base["infused"]:
+            pts += BUY_KIND
+        if shelf and shelf_of(p, scuts) == shelf:
+            pts += BUY_SHELF
+            why_.append("same shelf level")
+        if base.get("dtype") and p["dtype"] == base["dtype"]:
+            pts += BUY_TYPE
+        if label == LABELS[4]:
+            pts += BUY_VERY_CLOSE
+        scored.append((round(pts, 2), s, row))
+        if why_:
+            reasons[p["name"]] = " · ".join(why_)
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    top, rest, same = [], [], 0
+    for _, _, row in scored:
+        mine = row[1]["brand"] == base["brand"]
+        if len(top) < SHOW and not (mine and same >= SAME_BRAND_SHOW):
+            top.append(row)
+            same += mine
+        else:
+            rest.append(row)
+    return top + rest, reasons
+
+
+def _back(name, back):
+    n, shoppers = back[name]
+    return f"🔁 Shoppers come back for this · {n} of {shoppers} bought it again"
 
 
 # ── page ────────────────────────────────────────────────────────────────────
@@ -630,7 +754,7 @@ def type_warning(p, usual):
     return ""
 
 
-def _card(label, p, m, src, target, like, photo="", hot="", note="", shelf="", warn=""):
+def _card(label, p, m, src, target, like, photo="", hot="", note="", shelf="", warn="", back="", because=""):
     out_front = any(r in OUT_FRONT for r in p["rooms"])
     where = "Out front" if out_front else "Vault only"
     tag, col = SOURCE[src]
@@ -638,6 +762,9 @@ def _card(label, p, m, src, target, like, photo="", hot="", note="", shelf="", w
             if p["deal"] else "")
     if hot:
         deal = (f'<div style="margin-top:6px;font-size:12.5px;color:#FDE68A;font-weight:600">{_esc(hot)}</div>'
+                + deal)
+    if back:
+        deal = (f'<div style="margin-top:6px;font-size:12.5px;color:#86EFAC;font-weight:600">{_esc(back)}</div>'
                 + deal)
     if warn:
         deal = (f'<div style="margin-top:6px;font-size:12.5px;color:#FDBA74;font-weight:600">⚠ {_esc(warn)}</div>'
@@ -652,6 +779,7 @@ def _card(label, p, m, src, target, like, photo="", hot="", note="", shelf="", w
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
         <div style="font-weight:700">{_esc(p["name"])}</div>
         <div style="white-space:nowrap;color:#22D3EE;font-weight:700">{_esc(label)}</div></div>
+      {f'<div style="font-size:12.5px;color:#86EFAC;margin-top:3px">🛒 {_esc(because[:1].upper() + because[1:])}</div>' if because else ""}
       <div style="font-size:12.5px;color:#D1D5DB;margin-top:3px">{_esc(why(target, m, like))}</div>
       {f'<div style="font-size:12.5px;color:#C4B5FD;margin-top:2px">🤖 {_esc(note)}</div>' if note else ""}
       {_bars(m)}
@@ -826,18 +954,25 @@ def results(target, key, like="", exclude=None, stores=(), store="", ttype=None,
             and (not deal_only or p["deal"])]
     units, through, days = live_stock.popular(db, store)
     pct, hot = sellers(prods, units)
+    cb = comeback(db)
+    back = comeback_hot(prods, cb)
     if base:                                   # the picked product, with this store's numbers
         base = next((x for x in prods if x["name"] == base), None)
-    ranked = rank(target, pool, library, exclude, pct, ttype, brands, how, base, cuts, best)
+    ranked = rank(target, pool, library, exclude, pct, ttype, brands, how, base, cuts, best, back)
     if not ranked:
         st.caption("Nothing on the shelves matches with these filters. Try All categories or a higher price.")
         return
     if ref:
         _log_ask(ref)
+    reasons = {}
+    if base:
+        ranked, reasons = buy_order(base, ranked, scuts, cb, like)
     notes, used = {}, False
     if use_ai:
         with st.spinner("Ziggy is double-checking the picks…"):
-            ranked, notes, used = ai_rerank(ref or like, ranked)
+            again, notes, used = ai_rerank(ref or like, ranked)
+        if not base:                           # a product's picks keep the order shoppers buy in; the AI only adds notes
+            ranked = again
     labs = sum(1 for _, _, _, src, _ in ranked[:SHOW] if src != "estimated")
     pics = live_stock.photos(db, store)
     usual = strain_types(tuple(stores))
@@ -848,13 +983,19 @@ def results(target, key, like="", exclude=None, stores=(), store="", ttype=None,
                   f"{_day(through)}" if units else "")
                + (f" · starting at **{first}**, like {shelf_from.get('brand') or shelf_from.get('product')}"
                   if first else "")
-               + (" · 🤖 order double-checked by AI on lineage and reported effects" if used else
+               + (f" · 🛒 in the order {like or 'its'} shoppers go on to buy: what they came back for, same "
+                  f"brand, same kind of product, same shelf level, then the terpene mix" if base else "")
+               + (f" · 🔁 Shoppers come back: bought again on a later day, all stores, "
+                  f"{cb['days']} days to {_day(cb['through'])}" if back else "")
+               + (" · 🤖 notes by AI on lineage and reported effects" if used and base else
+                  " · 🤖 order double-checked by AI on lineage and reported effects" if used else
                   " · 🤖 AI double-check unavailable right now, lab order shown" if use_ai and ref + like else ""))
     # .sc is the strain card's frame; its "STRAIN.PROFILE" corner label doesn't belong on a match.
     st.markdown("<style>.sc.tm::before{display:none}</style>"
                 + "".join(_card(label, p, m, src, target, like, pics.get(p["name"], ""),
                                 _sold(p, units, days) if p["name"] in hot else "", notes.get(p["name"], ""),
-                                shelf_of(p, scuts) or "", type_warning(p, usual.get(p["skey"])))
+                                shelf_of(p, scuts) or "", type_warning(p, usual.get(p["skey"])),
+                                _back(p["name"], back) if p["name"] in back else "", reasons.get(p["name"], ""))
                           for s, p, m, src, label in ranked[:SHOW]),
                 unsafe_allow_html=True)
 
@@ -1145,8 +1286,8 @@ def match_section(store, stores, mode):
         pick = st.selectbox("A product we have that they like", names, index=None,
                             placeholder="Type to search our products…", key="tm_like")
         if not pick:
-            st.caption("Pick a product to find others with the closest terpene mix. "
-                       "The list is what's in stock here now.")
+            st.caption("Pick a product to see what its shoppers go on to buy, with the terpene "
+                       "match on each. The list is what's in stock here now.")
             return
         p = next(x for x in prods if x["name"] == pick)
         m, src = profile(p, library, brands)

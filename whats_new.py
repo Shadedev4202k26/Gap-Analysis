@@ -48,6 +48,22 @@ UPDATES = [
         "page_label": "Open Strain Sniffer",
     },
     {
+        "id": "sniffer-come-back",
+        "until": dt.date(2026, 12, 14),
+        "title": "Strain Sniffer: picks based on what shoppers come back for",
+        "body": ("**Like something we sell** now lists what shoppers of that product really go on to "
+                 "buy, from our own sales at all 8 stores."),
+        "points": [
+            "**🛒 The reason is on the card**: its shoppers later bought this, same brand, same shelf level",
+            "**🔁 Shoppers come back for this** marks products people buy again: our own version of a good review",
+            "The terpene match is still there as the tie-breaker and the talking point",
+            "Looking up a strain, and feel and flavor, work as before",
+        ],
+        "note": "Counts only. ZiggyBot never sees who bought what.",
+        "page": "strain",
+        "page_label": "Open Strain Sniffer",
+    },
+    {
         "id": "sniffer-honest-labels",
         "until": dt.date(2026, 12, 7),
         "title": "Strain Sniffer: \"Very close\" now means it",
