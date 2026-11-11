@@ -1,17 +1,29 @@
 # Every morning: each store's "Replenishment needed" PDF into Dropbox /Replenishment,
 # where Chad's Power Automate flow emails it to the store's manager (store_mailer.py).
-# 11:00 UTC = 6:00 AM Detroit in winter, 7:00 AM in summer.
+# GitHub can start a scheduled run hours late or skip it (busiest on the hour:
+# the 11:00 UTC run on 11/11 started at 18:26), so it is tried five times, off the
+# hour, from 10:17 to 12:17 UTC (5:17-7:17 AM Detroit in winter, 6:17-8:17 in
+# summer). --once-a-day makes every try after the first that sends do nothing,
+# and the concurrency group keeps two late tries from running at once.
 name: Replenishment lists
 
 on:
   schedule:
-    - cron: "0 11 * * *"
+    - cron: "17 10 * * *"
+    - cron: "47 10 * * *"
+    - cron: "17 11 * * *"
+    - cron: "47 11 * * *"
+    - cron: "17 12 * * *"
   workflow_dispatch:
     inputs:
       upload:
         description: "Upload to Dropbox (the flow then emails the managers)"
         type: boolean
         default: false
+
+concurrency:
+  group: replenishment
+  cancel-in-progress: false
 
 jobs:
   lists:
@@ -33,3 +45,4 @@ jobs:
         run: >
           python store_mailer.py
           ${{ (github.event_name == 'schedule' || inputs.upload) && '--dropbox' || '' }}
+          ${{ github.event_name == 'schedule' && '--once-a-day' || '' }}
