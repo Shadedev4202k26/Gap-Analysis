@@ -145,10 +145,25 @@ def _db():
     return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 
-def run(stores, upload=False, out="mailer_out"):
-    db = _db()
+def sent_today(names, day):
+    """True when Dropbox already holds today's lists (file names end in the
+    day, e.g. '... - Wed 11-11.pdf'), so a later retry sends nothing."""
+    stamp = f" - {day:%a %m-%d}.pdf".lower()
+    return any(n.lower().endswith(stamp) for n in names)
+
+
+def run(stores, upload=False, out="mailer_out", once_a_day=False):
     now = dt.datetime.now(TZ)
     day = now.date()
+    box = None
+    if upload:
+        box = Dropbox(os.environ["DROPBOX_APP_KEY"], os.environ["DROPBOX_REFRESH_TOKEN"])
+        # GitHub can start a scheduled run hours late or not at all, so the
+        # job is tried several times each morning: only the first one sends.
+        if once_a_day and sent_today(box.files(FOLDER), day):
+            print(f"Today's lists were already sent ({day:%a %m-%d}): nothing to do.")
+            return 0
+    db = _db()
     files, lines, problems = [], [], []
     for store in stores:
         got = live_stock.latest(db, store)
@@ -177,7 +192,6 @@ def run(stores, upload=False, out="mailer_out"):
             (folder / name).write_bytes(pdf)
         print(f"Test run: nothing uploaded. {len(files)} PDFs in {folder}/")
         return 1 if problems else 0
-    box = Dropbox(os.environ["DROPBOX_APP_KEY"], os.environ["DROPBOX_REFRESH_TOKEN"])
     for old in box.files(FOLDER):            # yesterday's lists out first
         box.delete(old)
     for name, pdf, _ in files:               # All stores last
@@ -191,5 +205,7 @@ if __name__ == "__main__":
     ap.add_argument("--dropbox", action="store_true", help="upload to Dropbox (the flow emails them)")
     ap.add_argument("--store", action="append", choices=STORES, help="only this store")
     ap.add_argument("--out", default="mailer_out", help="test-run folder")
+    ap.add_argument("--once-a-day", action="store_true",
+                    help="skip when today's lists are already in Dropbox (the scheduled retries)")
     a = ap.parse_args()
-    sys.exit(run(a.store or STORES, upload=a.dropbox, out=a.out))
+    sys.exit(run(a.store or STORES, upload=a.dropbox, out=a.out, once_a_day=a.once_a_day))
