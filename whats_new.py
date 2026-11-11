@@ -48,6 +48,23 @@ UPDATES = [
         "page_label": "Open Strain Sniffer",
     },
     {
+        "id": "sniffer-honest-labels",
+        "until": dt.date(2026, 12, 7),
+        "title": "Strain Sniffer: \"Very close\" now means it",
+        "body": ("Matches are scored more strictly, so you'll see **fewer \"Very close\" and "
+                 "\"Close\"** picks. The ones you do see are worth leading with."),
+        "points": [
+            "**Very close** is rare: about 1 in 50 products would earn it by chance",
+            "**The brand counts.** A product with no terpene test of its own now uses its "
+            "**own brand's** test of that strain first",
+            "A match based on **another brand's** test of the strain never shows above **Close**, "
+            "and an estimate never above **Similar**: two brands' versions of one strain often differ",
+            "Tested products show their **total terpenes %**: higher usually means more smell and flavor",
+        ],
+        "page": "strain",
+        "page_label": "Open Strain Sniffer",
+    },
+    {
         "id": "store-required",
         "until": dt.date(2026, 11, 16),
         "highlight": True,

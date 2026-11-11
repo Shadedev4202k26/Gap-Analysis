@@ -813,12 +813,15 @@ def _brand_check(strain, brand):
 def _shelf_matches(strain, terps_text, classification="", brand="", brand_type=None):
     """'Closest on our shelves' under a strain profile."""
     ctx = studio.context()
-    target, src, typ = terp_match.strain_target(strain, terps_text, ctx["stores"], classification)
+    target, src, typ = terp_match.strain_target(strain, terps_text, ctx["stores"], classification, brand)
     typ = brand_type or typ          # a brand's own type beats how the strain usually runs
     if not target:
         return
-    note = ("from our own lab tests of its flower, pre-rolls and live concentrates" if src == "lab"
-            else "from its online profile (none of our packages of it have terpene lab results)")
+    note = (f"from our lab tests of {brand}'s own {strain.title()}" if src == "brand lab"
+            else "from our own lab tests of its flower, pre-rolls and live concentrates"
+                 + (f" (none are {brand}'s, so other brands' versions)" if brand else "") if src == "lab"
+            else "from its online profile (none of our packages of it have terpene lab results), "
+                 "so matches can only be rough")
     st.markdown(f'<div class="sec-head"><div class="sec-head-text">🎯 Closest to {strain.title()} '
                 f'on our shelves</div><div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     st.caption(f"Matched on {strain.title()}'s terpene mix, {note}."
@@ -828,6 +831,9 @@ def _shelf_matches(strain, terps_text, classification="", brand="", brand_type=N
     terp_match.results(target, "tm_strain", like=strain.title(), stores=ctx["stores"],
                        store=ctx["store"], exclude=lambda p: p["skey"] == same, ttype=typ,
                        shelf_from={"brand": brand, "strain": strain},
+                       # An online profile is a guess, and another brand's test only a pointer.
+                       best=terp_match.BEST_BAND["estimated"] if src == "profile"
+                       else terp_match.BEST_BAND["strain lab"] if brand and src == "lab" else 4,
                        ref=f"the strain {strain.title()}" + (f" ({typ})" if typ else ""))
 
 
