@@ -58,6 +58,7 @@ def _decode(payload):
 
 PHOTOS = " · photos"                   # Reports' photo row for a store: "<store> · photos"
 POPULAR = " · popular"                 # and its units-sold row: "<store> · popular"
+REBUY = " · rebuy"                     # what shoppers come back for: one row, "All stores · rebuy"
 
 
 @st.cache_data(ttl=1800, show_spinner=False, max_entries=32)
@@ -102,6 +103,15 @@ def popular(db, store):
     if not body:
         return {}, None, 0
     return body.get("units", {}), body.get("through"), body.get("days", 28)
+
+
+def rebuy(db):
+    """What shoppers come back for, all stores together, as Reports sends it
+    once a day (its rebuy.py), or None: {"names": {full product name: line},
+    "lines": {line: [shoppers, came back]}, "also": {line: [[other line, shared
+    shoppers, times more often x100], ...]}, "days", "through"}. A line is a
+    product in all its sizes. Counts only: Reports never sends who."""
+    return _fetch_extra(db, "All stores", REBUY) if db is not None else None
 
 
 def latest(db, store):
