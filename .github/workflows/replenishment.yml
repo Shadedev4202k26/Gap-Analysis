@@ -1,13 +1,18 @@
 # Every morning: each store's "Replenishment needed" PDF into Dropbox /Replenishment,
 # where Chad's Power Automate flow emails it to the store's manager (store_mailer.py).
-# GitHub can start a scheduled run hours late or skip it (busiest on the hour:
-# the 11:00 UTC run on 11/11 started at 18:26), so it is tried five times, off the
-# hour, from 10:17 to 12:17 UTC (5:17-7:17 AM Detroit in winter, 6:17-8:17 in
-# summer). --once-a-day makes every try after the first that sends do nothing,
-# and the concurrency group keeps two late tries from running at once.
+#
+# The morning start: Chad's Power Automate flow "Start replenishment lists" opens a
+# GitHub issue titled "Send replenishment lists" at 6:00 AM Detroit time every day.
+# GitHub starts issue-triggered jobs within seconds; its own timer ("schedule") ran
+# hours late or not at all every day from 11/11 to 11/16, so the timer runs below are
+# only a backup. Only an issue opened by the repo owner counts (the repo is public).
+# --once-a-day makes every run after the first one that sends do nothing, and the
+# concurrency group keeps two runs from going at once.
 name: Replenishment lists
 
 on:
+  issues:
+    types: [opened]
   schedule:
     - cron: "17 10 * * *"
     - cron: "47 10 * * *"
@@ -25,8 +30,16 @@ concurrency:
   group: replenishment
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   lists:
+    if: >
+      github.event_name != 'issues' || (
+        github.event.issue.user.login == github.repository_owner &&
+        startsWith(github.event.issue.title, 'Send replenishment lists'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -37,12 +50,26 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Make the lists
+        id: lists
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
-        run: >
-          python store_mailer.py
-          ${{ (github.event_name == 'schedule' || inputs.upload) && '--dropbox' || '' }}
-          ${{ github.event_name == 'schedule' && '--once-a-day' || '' }}
+          UPLOAD: ${{ github.event_name != 'workflow_dispatch' || inputs.upload }}
+          ONCE: ${{ github.event_name != 'workflow_dispatch' }}
+        run: |
+          args=""
+          [ "$UPLOAD" = "true" ] && args="$args --dropbox"
+          [ "$ONCE" = "true" ] && args="$args --once-a-day"
+          python store_mailer.py $args 2>&1 | grep -v "No runtime found" | tee result.txt
+          exit ${PIPESTATUS[0]}
+      # Close the morning issue with what happened, so the issue list stays empty.
+      - name: Close the morning issue
+        if: always() && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ steps.lists.outcome }}
+        run: |
+          { echo "Result: $OUTCOME"; echo '```'; cat result.txt 2>/dev/null; echo '```'; } > note.md
+          gh issue close "${{ github.event.issue.number }}" -R "${{ github.repository }}" --comment "$(cat note.md)"
