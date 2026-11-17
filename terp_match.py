@@ -1198,6 +1198,12 @@ def demand_view(stores, tz_name):
             col.caption("None yet.")
 
 
+# Fewer than this many units in a store and the product isn't listed for it:
+# a few stray units are often "sad" stock (can't be sold, may be lost), not
+# worth fixing in Dutchie.
+TYPE_CHECK_MIN_UNITS = 5
+
+
 def type_check_view(stores, brand_check):
     """Settings: products whose strain type needs fixing in Dutchie: none at
     all, or the opposite of every other brand's (indica vs sativa). A product
@@ -1206,7 +1212,8 @@ def type_check_view(stores, brand_check):
     st.markdown('<div class="cat-hdr">🧬 Strain type check</div>', unsafe_allow_html=True)
     st.caption("Fix these in Dutchie Backoffice: the type sets the shelf tag colour, the online "
                "menu and Strain Sniffer's matching. Products without a strain (accessories, most "
-               "edibles) are left out.")
+               f"edibles) are left out, and so is a store's stock under {TYPE_CHECK_MIN_UNITS} "
+               "units (often sad items).")
     db = _deps["db"]()
     usual = strain_types(tuple(stores))
     missing, clash = {}, {}
@@ -1215,6 +1222,9 @@ def type_check_view(stores, brand_check):
         if not got:
             continue
         rows = _deps["build_rows"](got[0])
+        units = (got[0].assign(_n=pd.to_numeric(got[0]["Available"], errors="coerce").fillna(0),
+                               _p=got[0]["Product"].astype(str).str.strip('="').str.strip())
+                 .groupby("_p")["_n"].sum())
         strain_of = {r["product"]: (strain_name(r["product"], r["strain"]),
                                     _norm_strain(strain_name(r["product"], r["strain"]))) for r in rows}
         for rec in got[0].to_dict("records"):
@@ -1222,32 +1232,49 @@ def type_check_view(stores, brand_check):
             strain, key = strain_of.get(name, ("", ""))
             if not key or not group_of(rec.get("Category")):
                 continue
+            n = float(units.get(name, 0))
+            if n < TYPE_CHECK_MIN_UNITS:
+                continue
             t = dutchie_type(rec.get("Strain"))
             if not t:
                 missing.setdefault(name, {"Product": name, "Category": rec.get("Category"), "Stores": set(),
-                                          "_strain": strain.title()})
+                                          "_strain": strain.title(), "_units": {}})
                 missing[name]["Stores"].add(store)
+                missing[name]["_units"][store] = n
             elif usual.get(key) and {t, usual[key]} == {"indica", "sativa"}:
                 clash.setdefault(name, {"Product": name, "In Dutchie": t.title(),
                                         "Most of this strain": usual[key].title(), "Stores": set(),
-                                        "_strain": strain.title()})
+                                        "_strain": strain.title(), "_units": {}})
                 clash[name]["Stores"].add(store)
+                clash[name]["_units"][store] = n
     a, b = st.columns(2)
     a.metric("No type in Dutchie", f"{len(missing):,}")
     b.metric("Opposite of the usual type", f"{len(clash):,}")
     where = st.selectbox("Store", ["All stores"] + list(stores), key="tm_tc_store")
 
     def table(d):
-        out = [dict(v, Stores=", ".join(sorted(v["Stores"]))) for v in d.values()
-               if where == "All stores" or where in v["Stores"]]
-        return pd.DataFrame([{k: v for k, v in r.items() if not k.startswith("_")} for r in out])
-    t1, t2 = st.tabs([f"No type ({len(missing):,})", f"Opposite type ({len(clash):,})"])
+        out = []
+        for v in d.values():
+            shown = sorted(v["Stores"]) if where == "All stores" else                 [where] if where in v["Stores"] else []
+            if shown:
+                n = sum(v["_units"][s] for s in shown)
+                out.append(dict({k: x for k, x in v.items() if not k.startswith("_")},
+                                Stores=", ".join(shown), Units=int(n) if n.is_integer() else round(n, 2)))
+        df = pd.DataFrame(out)
+        return df.sort_values("Product", key=lambda c: c.str.lower()).reset_index(drop=True)             if len(df) else df
+    no_type, opposite = table(missing), table(clash)
+    t1, t2 = st.tabs([f"No type ({len(no_type):,})", f"Opposite type ({len(opposite):,})"])
     with t1:
-        df = table(missing)
-        st.dataframe(df, hide_index=True, width="stretch") if len(df) else st.caption("None.")
+        st.dataframe(no_type, hide_index=True, width="stretch") if len(no_type) else st.caption("None.")
     with t2:
-        df = table(clash)
-        st.dataframe(df, hide_index=True, width="stretch") if len(df) else st.caption("None.")
+        st.dataframe(opposite, hide_index=True, width="stretch") if len(opposite) else st.caption("None.")
+    if len(no_type) or len(opposite):
+        st.download_button(
+            "📥 Download both lists (Excel)", _type_check_xlsx(no_type, opposite),
+            f"Strain_Type_Check_{where.replace(' ', '_')}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary", key="tm_tc_dl",
+            help="One tab per list, with an empty Done column to tick off as you fix each in Dutchie.")
     st.markdown("**Check one against its brand's own site**")
     pool = sorted(set(missing) | set(clash))
     pick = st.selectbox("Product", pool, index=None, placeholder="Pick a product from the lists above…",
@@ -1269,6 +1296,27 @@ def type_check_view(stores, brand_check):
         else:
             st.warning(f"{brand_of(pick)}'s own type for {strain} wasn't found. Check the package or COA"
                        + (f"; strain databases say {common.title()}." if common else "."))
+
+
+def _type_check_xlsx(no_type, opposite):
+    """The two lists as a workbook to work through: one sheet each, a Done
+    column, bold frozen header, columns sized to fit."""
+    from io import BytesIO
+    import pandas as pd
+    from openpyxl.styles import Font
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as xw:
+        for name, df in (("No type", no_type), ("Opposite type", opposite)):
+            df = df.assign(Done="") if len(df) else pd.DataFrame({"Product": ["None"]})
+            df.to_excel(xw, sheet_name=name, index=False)
+            ws = xw.sheets[name]
+            ws.freeze_panes = "A2"
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+            for col in ws.columns:
+                width = max(len(str(c.value or "")) for c in col)
+                ws.column_dimensions[col[0].column_letter].width = min(max(width + 2, 8), 70)
+    return buf.getvalue()
 
 
 def match_section(store, stores, mode):
