@@ -24,6 +24,19 @@ STORE_TZ = ZoneInfo("America/Detroit")
 
 UPDATES = [
     {
+        "id": "bubbles-back-on",
+        "until": dt.date(2026, 12, 3),
+        "title": "Sale bubbles are back on every time you open Shelf tags",
+        "body": ("If someone turned **Sale bubbles** off, tags printed with no bubble at all, "
+                 "even the bulk ones. It now switches itself back on."),
+        "points": [
+            "**Opening Shelf tags or Custom tags** puts Sale bubbles back on",
+            "**Starting a new batch** does too",
+            "**A yellow warning** shows on every step while they're off, so you can't miss it",
+            "Want a tag with no bubble? Switch it off, and check the warning before you print",
+        ],
+    },
+    {
         "id": "sell-more",
         "until": dt.date(2026, 12, 14),
         "highlight": True,
