@@ -1936,7 +1936,7 @@ def render_dead_stock():
         cat_col = next((c for c in df.columns if c.strip().lower() == "category"), None)
         keep = stock_filter.bar(
             "aging", df["Product"].astype(str).str.strip('="').tolist(),
-            df[cat_col].astype(str).tolist() if cat_col else None)
+            df[cat_col].astype(str).tolist() if cat_col else None, multi_cats=True)
         df = df[keep]
 
     # Only packages at least this old are listed: a couple of months on the shelf
