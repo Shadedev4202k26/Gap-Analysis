@@ -24,6 +24,18 @@ STORE_TZ = ZoneInfo("America/Detroit")
 
 UPDATES = [
     {
+        "id": "aging-categories",
+        "until": dt.date(2026, 12, 3),
+        "title": "Aging stock: pick the categories, or leave some out",
+        "body": ("Two new lists at the top of **Aging stock** let you run the report on "
+                 "everything **except** a few categories, or on only a few."),
+        "points": [
+            "**Leave out these categories**: pick Accessories, Apparel or any others to skip",
+            "**Only these categories**: pick one or more to see just those; empty means all",
+            "The counts, the list and the **PDF** all follow your picks",
+        ],
+    },
+    {
         "id": "sell-more",
         "until": dt.date(2026, 12, 14),
         "highlight": True,
