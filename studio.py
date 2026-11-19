@@ -891,7 +891,24 @@ def _setting(where, key, default, label, help_, disabled=False):
 MIX_HELP = ("Put sativa, hybrid and indica on the same sheet instead of a page "
             "per type. Saves paper; every tag keeps its own colour.")
 BUBBLES_HELP = ("Off prints the tags with no bubble at all: no weekly sale, no standing "
-                "BUY 5 / BUY 10G deal, no deli shelf.")
+                "BUY 5 / BUY 10G deal, no deli shelf. It turns back on every time Shelf "
+                "tags is opened or a new batch is started.")
+
+
+def _bubbles_on():
+    """Sale bubbles back on, the toggle too. A store reported bulk bubbles not
+    printing: the switch had been left off earlier in the day, and it kept that
+    for the rest of the visit."""
+    st.session_state["zb_bubbles"] = True
+    st.session_state.pop("zb_bubbles_w", None)   # the toggle redraws from zb_bubbles
+
+
+def _bubbles_warning():
+    if not st.session_state.get("zb_bubbles", True):
+        st.warning("**Sale bubbles are off.** These tags print with no bubble at all: no "
+                   "weekly sale, no bulk deal (BUY 5 / BUY 10G), no deli shelf. Switch "
+                   "**Sale bubbles** back on unless that's what you want.",
+                   icon=":material/warning:")
 CHANGED_HELP = ("Show only the tags whose deal is new, different or ended — the ones "
                 "on the shelf that are now wrong.")
 
@@ -908,6 +925,7 @@ def _step2_options(ctx, changed):
     _setting(o1, "zb_mix", False, "Mix types on one page", MIX_HELP,
              disabled=_mix() == SPLIT)
     _setting(o2, "zb_bubbles", True, "Sale bubbles", BUBBLES_HELP)
+    _bubbles_warning()
     if changed:
         ss["zb_changed_view"] = ss.get("zb_filter") == "Changed"
 
@@ -976,6 +994,7 @@ def _step1(ctx):
         _setting(o3, "zb_changed_only", False,
                  f"Only what changed since {deal_store.week_label(ctx['prev_week'])}",
                  CHANGED_HELP)
+    _bubbles_warning()
 
     ready = True
     if src == "live":
@@ -1404,6 +1423,7 @@ def _step3(ctx):
         f'<div><b>{n}</b><i>{esc(lab)}</i></div>' for n, lab in tiles) + '</div>',
         unsafe_allow_html=True)
 
+    _bubbles_warning()
     payload = json.dumps([_clean(r) for r in chosen], sort_keys=True, default=str)
     try:
         with st.spinner(f"Building {tags_on(len(chosen), mix)} "
@@ -1430,6 +1450,7 @@ def _step3(ctx):
 
     def restart():
         ss.update(zb_sel={}, zb_edit={}, zb_grid_v=ss.get("zb_grid_v", 0) + 1)
+        _bubbles_on()
         _go(1)
     _footer("Back to picking", lambda: _go(2), f"{name}", "Start a new batch", restart, key="3")
 
@@ -1711,8 +1732,19 @@ def whats_new_popup():
 # Typed tags live on Custom tags and everything else on Shelf tags, so the
 # menu lights up the page that is on screen. Arriving on one page in the
 # other's mode switches the mode over.
+def _fresh_visit():
+    """Sale bubbles go back on when Shelf tags or Custom tags is opened from
+    another page (the run before this one wasn't a tag page)."""
+    ss = st.session_state
+    run = ss.get("_zb_run_id", 0)
+    if ss.get("zb_tag_run") != run - 1:
+        _bubbles_on()
+    ss["zb_tag_run"] = run
+
+
 def page_custom():
     ss = st.session_state
+    _fresh_visit()
     if ss.get("zb_src") != "hand":
         ss.setdefault("zb_fmt", "hook")
         ss.update(zb_src="hand", zb_step=2)
@@ -1722,6 +1754,7 @@ def page_custom():
 
 def page_studio():
     ss = st.session_state
+    _fresh_visit()
     if ss.get("zb_src") == "hand":
         ss.update(zb_src=default_source(context()), zb_step=1)
     with st.container(key="zbstudio"):
