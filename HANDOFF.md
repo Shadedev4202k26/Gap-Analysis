@@ -1,83 +1,107 @@
-# Where this is up to — 2026-10-22
+# Where this is up to — 2026-11-19
 
 `README.md` covers setup (macOS and Windows) and how the app works. This is the
-state of play. Work moved from the Mac to the Windows laptop on 2026-09-29.
+state of play. The live app is `main` at https://ziggyz.streamlit.app.
 
 ## Everything is merged
 
-PRs #1–#17 are all in `main`, which is what the eight stores run at
-https://ziggyz.streamlit.app:
+Every PR up to #84 is in `main`; nothing is open. (Numbers 78, 79, 81–83 are
+the morning GitHub issues Power Automate opens, not PRs.) Since the last
+handoff (#17, 2026-10-22):
 
-- #1–#5 — deals correctness (deli shelf badges, family matching, 28G), week
-  picker on the current week, fixed outdoor price on hook tags, the new
-  navigation / Home / three-step Shelf tags flow, the Smilez × Ziggy lockup
-- #6 — Windows: pdftk-java, portable date formatting, secrets.toml untracked
-- #7 — break tracker: managers sign in by name (adding themselves the first
-  time), every Admin change goes to an append-only history in Supabase,
-  reviewed in Settings; one store picker at the top of the sidebar for the
-  whole app, kept in the URL (`?store=Wayne`)
-- #8 — Mix types / Sale bubbles / Only what changed also on Shelf tags' Pick
-  tags step; the pinned action bar kept clear of Streamlit Cloud's corner
-- #9 — Melted Diamonds is a brand-line descriptor, like Live Resin
-- #10 — **Request support** under Settings in the sidebar: a window that sends
-  a request into ZiggyBot (read under Settings → Support requests, marked done
-  or reopened there) or opens a pre-filled email to chad@shopsmilez.com
-- #11 — deals stay in their sheet section: infused vs non-infused prerolls and
-  510 vs disposable carts are separate families, so "10/$7.50 OR 70/$49
-  Dragonfly" no longer prints on Dragonfly's $2.25 infused prerolls
-- #12 — from a store's report: custom tags no longer guess a deal (a typed
-  "MAGIC" preroll tag got Magic's 5/$22 cart deal); the deals switch off now
-  means no bubble at all, standing deals and shelf badges included;
-  "(Excludes Ratio)" and other exclusions are honoured; and the 10/5 sheet's
-  new Brands of the Week layout is read, so they cover the whole brand again
-- #13 — deals sheets: strikethrough in the .xlsx takes a line or a brand off a
-  deal, only the workbook's first tab is read, and the deals uploaders take
-  .xlsx only from 2026-10-21 (every other upload stays CSV)
-- #14 — the app reloads its own modules when their file changes, after #13's
-  deploy left the live Hook and Preroll pages failing with AttributeError
-- #15, #16 — Ziggy runs across the top bar and eats the Smilez logo in five
-  bites, then it grows back; the round avatar is a 48px crop of the artwork.
-  #16 made the frame strips load on Streamlit Cloud (relative path)
-- #17 — Ziggy hides at the same width as the logo (768px); a phone held
-  sideways saw the logo eaten with no Ziggy
-
-There is no work in flight, and `main` is the only branch: each branch is
-deleted once its PR merges.
+- **Store first (#24, #25):** nothing opens until a store is picked; the store
+  rides in the URL (`?store=Wayne`), so each tablet bookmarks its own link
+  (Settings → Store links).
+- **Shelf tags is the only tag maker:** split tags, two strains per preroll tag
+  (#27); the classic Hook / Preroll pages are retired and their old links open
+  Shelf tags (#29); Custom tags is its own page with Sale price and Bubble
+  columns (#26, #30, #32).
+- **Sale bubbles turn themselves back on (#84):** whenever Shelf tags or Custom
+  tags is opened from another page, and on *Start a new batch*, with a yellow
+  warning on every step while they are off. A store's bulk bubbles "stopped
+  printing" because the switch had been left off all day.
+- **Live stock (#36):** Smilez Reports pushes each store's Dutchie stock to
+  Supabase every ~15 min (`live_stock.py`); Shelf tags, Inventory balance,
+  Aging stock and Strain Sniffer read it. CSV upload still works as a backup.
+- **Deals sheet from Smilez Reports (#40):** the weekly sheet uploaded in
+  Reports reaches ZiggyBot by itself; Brands of the Month and brand nicknames
+  are read (#34, #35, #37).
+- **Aging stock:** one line per Metrc package (#19), an age slider starting at
+  90 days (#42).
+- **Inventory balance is now a Missing Stock Check (#51–#60):** only zeros,
+  products with nothing on the selling floor while a vault has some, as a
+  short printable list with "how to work it" steps. Rules live in
+  `balance_report.py`:
+  - left out to start: bulk deli flower, accessories, apparel, promo,
+    vaporizer batteries, retired SKUs, the Red/White/Blue tiers, Secret Stash
+    (and its infused flower), Outdoor Flower, -Infused Flower, -Infused Shake.
+    Plain "Shake" is still checked.
+  - every store compares Sales Floor + Vault; Wayne also Curbside Room +
+    Upstairs Vault.
+  - a minimum-stock slider (all rooms together): Wayne starts at 20, others at
+    0; every store can slide to 0.
+- **Daily "Replenishment needed" emails (#73, #75, #77):** `store_mailer.py`
+  builds the same lists every morning in GitHub Actions
+  (`.github/workflows/replenishment.yml`) and drops one PDF per store, plus an
+  All stores PDF, into Dropbox `/Replenishment`. Chad's Power Automate flow
+  emails each file (addresses live only in the flow, never in this public
+  repo). Start: a second flow opens a GitHub issue "Send replenishment lists"
+  at 6:00, 7:00 and 8:00 AM Eastern (the later two are backups; the flow
+  skipped its very first 6:00 run on 11/17). GitHub's own timer ran hours
+  late 11/11–11/16, so its runs are only a further backup, and `--once-a-day`
+  makes every run after the first send do nothing. On 11/18 and 11/19 the
+  6:00 run sent and the rest did nothing, as intended. Goal: managers have
+  their list by 9 AM.
+- **Strain lookup / Strain Sniffer (#49, #62–#76):** the store's own Dutchie
+  listings first; matching customers to products on our shelves by terpenes,
+  with photos, "Popular here", potency filter, an AI double-check, and a
+  demand report in Settings.
+- **Strain type check (#72, #80)** in Settings: products with no type in
+  Dutchie or the opposite of the usual type, with an Excel download to work
+  through (a Done column). A store's stock under 5 units isn't listed: a few
+  stray units are often "sad" items (can't be sold), not worth fixing. The
+  catalog manager uses this and Strain lookup before entering products in
+  Dutchie, so accuracy comes first.
+- **Usage (#22, #23, #31, #46, #47, #61)** in Settings: a heat map of which
+  stores use which tools. **Downloads went uncounted from 2026-11-02 to
+  2026-11-09** (see "Things that cost time to learn"), so Shelf tags showed 0
+  jobs for that week; those counts are lost. Old classic-page jobs now count
+  under Shelf tags. Two Corunna "Downloaded Missing_Stock" lines on 11-09 are
+  test clicks.
+- **What's new pop-up (#20, #29):** opens once per visit on every page except
+  Settings; entries retire themselves on their `until` date (`whats_new.py`).
 
 ## Waiting on people, not code
 
-- **Upload the 10-20 workbook.** The stored Oct 19 week is the Oct 16 CSV,
-  without the deals team's 10-20 out-of-stock removals or strikes. Upload
-  `10-19-26 Weekly Deals-Smilez (updated 10-20).xlsx` through a deals
-  uploader; it replaces that week.
-- **Tell the store that reported the 10-21 error** the Hook and Preroll pages
-  work again (refresh), and that deals sheets are .xlsx-only from today.
-- **Tell whoever uploads the weekly sheet** it has to be the Excel workbook
-  from 2026-10-21 — a CSV is refused, and saving one drops the strikethrough.
+- **Shake and bulk bubbles:** Dutchie's plain "Shake" category matches no
+  standing bulk deal, so shake products never get a bulk bubble (≈40–45 at
+  Quincy and Burton). Chad hasn't said yet whether Shake should get BUY 5 /
+  15% OFF like flower (`deals.BULK_DEALS`).
+- **What's new note for #84** (bubbles back on each visit) was offered, not
+  written yet.
+- **Not confirmed done, from October:** a real manager's first break-tracker
+  sign-in; the first live support request; each store tablet bookmarking its
+  store link. Check before repeating them.
 
-- **Reprint the tags #11 and #12 corrected.** Infused prerolls carrying a
-  brand's non-infused deal (Dragonfly, Seed Junky, Goldkine, Glacier,
-  Traphouse, Primo); disposables carrying a 510 deal (Superfire, FLY, Mitten,
-  Magic, Platinum); custom Magic preroll tags showing 5/$22; The 8th's CBN
-  ratio gummies; and anything printed with the deals switch off that came out
-  with bubbles. *Only what changed* won't find them — the sheet didn't change —
-  so filter Pick tags by category.
-- **Reply to the field report** of 2026-10-02 (Magic 5/$22, switch won't turn
-  off, deals where there are none) — all fixed in #11 and #12; ask for a
-  product name or screenshot through Request support if another appears.
+## Small clean-ups
 
-- **A real manager's first sign-in.** Never done against the live tables (it
-  writes a permanent row). Have one manager open Store tools → Break & Lunch
-  Tracker → Admin and add their name, then check Settings → Break & lunch
-  tracker shows the name and the sign-in.
-- **Each store's tablet:** pick the store in the sidebar, then bookmark it, so
-  it always opens on that store. Any tablet running a *downloaded* copy of the
-  break tracker still has the old PIN version — download a fresh one from
-  Store tools.
-- **The first support request.** Also never sent against the live table (it
-  can be marked done but not deleted). On the live app: Request support →
-  send one → Settings → Support requests → Mark done. Try *Email Chad instead*
-  once on a store device to be sure it opens a mail app there.
+- Merged remote branches still on GitHub: `bubbles-default-on`,
+  `replenishment-morning-trigger`, `replenishment-retries`,
+  `sniffer-come-back`, `sniffer-sharper-match`, `store-zero-report-mailer`.
+  Safe to delete once no other session is working in them.
+- 14 calls to the deprecated `use_container_width` remain in `app.py` and
+  `studio.py`; new code uses `width="stretch"`.
+
+## How changes ship
+
+1. Branch from an up-to-date `main`.
+2. `gh auth switch -u Shadedev4202k26` (SmilezMedia can only read this repo),
+   push, `gh pr create`.
+3. Merge only when Chad says "merge it", then delete the branch and
+   `gh auth switch -u SmilezMedia`.
+4. Chad usually asks for a What's new entry for anything stores will notice.
+5. The live app picks up a merge in about 4 minutes. Load a page that uses the
+   new code before calling it done.
 
 ## First thing on a new machine
 
@@ -153,16 +177,11 @@ wrong:
   browser. The break tracker's sign-in and history are already in Supabase
   (README → Break & lunch tracker); the roster itself is still per tablet, and
   its Break tab's Start / Back are not recorded.
-- **Streamlit's `use_container_width` is deprecated** and logs a warning on
-  every use; new code uses `width="stretch"`. The old calls will break on a
-  future Streamlit upgrade.
 - **Being told about new support requests.** Today they wait in Settings until
   someone looks. An email per request needs an email-sending service (none is
   set up); a count on the Settings link would be the cheap version.
 - **A draft flag for a stored week.** A sheet still being written becomes the
   printing week automatically at midnight on its start date.
-- **Deep links to the default page 404.** Streamlit serves the default page at
-  `/` and does not route its own `url_path`.
 - `video.mp4` and `image.png` are unreferenced since the hero became a bar —
   4.3MB carried in every clone and deploy.
 
@@ -180,6 +199,16 @@ wrong:
   a stale module: if it ever recurs, **Manage app → ⋮ → Reboot app** clears it,
   and any new local module belongs in that function's list. After a merge,
   load one page that uses the new code on the live app before calling it done.
+- **Never wrap a Streamlit function only once.** `usage.track_downloads`
+  wraps `st.download_button` to count downloads. A deploy reloads our modules
+  but keeps `st`, so a wrapper made once (guarded by a flag) kept calling the
+  old copy of `usage.log()`, which failed silently: no download was counted
+  for a week, and only a full restart would have fixed it. It is now wrapped
+  on every run around Streamlit's own button (`_zb_original`). Test this kind
+  of thing by editing the file while the app runs, not just on a fresh start.
+- **A session setting outlives the moment.** Store tablets keep ZiggyBot open
+  all day, so a switch turned off once stays off for every later batch. Reset
+  anything risky when its page is opened (`studio._fresh_visit`).
 - **One sheet section, one family.** `deals.SECTION_FAMILY` and
   `CATEGORY_FAMILY` must split wherever the sheet splits, or a deal crosses
   into the other half of a brand that sells both — that was #11, where both
