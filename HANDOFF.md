@@ -112,8 +112,8 @@ handoff (#17, 2026-10-22):
   15% OFF like flower (`deals.BULK_DEALS`).
 - **Transfer check has never been tried at a store with a real scanner.** Run
   one real transfer (Jacob or a manager), then write its What's new entry.
-  Check the scanner sends Enter after the tag; if it doesn't, scans won't
-  submit (see Open work).
+  Scanners that send no Enter, or send stored scans in a burst, are handled
+  (see "Things that cost time"); worth confirming with the real device.
 - **Jacob's case rules.** His check-in sheet shows "25 (1 Case)" / "64 (2
   Cases)" and a Curb / Sales split per product. The names tab shows only
   Metrc's quantity; case sizes need his rules before they can be built.
@@ -226,10 +226,11 @@ wrong:
 - **Being told about new support requests.** Today they wait in Settings until
   someone looks. An email per request needs an email-sending service (none is
   set up); a count on the Settings link would be the cheap version.
-- **Scanners that don't send Enter.** A browser can't see a connected scanner;
-  most act as a keyboard and press Enter after the tag. One set to send Tab or
-  nothing won't submit. Submitting automatically once a full 24-character tag
-  has arrived would cover it (not built).
+- **Scanner trial.** A browser can't see a connected scanner; most act as a
+  keyboard. No Enter, Tab instead of Enter, and fast bursts of stored scans
+  are handled and were tested with real key presses, but not with a real
+  scanner. A scanner in a different "mode" (serial / POS rather than keyboard)
+  would not type into the page at all.
 - **Case counts and the Curb / Sales split** on the Dutchie names tab (needs
   Jacob's rules, above).
 - **A draft flag for a stored week.** A sheet still being written becomes the
@@ -376,16 +377,26 @@ wrong:
   "Package" column, never "Source Package". Check a new template against the
   heading count (`N. Package | Accepted` or `| Shipped`). Fixes for font splits
   (". 7 G", "Pre- Roll") are in the same function.
-- **The scan box guard lives in the page, not in the iframe.** Streamlit
-  replaces `components.html`'s frame on every rerun, and code created inside a
-  dead frame can't be called (Firefox: "dead object"), so `GUARD_JS` is put
-  into the parent document as a `<script id="ts-guard">` and each new copy
-  removes the old one's listeners. A key pressed outside a text box first
-  moves the cursor into the scan box (so that key still lands there), and every
-  half second the cursor is put back if it drifted. It does nothing while the
-  box is hidden (the Dutchie names tab). To test it, send real key presses
-  (`computer key "1 A 4 …"`): the browser tool's `type` inserts text without
-  key events and can't trigger it.
+- **The scan box is run by a script in the page, not by Streamlit's text box.**
+  A scanner is a very fast keyboard, and Streamlit's box empties itself a
+  moment after each send, so a tag typed in that moment was lost or sent twice
+  (a quick burst of ten tags with Enter gave mangled and doubled entries).
+  `GUARD_JS` in `transfer_scan.py` therefore catches the keys itself: they go
+  into a buffer kept in the script (the box only mirrors it), Enter or a 250 ms
+  pause once the buffer holds whole 24-character tags (so no Enter needed)
+  sends everything in one piece: the box is set to those tags and Check is
+  pressed, and `split_scans` cuts several tags apart. Hand typing (last digits,
+  Backspace, Escape, paste) still works; other text boxes and other tabs are
+  left alone. Two Streamlit details: the form's first button is the "?" help
+  icon, so the submit button is found by `data-testid` ending `FormSubmit`; and
+  the script is put into the parent document as `<script id="ts-guard">`,
+  because Streamlit replaces `components.html`'s frame on every rerun and code
+  from a dead frame can't be called (Firefox: "dead object"). To test it, send
+  real key presses (`computer key "1 A 4 …"`, at most 100 keys per call; use
+  `browser_batch` for more): the browser tool's `type` inserts text without key
+  events and can't trigger it. Tested: no Enter, Enter, three tags with no
+  separator, ten tags with Enter in a row, half a tag then the rest, click away
+  then scan, Backspace, and typing in the paste box.
 - **Don't use the server's clock for times people read.** Streamlit Cloud
   servers are expected to keep UTC (not checked online), so `time.strftime`
   would show scan times hours off there while looking right on the laptop. It
