@@ -412,11 +412,28 @@ wrong:
   shown as Check it.
 - **The Supabase free plan's limits are per organisation.** On 2026-11-23 the
   SmilezMedia org showed "Exceeding usage limits": 1.068 GB of the 1 GB
-  *storage*, all of it Smilez Studio's `exports` bucket in the separate "TV
-  Deal Builder" project (this app stores no files; its database is under 10% of
-  its limit). Studio's own clean-up was running but kept 30 days of exports,
-  which is itself over 1 GB; it now keeps 14 (Studio repo, `Media-Tools` #1).
-  Restrictions on the org could hit this app too.
+  *storage*. It was all Smilez Studio's, in the separate "TV Deal Builder"
+  project (this app stores no files; its database is under 10% of its limit).
+  Studio's own clean-up of its `exports` bucket was running but kept 30 days of
+  exports, which is itself about 1 GB; it now keeps 14 (Studio repo,
+  `Media-Tools` #1, merged the same day; the clean-up ran at 12:47 PM and
+  removed 144 files). Restrictions on the org could hit this app too.
+  - **The Usage page lags and can't be trusted for "did it work".** It still
+    said 1.066 GB (107%) more than an hour after the clean-up. Ask the database:
+    in the TV Deal Builder project's SQL editor,
+    `select bucket_id, count(*) as files, round(sum((metadata->>'size')::bigint)
+    / 1048576.0) as mb, min(created_at)::date as oldest, max(created_at)::date
+    as newest from storage.objects group by bucket_id order by mb desc;`
+  - **Measured 2026-11-23 afternoon, after the clean-up:** `assets` (logos and
+    artwork) 344 files, 385 MB, from 2026-09-17; `exports` 175 files, 330 MB,
+    oldest created 2026-11-06. About 715 MB, roughly 70% of the 1 GB. The clean-up
+    only touches `exports`. (`exports` held 175 files while Studio's Files page
+    listed 125; the other 50 may have no record; not looked into.)
+  - **Watch `assets`.** It grew about 40 MB a week from nothing in nine weeks.
+    At that pace the org is back near 1 GB around **mid-January 2027**: a rough
+    guess from one number, so run the query again at the end of December. Options
+    then: delete unused artwork, have Studio clear unused assets, or Pro (~$25 a
+    month, Chad's call).
 - **Test rows can't be deleted by the app.** `transfer_names` and
   `transfer_scans` follow the support table's rule (add and update, never
   delete), so a real test write leaves a row; delete it in the Supabase SQL
