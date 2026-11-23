@@ -27,14 +27,15 @@ from collections import Counter, defaultdict
 _GENERIC = {
     "pre", "roll", "rolls", "preroll", "prerolls", "infused", "infusion", "sativa", "indica",
     "hybrid", "cart", "carts", "cartridge", "disposable", "stylus", "pk", "pack", "ct", "count",
-    "gummies", "gummy", "cones", "live", "resin", "rosin", "hash", "each", "ea", "concentrate",
+    "gummies", "gummy", "chews", "chew", "bag", "bags", "pouch", "rec", "med", "id", "cones", "live", "resin", "rosin", "hash", "each", "ea", "concentrate",
     "vape", "medicated", "mylar", "case", "eighth", "baby", "tarantula", "tarantulas",
+    "blunt", "switch", "edible", "edibles", "flower", "bud", "buds",
     "the", "and", "n", "of", "x", "mg", "g", "oz", "ml", "dose", "thc", "unit", "units",
 }
 _STRAIN_TYPES = {"sativa", "indica", "hybrid"}
 _TYPE_WORDS = {"cones", "gummies", "gummy", "stylus", "cart", "disposable", "syrup", "blunt", "rosin",
                "resin", "live", "hash", "infused", "preroll", "prerolls", "diamond", "sugar", "tarantula",
-               "tarantulas", "badder", "sauce", "bag", "jar", "roll", "pre"}
+               "tarantulas", "badder", "sauce", "bag", "jar", "roll", "pre", "switch", "liquid", "bubble", "glass", "cones"}
 _SIZE = re.compile(r"(\d*\.?\d+)\s*(mg|g|oz|ml)\b", re.I)
 _PACK = re.compile(r"(\d+)\s*(?:pk|pack|ct|count)\b", re.I)
 _PACK_X = re.compile(r"\b(\d+)\s*x\s*\d*\.?\d+\s*(?:g|mg)\b", re.I)    # "0.5g x 5"
@@ -74,6 +75,8 @@ def size_of(text, divide=True):
     packs = [int(p) for p in _PACK.findall(t)]
     grams = [n for n, u in sizes if u == "g"]
     if grams and packs and packs[0] > 1:
+        if max(grams) <= 1.5:                 # ".7G 5 Pack": already per unit
+            return f"{_num(max(grams))}G"
         return f"{_num(round(max(grams) / packs[0], 3))}G"
     n, u = max(sizes) if all(x[1] == sizes[0][1] for x in sizes) else sizes[0]
     return f"{_num(n)}{u.upper()}"
@@ -114,6 +117,9 @@ def strain_tokens(text, brand="", joiners=False):
     t = str(text).replace("&", " & ")
     t = _SIZE.sub(" ", t)
     t = _PACK.sub(" ", t)
+    # Product-type phrases, not part of a strain name ("Bubble Burst" is, "Bubble Hash" isn't).
+    t = re.sub(r"\b(bubble hash|liquid diamond|glass tip|hash rosin|live rosin|live resin)\b", " ", t,
+               flags=re.I)
     t = re.sub(r"\b\d+\s*x\b", " ", t, flags=re.I)
     t = re.sub(r"\(\s*\)", " ", t)
     b = set(_tokens(brand))
@@ -123,6 +129,9 @@ def strain_tokens(text, brand="", joiners=False):
         lw = w.lower()
         if joiners and lw in ("and", "&", "n"):
             out.append("&")
+            continue
+        if joiners and lw == "x" and out:          # "Blue Dream x Blueberry Haze"
+            out.append("x")
             continue
         if lw in b or lw in _GENERIC or lw in _STRAIN_TYPES or re.fullmatch(r"[\d.]+", lw) or lw == "&":
             continue
@@ -215,17 +224,35 @@ class Catalog:
                 continue
             if _fuzzy_set_eq(st, strain_tokens(p["strain"], brand)):
                 fits.append(p)
+        # "Blue Razz Dream (11 ct Bags)": Dutchie may hold the plain product and an
+        # "11pc" one. If the manifest counts pieces and such a variant exists, both fit.
+        if pack:
+            for p in self.by_brand[_key(brand)]:
+                if p in fits or p["size"] != size:
+                    continue
+                toks = strain_tokens(p["strain"], brand)
+                bare = [t for t in toks if not re.fullmatch(rf"{pack}\s*(pc|pcs|ct|pk|pack)", t.lower())]
+                if len(bare) < len(toks) and _fuzzy_set_eq(st, bare):
+                    fits.append(p)
         return brand, fits
 
     def descriptor(self, brand, size, pack, fl, item=""):
         """How this brand writes what comes after the size, or ''."""
         pool = self.by_brand.get(_key(brand), [])
-        item_words = set(_tokens(str(item).replace("-", " ")))
+        stem = lambda w: w[:-1] if len(w) > 3 and w.endswith("s") else w      # prerolls = preroll
+        item_words = {stem(w) for w in _tokens(str(item).replace("-", " "))}
+        type_words = {stem(w) for w in _TYPE_WORDS}
         ranked = []
         for p in pool:
-            shared = len(item_words & set(_tokens(p["tail"])) & _TYPE_WORDS)
-            score = (p["size"] == size) * 4 + (p["flags"] == fl) * 3 + (p["flags"][0] == fl[0]) \
-                + (p["pack"] == pack) * 2 + (p["flags"][1] == fl[1]) * 2 + shared * 2
+            shared = len(item_words & {stem(w) for w in _tokens(p["tail"])} & type_words)
+            # A manifest that doesn't say what the product is ("Gas Face 3.5g") fits any
+            # kind, so the brand's most common wording decides, not a stray bare "3.5G".
+            if fl[1] and p["flags"][1] and fl[1] != p["flags"][1]:
+                continue
+            kind_known = bool(fl[1]) and bool(p["flags"][1])
+            kind_ok = (not kind_known) or fl[1] == p["flags"][1]
+            score = (p["size"] == size) * 4 + (kind_known and p["flags"] == fl) * 3 \
+                + (p["flags"][0] == fl[0]) + (p["pack"] == pack) * 2 + kind_ok * 2 + shared * 5
             if score >= 5:
                 rest = re.sub(r"^\s*\.?\d[\d.]*\s*(?:mg|g|oz|ml)\b\s*", "", p["tail"], flags=re.I)
                 ranked.append((score, rest))
@@ -234,32 +261,39 @@ class Catalog:
         top = max(s for s, _ in ranked)
         return Counter(r for s, r in ranked if s == top).most_common(1)[0][0]
 
-    def draft(self, item):
+    def draft(self, item, unit=""):
         """A built name for an item with no existing product, and the closest names."""
         brand = self.brand_in(item)
         if not brand:
             return "", []
         size, pack, fl = size_of(item), pack_of(item), flags(item)
         words = strain_tokens(item, brand, joiners=True)
-        while words and words[0] == "&":
+        while words and words[0] in ("&", "x"):
             words = words[1:]
-        while words and words[-1] == "&":
+        while words and words[-1] in ("&", "x"):
             words = words[:-1]
         strain = self._spell(words, brand)
+        # Loose flower comes in by weight (453 g, 2 lb), not by the piece, and is entered
+        # as BULK | Brand | Strain.
+        if str(unit).lower() in ("g", "lb", "lbs", "oz", "kg") and not size \
+                and (fl[1] in ("flower", "") or "flower" in str(item).lower()):
+            return f"BULK | {brand} | {strain}", []
         desc = self.descriptor(brand, size, pack, fl, item)
         if not desc:
-            base = {"preroll": "Preroll", "vape": "Cart", "edible": "", "concentrate": "", "flower": "Bag"}.get(fl[1], "")
+            base = {"preroll": "Preroll", "vape": "Cart", "edible": "Edible", "concentrate": "", "flower": "Bag"}.get(fl[1], "")
             if fl[0] and fl[1] == "preroll":
                 base = "Infused Preroll"
             desc = base + (f" {pack}PK" if pack and fl[1] == "preroll" and pack > 5 else "")
-        name = f"{brand} | {strain} | {(size + ' ' + desc).strip()}".replace("  ", " ")
+        has_size = bool(size) and re.search(r"(?<![\d.])" + re.escape(size) + r"\b", desc, re.I)
+        tail = desc if has_size else (size + " " + desc).strip()
+        name = f"{brand} | {strain} | {tail}".replace("  ", " ")
         # Same brand, same strain: the products people will recognise.
         near = [p["name"] for p in self.by_brand[_key(brand)]
                 if strain and _fuzzy_set_eq(strain_tokens(strain, brand), strain_tokens(p["strain"], brand))][:3]
         return name, near
 
 
-def suggest(item, catalog, memory=None):
+def suggest(item, catalog, memory=None, unit=""):
     """{'name', 'status', 'note', 'near'} for one manifest item.
 
     `memory` maps key(item) -> the Dutchie name somebody approved for that exact
@@ -273,7 +307,7 @@ def suggest(item, catalog, memory=None):
     if len(fits) > 1:
         return {"name": fits[0]["name"], "status": "suggested", "near": [p["name"] for p in fits[:3]],
                 "note": "More than one Dutchie product fits. Pick the right one."}
-    name, near = catalog.draft(item)
+    name, near = catalog.draft(item, unit)
     if name:
         return {"name": name, "status": "suggested", "near": near,
                 "note": "Built from how this brand's other products are named. Check it."}

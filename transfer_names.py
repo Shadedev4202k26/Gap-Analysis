@@ -88,7 +88,7 @@ def render(rows, sig):
         st.caption("Approved names can't be remembered yet (the names table isn't set up), "
                    "so each transfer starts fresh. See README → Transfer names.")
 
-    sug = [naming.suggest(g["item"], catalog, memory) for g in groups]
+    sug = [naming.suggest(g["item"], catalog, memory, g["unit"]) for g in groups]
     table = pd.DataFrame({
         "Approved": [s["status"] == "exact" for s in sug],
         "Metrc item": [g["item"] for g in groups],
