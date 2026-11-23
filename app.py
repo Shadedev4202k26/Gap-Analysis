@@ -65,6 +65,7 @@ import live_stock
 import stock_filter
 from types import SimpleNamespace
 import support
+import transfer_names
 import transfer_scan
 import usage
 import ziggy
@@ -98,7 +99,7 @@ def _fresh_local_modules():
     import importlib
     import sys
     for name in ("live_stock", "stock_filter", "aging", "deals", "deal_store", "sale_badges", "preroll_tags", "combine_tags",
-                 "build_dual", "build_split", "break_store", "transfer_scan", "support", "shell", "ziggy", "whats_new", "usage", "studio",
+                 "build_dual", "build_split", "break_store", "naming", "transfer_names", "transfer_scan", "support", "shell", "ziggy", "whats_new", "usage", "studio",
                  "terp_match", "crossword_data", "crossword_gen", "hangman_data"):
         mod = sys.modules.get(name)
         path = getattr(mod, "__file__", None)
@@ -3327,6 +3328,7 @@ studio.configure(
            "inventory": _by_path["inventory"], "strain": _by_path["strain"],
            "tools": _by_path["store-tools"], "settings": _by_path["settings"]})
 studio.new_run()
+transfer_names.configure(context=studio.context)
 terp_match.configure(build_rows=build_tag_rows, fix_prices=fix_outdoor_prices,
                      groq_key=st.secrets.get("GROQ_API_KEY", ""), groq_model=GROQ_MODEL,
                      db=init_supabase)

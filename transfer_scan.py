@@ -19,6 +19,8 @@ from io import BytesIO
 
 import pandas as pd
 
+import transfer_names
+
 # Digit, letter, then 22 more letters/digits. Looked for inside a cell, so
 # Dutchie-style ="1A40..." wrapping and stray spaces don't matter.
 TAG_RE = re.compile(r"(?<![0-9A-Za-z])[0-9][A-Za-z][0-9A-Za-z]{22}(?![0-9A-Za-z])")
@@ -339,7 +341,19 @@ def render():
         _restart(ss)
     ss["ts_rows"] = [r for r in ss["ts_all"] if pick is None or r["manifest"] == pick]
 
-    rows, scanned, extras = ss["ts_rows"], ss["ts_scanned"], ss["ts_extras"]
+    tab_scan, tab_names = st.tabs(["📦  Scan tags", "🏷️  Dutchie names"])
+    with tab_scan:
+        _scan_tab(ss, ss["ts_rows"])
+    with tab_names:
+        transfer_names.render(ss["ts_rows"], ss["ts_sig"])
+
+
+def _scan_tab(ss, rows):
+    import time
+    import streamlit as st
+    import streamlit.components.v1 as components
+
+    scanned, extras = ss["ts_scanned"], ss["ts_extras"]
     manifest = {r["tag"] for r in rows}
 
     def on_scan():
