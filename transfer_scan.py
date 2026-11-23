@@ -1,4 +1,4 @@
-"""Transfer check: tick a Metrc manifest off as the blue tags are scanned.
+"""Transfers: tick a Metrc manifest off as the blue tags are scanned.
 
 Before this, a store downloaded the manifest into Excel, deleted everything but
 the Package ID column, put a "highlight duplicates" rule over two columns and
@@ -247,7 +247,7 @@ def results_xlsx(rows, scanned, extras, log=()):
                     "Result": "NOT ON MANIFEST", "Scanned at": when})
     buf = BytesIO()
     with pd.ExcelWriter(buf) as xw:
-        pd.DataFrame(out).to_excel(xw, index=False, sheet_name="Transfer check")
+        pd.DataFrame(out).to_excel(xw, index=False, sheet_name="Transfers")
         if log:
             pd.DataFrame([{"#": e["n"], "Time": e["time"], "Scanned": e["tag"],
                            "Result": LOG_LABEL.get(e["status"], e["status"]),
@@ -419,7 +419,7 @@ def render():
 
     ss = st.session_state
     st.markdown(_CSS, unsafe_allow_html=True)
-    st.markdown('<div class="sec-head"><div class="sec-head-text">📦 Transfer Check</div>'
+    st.markdown('<div class="sec-head"><div class="sec-head-text">📦 Transfers</div>'
                 '<div class="sec-head-line"></div></div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="instr-card"><div class="instr-title">📋 How it Works</div>
@@ -618,7 +618,7 @@ def _scan_tab(ss, rows):
         st.caption("Saved as you go. If the page reloads, drop the same manifest in again to carry on.")
     st.download_button("⬇️  Download the result (Excel)", key="ts_dl",
                        data=results_xlsx(rows, scanned, extras, log),
-                       file_name="transfer-check.xlsx",
+                       file_name="transfers.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     if st.button("Start over with a new manifest", key="ts_reset"):
         scan_store.save(db, ss.get("ts_key", ""), store, ss.get("ts_name", ""), len(rows), {}, {}, [], 0)
