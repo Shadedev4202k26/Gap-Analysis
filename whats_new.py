@@ -24,6 +24,34 @@ STORE_TZ = ZoneInfo("America/Detroit")
 
 UPDATES = [
     {
+        "id": "transfers-new",
+        "until": dt.date(2026, 12, 21),
+        "highlight": True,
+        "tag": "New · please test",
+        "title": "Transfers: check a delivery against its manifest",
+        "body": ("A new page, **Transfers**, under Stock. It is **brand new and has not been "
+                 "tried in the stores yet**, so please use it on a real transfer and tell us "
+                 "what happens."),
+        "points": [
+            "**Drop in the manifest**: the PDF that comes with the delivery, or the Excel or CSV "
+            "from Metrc. No editing, no deleting columns",
+            "**Scan each blue tag**: it turns green when it matches. A tag scanned twice shows "
+            "yellow, and a tag that isn't on the manifest shows red",
+            "**The scan log** lists every scan with the time, so you can look back for mistakes. "
+            "It is built to work even if your scanner doesn't press Enter",
+            "**Scans are saved as you go**: if the page reloads, drop the same manifest in "
+            "again to carry on",
+            "**Dutchie names** tab suggests the Dutchie name for each product. Only exact matches "
+            "are ticked for you: check the rest, change anything wrong, then tick it",
+            "**Download the result** as Excel when you're done",
+        ],
+        "note": ("Not tested in the stores yet, including with the wireless scanners. Use the "
+                 "**Request support** button in the left menu to tell us what worked and what "
+                 "didn't: your store, what you scanned and what you saw."),
+        "page": "transfers",
+        "page_label": "Open Transfers",
+    },
+    {
         "id": "aging-categories",
         "until": dt.date(2026, 12, 3),
         "title": "Aging stock: pick the categories, or leave some out",

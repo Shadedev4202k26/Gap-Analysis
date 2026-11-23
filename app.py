@@ -3326,7 +3326,8 @@ studio.configure(
     init_db=init_supabase, build_rows=build_tag_rows, fix_outdoor=fix_outdoor_prices,
     pages={"home": _HOME, "studio": _STUDIO, "custom": _CUSTOM, "aging": _by_path["aging-stock"],
            "inventory": _by_path["inventory"], "strain": _by_path["strain"],
-           "tools": _by_path["store-tools"], "settings": _by_path["settings"]})
+           "tools": _by_path["store-tools"], "settings": _by_path["settings"],
+           "transfers": _by_path["transfer-check"]})
 studio.new_run()
 transfer_names.configure(context=studio.context)
 transfer_scan.configure(context=studio.context)
