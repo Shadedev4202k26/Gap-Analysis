@@ -1,11 +1,11 @@
-# Where this is up to — 2026-11-19
+# Where this is up to — 2026-11-23
 
 `README.md` covers setup (macOS and Windows) and how the app works. This is the
 state of play. The live app is `main` at https://ziggyz.streamlit.app.
 
 ## Everything is merged
 
-Every PR up to #84 is in `main`; nothing is open. (Numbers 78, 79, 81–83 are
+Every PR up to #109 is in `main`; nothing is open. (Numbers 78, 79, 81–83 are
 the morning GitHub issues Power Automate opens, not PRs.) Since the last
 handoff (#17, 2026-10-22):
 
@@ -70,6 +70,39 @@ handoff (#17, 2026-10-22):
   test clicks.
 - **What's new pop-up (#20, #29):** opens once per visit on every page except
   Settings; entries retire themselves on their `until` date (`whats_new.py`).
+- **Small ones since 11-19:** Aging stock can pick several categories or leave
+  some out (#90, with a What's new entry); the What's new note for the sale
+  bubbles coming back each visit is written (#89); Shelf tags CSV reads a
+  strain type Dutchie wraps as `="Sativa"` (#103).
+- **Transfer check (#104–#109, 2026-11-23)** — Stock → *Transfer check*
+  (`transfer_scan.py`). A store manager asked for a way to tick a Metrc
+  manifest off as the blue tags are scanned (Jacob Eyde, inventory manager,
+  does it in Excel today, with a duplicates rule on two columns). The store
+  drops in the manifest — the **PDF that comes with the delivery**, or Metrc's
+  xlsx / csv download, or pasted tags — and scans each tag. Green = on the
+  manifest, yellow = scanned again, red = not on the manifest; a **scan log**
+  (newest first, also a sheet in the Excel download) records every scan. The
+  cursor stays in the scan box (see the guard under "Things that cost time").
+  Scans are **saved as they go** under store + the manifest's tags
+  (`scan_store.py`, table `transfer_scans`): after a refresh or a sleeping
+  tablet, drop the same manifest in again and "Picked up where this transfer
+  left off" brings them back. A file that holds many transfers (Metrc's
+  Packages-Transferred report had 100) asks which one is on the truck.
+- **Dutchie names tab** (same page; `naming.py`, `transfer_names.py`, table
+  `transfer_names`). Jacob types each product's Dutchie name by hand
+  ("Infused Jeeter 1g Sugar Plum" → "Jeeter | Sugar Plum | 1G Rosin Diamond
+  Infused Preroll"). There are no written rules, so the names already in
+  Dutchie (every store's live stock) are the rulebook. Each product is
+  **Exact** (pre-ticked: exactly one existing Dutchie product fits on brand,
+  strain, size and kind, or wording a person approved before), **Check it** (a
+  name built from how that brand's other products are written) or **Type it**
+  (brand not recognised); only Exact is ever ticked for the user, every name is
+  editable, and "Remember the names I approved" saves them. Loose flower
+  shipped by weight (grams, not `ea`) is named `BULK | Brand | Strain`.
+  Scored on seven real manifests (135 products already in Dutchie): 114 Exact
+  and none wrong; hiding each product in turn and asking for it back, 112
+  rebuilt exactly. What it can't know: Hyman puts "Eclair" last and its stylus
+  names add a flavour, Jeeter's "Rosin Diamond" isn't on the manifest.
 
 ## Waiting on people, not code
 
@@ -77,8 +110,17 @@ handoff (#17, 2026-10-22):
   standing bulk deal, so shake products never get a bulk bubble (≈40–45 at
   Quincy and Burton). Chad hasn't said yet whether Shake should get BUY 5 /
   15% OFF like flower (`deals.BULK_DEALS`).
-- **What's new note for #84** (bubbles back on each visit) was offered, not
-  written yet.
+- **Transfer check has never been tried at a store with a real scanner.** Run
+  one real transfer (Jacob or a manager), then write its What's new entry.
+  Check the scanner sends Enter after the tag; if it doesn't, scans won't
+  submit (see Open work).
+- **Jacob's case rules.** His check-in sheet shows "25 (1 Case)" / "64 (2
+  Cases)" and a Curb / Sales split per product. The names tab shows only
+  Metrc's quantity; case sizes need his rules before they can be built.
+- **Metrc access.** Chad is asking for view-only access to current transfers.
+  If it is ever turned into an API job: a dedicated view-only Metrc user per
+  license, keys on the Smilez Reports server (not in this public repo), and
+  keep the manifest upload as the fallback.
 - **Not confirmed done, from October:** a real manager's first break-tracker
   sign-in; the first live support request; each store tablet bookmarking its
   store link. Check before repeating them.
@@ -109,7 +151,11 @@ handoff (#17, 2026-10-22):
    command-line dependencies (pdftk, pdftoppm) are the fiddly part; check
    `pdftk --version` and `pdftoppm -v` both answer before running the app.
 2. Create `.streamlit/secrets.toml` from Supabase → Project Settings → API.
-   It is gitignored and does not travel with the repo.
+   It is gitignored and does not travel with the repo. The project is
+   **Ziggybot** (ref `zorfzlsixtmrxaaitpyt`), under the **SmilezMedia**
+   Supabase login — not the Shadedev4202k26 one, whose projects (ziggyretail,
+   tenthcard) are different apps. Direct link to its SQL editor:
+   https://supabase.com/dashboard/project/zorfzlsixtmrxaaitpyt/sql/new
 3. `.venv/bin/python tools/check_supabase.py` (`.venv\Scripts\python` on
    Windows) — proves storage works end to end without printing the key.
 4. `.venv/bin/python tools/smoke_tags.py "<a weekly deals sheet>"` — builds every
@@ -180,6 +226,12 @@ wrong:
 - **Being told about new support requests.** Today they wait in Settings until
   someone looks. An email per request needs an email-sending service (none is
   set up); a count on the Settings link would be the cheap version.
+- **Scanners that don't send Enter.** A browser can't see a connected scanner;
+  most act as a keyboard and press Enter after the tag. One set to send Tab or
+  nothing won't submit. Submitting automatically once a full 24-character tag
+  has arrived would cover it (not built).
+- **Case counts and the Curb / Sales split** on the Dutchie names tab (needs
+  Jacob's rules, above).
 - **A draft flag for a stored week.** A sheet still being written becomes the
   printing week automatically at midnight on its start date.
 - `video.mp4` and `image.png` are unreferenced since the hero became a bar —
@@ -315,6 +367,50 @@ wrong:
   toggles respond to `input.click()`, not to clicking their label from script.
 - `tools/strip_logo.py --check` reports whether a re-exported template has
   brought the Smilez wordmark back.
+- **Manifest PDFs read in pieces.** `pypdf` hands back a tag split over several
+  lines ("1 / A / 4050300020 / B / 0 / F / 000380885") with page headers
+  landing between the pieces, and every package lists its **Source Package(s)**
+  tags too. `transfer_scan._pdf_rows` reads each tag off the end of the text
+  just before its "Lab Test:" line, spaces removed; read any other way, source
+  tags count as packages on the truck. The same trap is in the xlsx: take the
+  "Package" column, never "Source Package". Check a new template against the
+  heading count (`N. Package | Accepted` or `| Shipped`). Fixes for font splits
+  (". 7 G", "Pre- Roll") are in the same function.
+- **The scan box guard lives in the page, not in the iframe.** Streamlit
+  replaces `components.html`'s frame on every rerun, and code created inside a
+  dead frame can't be called (Firefox: "dead object"), so `GUARD_JS` is put
+  into the parent document as a `<script id="ts-guard">` and each new copy
+  removes the old one's listeners. A key pressed outside a text box first
+  moves the cursor into the scan box (so that key still lands there), and every
+  half second the cursor is put back if it drifted. It does nothing while the
+  box is hidden (the Dutchie names tab). To test it, send real key presses
+  (`computer key "1 A 4 …"`): the browser tool's `type` inserts text without
+  key events and can't trigger it.
+- **Don't use the server's clock for times people read.** Streamlit Cloud
+  servers are expected to keep UTC (not checked online), so `time.strftime`
+  would show scan times hours off there while looking right on the laptop. It
+  was caught before it shipped; use a `ZoneInfo("America/Detroit")` clock
+  (`transfer_scan.now_text`, `live_stock.STORE_TZ`).
+- **Getting Metrc-name ↔ Dutchie-name pairs for free.** Dutchie's Package ID is
+  the Metrc tag, so joining a manifest's tags to the live stock (all stores)
+  gives each product's manifest wording next to its Dutchie name, as long as
+  the package is still in stock. That is how `naming.py` was scored. Hide one
+  product at a time from the catalog and ask for it back to test "a new strain
+  of a brand we carry"; a hidden product with a near-twin (Choice's plain and
+  "11pc" gummies) can look wrongly Exact, which is why more than one fit is
+  shown as Check it.
+- **The Supabase free plan's limits are per organisation.** On 2026-11-23 the
+  SmilezMedia org showed "Exceeding usage limits": 1.068 GB of the 1 GB
+  *storage*, all of it Smilez Studio's `exports` bucket in the separate "TV
+  Deal Builder" project (this app stores no files; its database is under 10% of
+  its limit). Studio's own clean-up was running but kept 30 days of exports,
+  which is itself over 1 GB; it now keeps 14 (Studio repo, `Media-Tools` #1).
+  Restrictions on the org could hit this app too.
+- **Test rows can't be deleted by the app.** `transfer_names` and
+  `transfer_scans` follow the support table's rule (add and update, never
+  delete), so a real test write leaves a row; delete it in the Supabase SQL
+  editor (the break and support tables were tested without leaving rows, see
+  above). Both tables' SQL is in the README and was run on 2026-11-23.
 
 ## Settled: the leaked key
 
