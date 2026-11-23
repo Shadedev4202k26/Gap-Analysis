@@ -1,4 +1,4 @@
-"""The "Dutchie names" tab of Transfer check.
+"""The "Dutchie names" tab of Transfers.
 
 Lists each product on the manifest once, with the Dutchie name to enter it
 under. Only an exact match is pre-approved; anything else is a suggestion that

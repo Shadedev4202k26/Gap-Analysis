@@ -74,7 +74,7 @@ handoff (#17, 2026-10-22):
   some out (#90, with a What's new entry); the What's new note for the sale
   bubbles coming back each visit is written (#89); Shelf tags CSV reads a
   strain type Dutchie wraps as `="Sativa"` (#103).
-- **Transfer check (#104–#109, 2026-11-23)** — Stock → *Transfer check*
+- **Transfers (#104–#109, 2026-11-23)** — Stock → *Transfers*
   (`transfer_scan.py`). A store manager asked for a way to tick a Metrc
   manifest off as the blue tags are scanned (Jacob Eyde, inventory manager,
   does it in Excel today, with a duplicates rule on two columns). The store
@@ -110,7 +110,7 @@ handoff (#17, 2026-10-22):
   standing bulk deal, so shake products never get a bulk bubble (≈40–45 at
   Quincy and Burton). Chad hasn't said yet whether Shake should get BUY 5 /
   15% OFF like flower (`deals.BULK_DEALS`).
-- **Transfer check has never been tried at a store with a real scanner.** Run
+- **Transfers has never been tried at a store with a real scanner.** Run
   one real transfer (Jacob or a manager), then write its What's new entry.
   Scanners that send no Enter, or send stored scans in a burst, are handled
   (see "Things that cost time"); worth confirming with the real device.

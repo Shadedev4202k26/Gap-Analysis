@@ -1,4 +1,4 @@
-"""Transfer check scans, kept so a refresh or a sleeping tablet doesn't lose them.
+"""Scans on the Transfers page, kept so a refresh or a sleeping tablet does not lose them.
 
 A scan check lives in the open browser tab, so reloading the page used to throw
 away every scan so far. Each check is now saved in Supabase under a key made of

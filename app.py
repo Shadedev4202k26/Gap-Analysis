@@ -3302,7 +3302,7 @@ _SECTIONS = {
                 url_path="inventory"),
         st.Page(render_dead_stock, title="Aging stock", icon=":material/schedule:",
                 url_path="aging-stock"),
-        st.Page(transfer_scan.render, title="Transfer check", icon=":material/qr_code_scanner:",
+        st.Page(transfer_scan.render, title="Transfers", icon=":material/qr_code_scanner:",
                 url_path="transfer-check"),
     ],
     "Tools": [

@@ -340,7 +340,7 @@ details, and why the reply contact is optional.
 
 ## Transfer names
 
-**Transfer check → Dutchie names** turns each product on a Metrc manifest into
+**Transfers → Dutchie names** turns each product on a Metrc manifest into
 the name Dutchie uses. There is no written rule for those names, so it reads the
 names already in Dutchie (every store's live stock) and builds from how the same
 brand's other products are written (`naming.py`).
@@ -394,7 +394,7 @@ The app's key is public, so these are product names only: nothing about people.
 
 ## Transfer scans
 
-**Transfer check** saves each scan check as it goes (`scan_store.py`), so a refresh,
+**Transfers** saves each scan check as it goes (`scan_store.py`), so a refresh,
 a tablet that went to sleep or a closed tab doesn't lose a long transfer. A check is
 kept under the store plus the manifest's package tags: drop the same manifest in again
 at the same store and the scans come back ("Picked up where this transfer left off").
