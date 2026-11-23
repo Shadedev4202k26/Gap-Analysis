@@ -65,6 +65,7 @@ import live_stock
 import stock_filter
 from types import SimpleNamespace
 import support
+import transfer_scan
 import usage
 import ziggy
 import terp_match
@@ -97,7 +98,7 @@ def _fresh_local_modules():
     import importlib
     import sys
     for name in ("live_stock", "stock_filter", "aging", "deals", "deal_store", "sale_badges", "preroll_tags", "combine_tags",
-                 "build_dual", "build_split", "break_store", "support", "shell", "ziggy", "whats_new", "usage", "studio",
+                 "build_dual", "build_split", "break_store", "transfer_scan", "support", "shell", "ziggy", "whats_new", "usage", "studio",
                  "terp_match", "crossword_data", "crossword_gen", "hangman_data"):
         mod = sys.modules.get(name)
         path = getattr(mod, "__file__", None)
@@ -3300,6 +3301,8 @@ _SECTIONS = {
                 url_path="inventory"),
         st.Page(render_dead_stock, title="Aging stock", icon=":material/schedule:",
                 url_path="aging-stock"),
+        st.Page(transfer_scan.render, title="Transfer check", icon=":material/qr_code_scanner:",
+                url_path="transfer-check"),
     ],
     "Tools": [
         st.Page(render_store_tools, title="Store tools", icon=":material/handyman:",
