@@ -338,6 +338,57 @@ The app's key is public, so anyone who pulls it out of a page could read these
 requests — that is why the form asks people to leave out passwords and customer
 details, and why the reply contact is optional.
 
+## Transfer names
+
+**Transfer check → Dutchie names** turns each product on a Metrc manifest into
+the name Dutchie uses. There is no written rule for those names, so it reads the
+names already in Dutchie (every store's live stock) and builds from how the same
+brand's other products are written (`naming.py`).
+
+Every name has a status: **Exact** (already in Dutchie, or approved before) is
+pre-ticked; **Check it** (built from the brand's pattern) and **Type it**
+(brand not recognised) are left for a person to approve or change. The tool
+never marks a name it built itself as exact. On the three manifests from
+2026-11-23 (99 products), hiding one product at a time and asking for it back, it
+rebuilt 71 exactly and wrongly called none of them exact; the rest are things a
+manifest doesn't say (Hyman puts "Eclair" last, its stylus names add a flavour).
+
+**Remember the names I approved** saves them, so the same wording is an exact
+match next time. That needs this table; without it the tab still works and says
+names can't be remembered yet. Run in the Supabase **SQL Editor** (safe to run
+again):
+
+```sql
+create table if not exists public.transfer_names (
+    item_key   text primary key check (length(item_key) between 1 and 300),
+    item       text not null check (length(item) <= 300),
+    name       text not null check (length(name) between 1 and 200),
+    sender     text not null default '' check (length(sender) <= 120),
+    updated_at timestamptz not null default now()
+);
+
+-- Remember and correct names; never delete one.
+grant usage on schema public to anon, authenticated;
+revoke all on public.transfer_names from anon, authenticated;
+grant select, insert on public.transfer_names to anon, authenticated;
+grant update on public.transfer_names to anon, authenticated;   -- an upsert rewrites every column
+
+alter table public.transfer_names enable row level security;
+
+drop policy if exists "names read"   on public.transfer_names;
+drop policy if exists "names insert" on public.transfer_names;
+drop policy if exists "names update" on public.transfer_names;
+
+create policy "names read"   on public.transfer_names
+    for select to anon, authenticated using (true);
+create policy "names insert" on public.transfer_names
+    for insert to anon, authenticated with check (true);
+create policy "names update" on public.transfer_names
+    for update to anon, authenticated using (true) with check (true);
+```
+
+The app's key is public, so these are product names only: nothing about people.
+
 ## Usage
 
 **Settings → Usage by store** shows which stores use which tools: a heat map of
