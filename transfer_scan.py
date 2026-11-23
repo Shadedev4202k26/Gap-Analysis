@@ -14,12 +14,15 @@ package" column further along can't add tags the truck never carried.
 
 This file holds the matching; `render()` is the page.
 """
+import datetime
 import json
 import re
 from io import BytesIO
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+import scan_store
 import transfer_names
 
 # Digit, letter, then 22 more letters/digits. Looked for inside a cell, so
@@ -271,6 +274,30 @@ def _esc(t):
     return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+_deps = {}
+STORE_TZ = ZoneInfo("America/Detroit")
+
+
+def configure(**kw):
+    """context (-> studio.context()): where the store and the database come from."""
+    _deps.update(kw)
+
+
+def _ctx():
+    """(db, store) for saving scans; (None, '') when the app hasn't configured us."""
+    try:
+        c = _deps["context"]()
+        return c["db"], c["store"]
+    except Exception:                                        # noqa: BLE001
+        return None, ""
+
+
+def now_text():
+    """The time of a scan as the store sees it, whatever clock the server keeps (Streamlit
+    Cloud's is UTC)."""
+    return datetime.datetime.now(STORE_TZ).strftime("%I:%M:%S %p").lstrip("0")
+
+
 _CSS = """
 <style>
 .ts-banner{border-radius:14px;padding:18px 22px;margin:6px 0 14px;font-family:'Inter',sans-serif}
@@ -385,6 +412,24 @@ def render():
         _restart(ss)
     ss["ts_rows"] = [r for r in ss["ts_all"] if pick is None or r["manifest"] == pick]
 
+    # The same manifest at the same store is the same check: bring back its scans.
+    db, store = _ctx()
+    skey = scan_store.key(store, [r["tag"] for r in ss["ts_rows"]])
+    if ss.get("ts_key") != skey:
+        ss["ts_key"] = skey
+        saved, err = scan_store.load(db, skey)
+        ss["ts_save_err"] = err
+        log = (saved or {}).get("log") or []
+        if saved and (saved.get("scanned") or saved.get("extras") or log):
+            ss.update(ts_scanned=saved.get("scanned") or {}, ts_extras=saved.get("extras") or {},
+                      ts_log=log, ts_n=saved.get("n") or len(log),
+                      ts_last=(log[-1]["status"], log[-1]["tag"], log[-1]["note"]) if log else None)
+            ss["ts_resumed"] = (ss["ts_n"], saved.get("updated_at"))
+        else:
+            _restart(ss)
+            ss.pop("ts_resumed", None)
+        ss["ts_saved_n"] = ss.get("ts_n", 0)
+
     tab_scan, tab_names = st.tabs(["📦  Scan tags", "🏷️  Dutchie names"])
     with tab_scan:
         _scan_tab(ss, ss["ts_rows"])
@@ -399,6 +444,17 @@ def _scan_tab(ss, rows):
 
     scanned, extras = ss["ts_scanned"], ss["ts_extras"]
     manifest = {r["tag"] for r in rows}
+    db, store = _ctx()
+
+    resumed = ss.get("ts_resumed")
+    if resumed and ss.get("ts_n") == resumed[0]:
+        when = ""
+        try:
+            when = datetime.datetime.fromisoformat(str(resumed[1]).replace("Z", "+00:00"))                 .astimezone(STORE_TZ).strftime(" (saved %a %I:%M %p)").replace(" 0", " ")
+        except Exception:                                    # noqa: BLE001
+            pass
+        st.info(f"Picked up where this transfer left off{when}: {len(scanned)} of {len(rows)} scanned. "
+                "Use Start over below to clear it.")
 
     def on_scan():
         # A quick second scan can land before the box has cleared, joining two
@@ -407,7 +463,7 @@ def _scan_tab(ss, rows):
             status, tag, note = check(raw, manifest, scanned)
             if status == "empty":
                 continue
-            now = time.strftime("%I:%M:%S %p").lstrip("0")
+            now = now_text()
             if status == "ok":
                 scanned[tag] = now
             elif status == "extra" and len(tag) == 24:
@@ -485,12 +541,25 @@ def _scan_tab(ss, rows):
         body.append(f'<div class="ts-row{" got" if got else ""}">{_esc(r["tag"])}{sub}</div>')
     st.markdown("".join(body), unsafe_allow_html=True)
 
+    # Save after the page is drawn, so the next scan isn't kept waiting on the database.
+    if ss.get("ts_n", 0) != ss.get("ts_saved_n"):
+        err = scan_store.save(db, ss.get("ts_key", ""), store, ss.get("ts_name", ""), len(rows),
+                              scanned, extras, ss.get("ts_log", []), ss.get("ts_n", 0))
+        ss["ts_save_err"] = err
+        if err is None:
+            ss["ts_saved_n"] = ss.get("ts_n", 0)
+    if ss.get("ts_save_err"):
+        st.caption("⚠️ Scans aren't being saved right now, so a refresh would lose them. "
+                   "Download the result every so often as a backup.")
+    elif ss.get("ts_n"):
+        st.caption("Saved as you go. If the page reloads, drop the same manifest in again to carry on.")
     st.download_button("⬇️  Download the result (Excel)", key="ts_dl",
                        data=results_xlsx(rows, scanned, extras, log),
                        file_name="transfer-check.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     if st.button("Start over with a new manifest", key="ts_reset"):
-        for k in ("ts_sig", "ts_all", "ts_pick", "ts_manifest", "ts_rows", "ts_err", "ts_scanned", "ts_extras", "ts_last", "ts_n", "ts_log",
+        scan_store.save(db, ss.get("ts_key", ""), store, ss.get("ts_name", ""), len(rows), {}, {}, [], 0)
+        for k in ("ts_key", "ts_resumed", "ts_save_err", "ts_saved_n", "ts_sig", "ts_all", "ts_pick", "ts_manifest", "ts_rows", "ts_err", "ts_scanned", "ts_extras", "ts_last", "ts_n", "ts_log",
                   "ts_name", "ts_input", "ts_file", "ts_paste"):
             ss.pop(k, None)
         st.rerun()

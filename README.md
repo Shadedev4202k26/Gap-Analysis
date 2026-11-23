@@ -392,6 +392,51 @@ create policy "names update" on public.transfer_names
 
 The app's key is public, so these are product names only: nothing about people.
 
+## Transfer scans
+
+**Transfer check** saves each scan check as it goes (`scan_store.py`), so a refresh,
+a tablet that went to sleep or a closed tab doesn't lose a long transfer. A check is
+kept under the store plus the manifest's package tags: drop the same manifest in again
+at the same store and the scans come back ("Picked up where this transfer left off").
+**Start over** saves an empty check in its place; the app's key can add and update a
+row but never delete one.
+
+Without the table below nothing breaks: scanning works as before and the page says
+scans aren't being saved. Run in the Supabase **SQL Editor** of the **Ziggybot**
+project (safe to run again):
+
+```sql
+create table if not exists public.transfer_scans (
+    scan_key      text primary key check (length(scan_key) between 1 and 120),
+    store         text not null default '' check (length(store) <= 60),
+    manifest_name text not null default '' check (length(manifest_name) <= 200),
+    packages      integer not null default 0,
+    state         jsonb not null,
+    updated_at    timestamptz not null default now()
+);
+
+-- Save and update a check; never delete one.
+grant usage on schema public to anon, authenticated;
+revoke all on public.transfer_scans from anon, authenticated;
+grant select, insert, update on public.transfer_scans to anon, authenticated;
+
+alter table public.transfer_scans enable row level security;
+
+drop policy if exists "scans read"   on public.transfer_scans;
+drop policy if exists "scans insert" on public.transfer_scans;
+drop policy if exists "scans update" on public.transfer_scans;
+
+create policy "scans read"   on public.transfer_scans
+    for select to anon, authenticated using (true);
+create policy "scans insert" on public.transfer_scans
+    for insert to anon, authenticated with check (true);
+create policy "scans update" on public.transfer_scans
+    for update to anon, authenticated using (true) with check (true);
+```
+
+The app's key is public, so these rows are package tags and product names only:
+nothing about people. Scan times are Michigan time.
+
 ## Usage
 
 **Settings → Usage by store** shows which stores use which tools: a heat map of
