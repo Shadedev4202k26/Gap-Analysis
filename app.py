@@ -1239,7 +1239,10 @@ def build_tag_rows(df):
         except ValueError:
             price = "$0"
 
-        scol = str(row.get("Strain", "")).strip().lower()    # type column
+        # The type column. Some Dutchie exports wrap every value as ="Sativa"
+        # (an Excel guard), which is not a type until the wrapper is stripped:
+        # unstripped, every tag fell through to hybrid.
+        scol = str(row.get("Strain", "")).strip('="').strip().lower()
         stype = scol if scol in ("sativa", "hybrid", "indica") else preroll_tags.classify_type(strain)
 
         raw.append({"brand": brand, "strain": strain, "thc": thc,
