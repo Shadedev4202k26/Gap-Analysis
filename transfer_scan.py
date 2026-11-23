@@ -14,6 +14,7 @@ package" column further along can't add tags the truck never carried.
 
 This file holds the matching; `render()` is the page.
 """
+import json
 import re
 from io import BytesIO
 
@@ -223,8 +224,13 @@ def check(raw, manifest_tags, scanned):
     return "unclear", s, f"Type at least {MIN_PARTIAL} characters from the end, or scan the whole tag."
 
 
-def results_xlsx(rows, scanned, extras):
-    """The finished check as a spreadsheet: one line per manifest tag, then extras."""
+LOG_LABEL = {"ok": "On the manifest", "dupe": "Scanned again", "extra": "NOT on the manifest",
+             "unclear": "Couldn't match"}
+
+
+def results_xlsx(rows, scanned, extras, log=()):
+    """The finished check as a spreadsheet: one line per manifest tag, then extras;
+    and a second sheet with every scan in the order it happened."""
     out = []
     for r in rows:
         out.append({"Package ID": r["tag"], "Item": r["item"], "Quantity": r["qty"],
@@ -234,7 +240,13 @@ def results_xlsx(rows, scanned, extras):
         out.append({"Package ID": t, "Item": "", "Quantity": "",
                     "Result": "NOT ON MANIFEST", "Scanned at": when})
     buf = BytesIO()
-    pd.DataFrame(out).to_excel(buf, index=False, sheet_name="Transfer check")
+    with pd.ExcelWriter(buf) as xw:
+        pd.DataFrame(out).to_excel(xw, index=False, sheet_name="Transfer check")
+        if log:
+            pd.DataFrame([{"#": e["n"], "Time": e["time"], "Scanned": e["tag"],
+                           "Result": LOG_LABEL.get(e["status"], e["status"]),
+                           "Item": e["item"], "Note": e["note"]} for e in log]
+                         ).to_excel(xw, index=False, sheet_name="Scan log")
     return buf.getvalue()
 
 
@@ -249,7 +261,7 @@ def manifest_counts(rows):
 
 
 def _restart(ss):
-    ss.update(ts_scanned={}, ts_extras={}, ts_last=None, ts_n=0)
+    ss.update(ts_scanned={}, ts_extras={}, ts_last=None, ts_n=0, ts_log=[])
 
 
 def _esc(t):
@@ -270,8 +282,37 @@ _CSS = """
 .ts-row i{font-style:normal;font-family:'Inter',sans-serif;font-size:13px;opacity:.85;margin-left:auto;text-align:right}
 .ts-row.got{background:rgba(34,197,94,.20);border-color:#22C55E}
 .ts-row.extra{background:rgba(239,68,68,.16);border-color:#EF4444}
+.ts-row.dupe{background:rgba(234,179,8,.16);border-color:#EAB308}
 </style>
 """
+
+# Runs in the page. A scanner types into whatever has focus, so after a click on
+# the list, a button or empty space the next scan would go nowhere. While the scan
+# box is on screen: a key pressed anywhere that isn't a text box first moves the
+# cursor into the box (so that key still lands there), and every half second the
+# cursor is put back if it has drifted onto a button or the page. A text box the
+# person clicked into, such as the paste box, is left alone, and nothing happens
+# while another tab is showing, because the scan box is hidden then.
+GUARD_JS = """
+(function(){
+  if (window.__tsGuard) { try { window.__tsGuard(); } catch (e) {} }
+  const SEL = 'input[aria-label="Scan blue tag"]';
+  const box = () => { const i = document.querySelector(SEL); return i && i.offsetParent !== null ? i : null; };
+  const editing = el => el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+  const grab = () => { const i = box(); if (i && !editing(document.activeElement)) i.focus(); };
+  const onKey = e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key.length !== 1 && e.key !== 'Enter') return;
+    if (editing(e.target)) return;
+    grab();
+  };
+  document.addEventListener('keydown', onKey, true);
+  const timer = setInterval(grab, 400);
+  grab();
+  window.__tsGuard = () => { document.removeEventListener('keydown', onKey, true); clearInterval(timer); };
+})();
+"""
+
 
 _BANNERS = {
     "ok": ("ts-ok", "✅ On the manifest"),
@@ -370,6 +411,9 @@ def _scan_tab(ss, rows):
                 extras.setdefault(tag, now)
             ss["ts_last"] = (status, tag, note)
             ss["ts_n"] = ss.get("ts_n", 0) + 1
+            ss.setdefault("ts_log", []).append(
+                {"n": ss["ts_n"], "time": now, "status": status, "tag": tag, "note": note,
+                 "item": next((r["item"] for r in rows if r["tag"] == tag), "")})
         ss["ts_input"] = ""
 
     with st.form("ts_form", clear_on_submit=False, border=False):
@@ -378,16 +422,14 @@ def _scan_tab(ss, rows):
                       help="A scanner types the tag and presses Enter. You can also type the "
                            f"last {MIN_PARTIAL}+ characters of a tag that won't scan.")
         c2.form_submit_button("Check", on_click=on_scan, width="stretch")
-    # Put the cursor back in the box after every scan, so the next one lands there.
-    # The box may not be on the page yet, and Streamlit can move focus after an
-    # upload finishes, so for ~6 s the cursor is put back whenever it isn't in a
-    # text box (a box the person clicked into is left alone).
+    # Keep scans landing in the box. The guard is put into the page itself (not the
+    # little frame this call makes) so it outlives the frame, which is replaced on
+    # every rerun; each new copy takes the old one's place.
     components.html(
-        "<script>let n=0;const t=setInterval(()=>{try{const d=window.parent.document;"
-        "const i=d.querySelector('input[aria-label=\"Scan blue tag\"]');"
-        "const a=d.activeElement;"
-        "if(i&&!(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))){i.focus();}"
-        "}catch(e){clearInterval(t);}if(++n>40)clearInterval(t);},150);</script>"
+        "<script>try{const d=window.parent.document;const o=d.getElementById('ts-guard');"
+        "if(o)o.remove();const s=d.createElement('script');s.id='ts-guard';"
+        f"s.textContent={json.dumps(GUARD_JS).replace('</', '<' + chr(92) + '/')};d.head.appendChild(s);"
+        "}catch(e){}</script>"
         f"<!-- {ss.get('ts_n', 0)} -->", height=0)
 
     last = ss.get("ts_last")
@@ -412,6 +454,23 @@ def _scan_tab(ss, rows):
     elif not left:
         st.warning("Every package on the manifest is scanned, but some tags that were scanned are not on it.")
 
+    log = ss.get("ts_log", [])
+    if log:
+        again = sum(1 for e in log if e["status"] == "dupe")
+        bad = sum(1 for e in log if e["status"] in ("extra", "unclear"))
+        st.markdown(f"**Scan log** · {len(log)} scans"
+                    + (f" · {again} scanned again" if again else "")
+                    + (f" · {bad} not matched" if bad else ""))
+        icon = {"ok": "✅", "dupe": "⚠️", "extra": "❌", "unclear": "❓"}
+        css = {"ok": " got", "dupe": " dupe", "extra": " extra", "unclear": " extra"}
+        with st.container(height=260):
+            st.markdown("".join(
+                f'<div class="ts-row{css.get(e["status"], "")}">{e["time"]}'
+                f'&nbsp;{icon.get(e["status"], "")}&nbsp;{_esc(e["tag"])}'
+                f'<i>{_esc(" · ".join(x for x in (e["item"], LOG_LABEL.get(e["status"], ""), e["note"]) if x))}</i></div>'
+                for e in reversed(log)), unsafe_allow_html=True)
+    st.markdown("**Packages**")
+
     body = []
     for t, when in extras.items():
         body.append(f'<div class="ts-row extra">{_esc(t)}<i>❌ Not on the manifest · {when}</i></div>')
@@ -424,11 +483,11 @@ def _scan_tab(ss, rows):
     st.markdown("".join(body), unsafe_allow_html=True)
 
     st.download_button("⬇️  Download the result (Excel)", key="ts_dl",
-                       data=results_xlsx(rows, scanned, extras),
+                       data=results_xlsx(rows, scanned, extras, log),
                        file_name="transfer-check.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     if st.button("Start over with a new manifest", key="ts_reset"):
-        for k in ("ts_sig", "ts_all", "ts_pick", "ts_manifest", "ts_rows", "ts_err", "ts_scanned", "ts_extras", "ts_last", "ts_n",
+        for k in ("ts_sig", "ts_all", "ts_pick", "ts_manifest", "ts_rows", "ts_err", "ts_scanned", "ts_extras", "ts_last", "ts_n", "ts_log",
                   "ts_name", "ts_input", "ts_file", "ts_paste"):
             ss.pop(k, None)
         st.rerun()
