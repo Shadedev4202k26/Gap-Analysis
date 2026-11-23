@@ -77,6 +77,7 @@ def _from_sheet(df):
                      ("item", "product"), avoid=("categor", "type", "unit", "strain"))
     qty_col = _pick(heads, ("quantity", "qty"), ("quantity", "qty"), avoid=("unit", "price", "cost"))
     unit_col = _pick(heads, ("unit of measure", "uom", "unit"), ("unit of measure",))
+    man_col = _pick(heads, ("manifest number", "manifest #", "manifest id", "manifest"))
 
     out = []
     for r in rows[(head + 1) if head is not None else 0:]:
@@ -86,7 +87,8 @@ def _from_sheet(df):
             item = r[item_col] if item_col is not None and item_col < len(r) else ""
             qty = r[qty_col] if qty_col is not None and qty_col < len(r) else ""
             unit = r[unit_col] if unit_col is not None and unit_col < len(r) else ""
-            out.append({"tag": t, "item": item, "qty": f"{qty} {unit}".strip()})
+            man = r[man_col] if man_col is not None and man_col < len(r) else ""
+            out.append({"tag": t, "item": item, "qty": f"{qty} {unit}".strip(), "manifest": man})
     return out
 
 
@@ -103,28 +105,66 @@ def _read_csv(data, delim):
     return pd.DataFrame([r + [""] * (width - len(r)) for r in grid], dtype=str)
 
 
+def _pdf_rows(data):
+    """Packages from a Metrc transport manifest PDF, in manifest order.
+
+    Each package's tag sits just above its "Lab Test:" line, so the tag is read
+    from there; the "Source Package(s)" tags further down the same block are
+    other packages and are never taken. The PDF's text comes out in pieces (a
+    tag can be split over several lines, and a page's header can land between
+    the pieces), so the text just before "Lab Test:" is joined with its spaces
+    removed and the tag is read off its end."""
+    from pypdf import PdfReader
+    text = "\n".join(p.extract_text() or "" for p in PdfReader(BytesIO(data)).pages)
+    text = text.replace("\xa0", " ")
+    head = re.search(r"Originating\s+Entity\s*\n(.+?)\n", text)
+    sender = head.group(1).strip() if head else ""
+    num = re.search(r"Manifest\s*No\.\s*(\d{6,})", text)
+    manifest = num.group(1) if num else ""
+    rows = []
+    for m in re.finditer(r"Lab Test:", text):
+        before = "".join(text[max(0, m.start() - 120):m.start()].split())
+        t = re.search(r"([0-9][A-Z][0-9A-Z]{22})$", before)
+        if not t:
+            continue
+        after = text[m.end():m.end() + 600]
+        it = re.search(r"Contains Retail IDs:[^\n]*\n(.*?)\n\(([^\n]*)\)\nShp: ?\n?([\d.,]+)\n? ?(\w+)",
+                       after, re.S)
+        item = qty = ""
+        if it:
+            item = " ".join(it.group(1).split())
+            item = re.sub(r"(\d) (g|mg|oz|ml)\b", r"\1\2", item)        # "1 g" -> "1g"
+            item = re.sub(r"(\d) x (\d)", r"\1x\2", item)
+            qty = f"{it.group(3)} {it.group(4)}"
+        rows.append({"tag": t.group(1), "item": item, "qty": qty,
+                     "manifest": manifest, "sender": sender})
+    return rows
+
+
 def read_manifest(data, filename):
     """(rows, error). Rows are {"tag", "item", "qty"} in manifest order, one per tag.
 
-    `data` is the uploaded file's bytes; .xlsx and .csv are read, and any text
-    that has tags in it works too (paste)."""
+    `data` is the uploaded file's bytes: the manifest PDF, or a Metrc .xlsx or
+    .csv download."""
     name = (filename or "").lower()
     try:
-        if name.endswith((".xlsx", ".xlsm")):
+        if name.endswith(".pdf"):
+            found_rows = _pdf_rows(data)
+        elif name.endswith((".xlsx", ".xlsm")):
             sheets = pd.read_excel(BytesIO(data), sheet_name=None, header=None, dtype=str)
-            frames = list(sheets.values())
+            found_rows = [r for df in sheets.values() for r in _from_sheet(df)]
         elif name.endswith((".csv", ".txt", ".tsv")):
-            frames = [_read_csv(data, "	" if name.endswith(".tsv") else ",")]
+            df = _read_csv(data, "\t" if name.endswith(".tsv") else ",")
+            found_rows = _from_sheet(df)
         else:
-            return [], "Upload the manifest as an Excel (.xlsx) or CSV file."
+            return [], "Upload the manifest as a PDF, an Excel (.xlsx) or a CSV file."
     except Exception as e:
         return [], f"Couldn't open that file: {e}"
     rows, seen = [], set()
-    for df in frames:
-        for r in _from_sheet(df):
-            if r["tag"] not in seen:
-                seen.add(r["tag"])
-                rows.append(r)
+    for r in found_rows:
+        if r["tag"] not in seen:
+            seen.add(r["tag"])
+            rows.append(r)
     if not rows:
         return [], ("No package tags found in that file. A Metrc tag is 24 letters and "
                     "numbers, like 1A4060300003B6D000000123.")
@@ -135,7 +175,7 @@ def read_pasted(text):
     tags = find_tags(text)
     if not tags:
         return [], "No package tags found in what was pasted."
-    return [{"tag": t, "item": "", "qty": ""} for t in tags], None
+    return [{"tag": t, "item": "", "qty": "", "manifest": ""} for t in tags], None
 
 
 def clean_scan(raw):
@@ -197,6 +237,19 @@ def results_xlsx(rows, scanned, extras):
 
 
 # ── the page ────────────────────────────────────────────────────────────────
+def manifest_counts(rows):
+    """{manifest number: packages}, in file order; empty when the file names none."""
+    out = {}
+    for r in rows:
+        if r.get("manifest"):
+            out[r["manifest"]] = out.get(r["manifest"], 0) + 1
+    return out
+
+
+def _restart(ss):
+    ss.update(ts_scanned={}, ts_extras={}, ts_last=None, ts_n=0)
+
+
 def _esc(t):
     return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -238,38 +291,53 @@ def render():
     st.markdown("""
     <div class="instr-card"><div class="instr-title">📋 How it Works</div>
     <div class="instr-steps">
-      <div class="instr-step"><span class="instr-icon">1</span><span>Download the transfer's <strong>manifest from Metrc</strong> (Excel or CSV) and drop it below — no editing needed</span></div>
+      <div class="instr-step"><span class="instr-icon">1</span><span>Drop in the transfer's <strong>manifest</strong> below: the PDF that comes with the delivery, or the Excel / CSV download from Metrc. No editing needed</span></div>
       <div class="instr-step"><span class="instr-icon fire">2</span><span>Scan each <strong>blue tag</strong>. It turns <strong>green</strong> on the list when it matches</span></div>
       <div class="instr-step"><span class="instr-icon">3</span><span>Anything <strong>not scanned</strong> or <strong>not on the manifest</strong> shows at the top. Download the result when you're done</span></div>
     </div></div>""", unsafe_allow_html=True)
 
-    up = st.file_uploader("Metrc manifest", type=["xlsx", "csv"], key="ts_file",
+    up = st.file_uploader("Metrc manifest", type=["pdf", "xlsx", "csv"], key="ts_file",
                           label_visibility="collapsed")
     with st.expander("No spreadsheet? Paste the package tags instead"):
         pasted = st.text_area("Package tags", key="ts_paste", height=110,
                               placeholder="One tag per line, or copied straight from the manifest",
                               label_visibility="collapsed")
 
-    # A new manifest starts a new check; the same one keeps its scans.
+    # A new file starts a new check; the same one keeps its scans.
     if up is not None:
         data = up.getvalue()
         sig = ("file", up.name, len(data))
         if ss.get("ts_sig") != sig:
             rows, err = read_manifest(data, up.name)
-            ss.update(ts_sig=sig, ts_rows=rows, ts_err=err, ts_scanned={}, ts_extras={},
-                      ts_last=None, ts_n=0, ts_name=up.name)
+            ss.update(ts_sig=sig, ts_all=rows, ts_err=err, ts_name=up.name, ts_pick=None)
+            _restart(ss)
     elif pasted.strip():
         sig = ("paste", pasted)
         if ss.get("ts_sig") != sig:
             rows, err = read_pasted(pasted)
-            ss.update(ts_sig=sig, ts_rows=rows, ts_err=err, ts_scanned={}, ts_extras={},
-                      ts_last=None, ts_n=0, ts_name="pasted tags")
+            ss.update(ts_sig=sig, ts_all=rows, ts_err=err, ts_name="pasted tags", ts_pick=None)
+            _restart(ss)
     else:
         ss.pop("ts_sig", None)
         return
     if ss.get("ts_err"):
         st.error(ss["ts_err"])
         return
+
+    # Metrc's "Packages" downloads can hold many transfers: pick the one on the truck.
+    counts = manifest_counts(ss["ts_all"])
+    pick = None
+    if len(counts) > 1:
+        pick = st.selectbox(
+            f"This file has {len(counts)} transfers. Which one is on the truck?",
+            list(counts), index=None, placeholder="Choose a manifest number",
+            format_func=lambda m: f"{m}  ·  {counts[m]} packages", key="ts_manifest")
+        if pick is None:
+            return
+    if ss.get("ts_pick") != pick:
+        ss["ts_pick"] = pick
+        _restart(ss)
+    ss["ts_rows"] = [r for r in ss["ts_all"] if pick is None or r["manifest"] == pick]
 
     rows, scanned, extras = ss["ts_rows"], ss["ts_scanned"], ss["ts_extras"]
     manifest = {r["tag"] for r in rows}
@@ -297,12 +365,15 @@ def render():
                            f"last {MIN_PARTIAL}+ characters of a tag that won't scan.")
         c2.form_submit_button("Check", on_click=on_scan, width="stretch")
     # Put the cursor back in the box after every scan, so the next one lands there.
-    # The box may not be on the page yet when this runs, so it keeps looking for ~2 s.
+    # The box may not be on the page yet, and Streamlit can move focus after an
+    # upload finishes, so for ~6 s the cursor is put back whenever it isn't in a
+    # text box (a box the person clicked into is left alone).
     components.html(
-        "<script>let n=0;const t=setInterval(()=>{try{const i=window.parent.document"
-        ".querySelector('input[aria-label=\"Scan blue tag\"]');"
-        "if(i){i.focus();clearInterval(t);}}catch(e){clearInterval(t);}"
-        "if(++n>20)clearInterval(t);},100);</script>"
+        "<script>let n=0;const t=setInterval(()=>{try{const d=window.parent.document;"
+        "const i=d.querySelector('input[aria-label=\"Scan blue tag\"]');"
+        "const a=d.activeElement;"
+        "if(i&&!(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))){i.focus();}"
+        "}catch(e){clearInterval(t);}if(++n>40)clearInterval(t);},150);</script>"
         f"<!-- {ss.get('ts_n', 0)} -->", height=0)
 
     last = ss.get("ts_last")
@@ -343,7 +414,7 @@ def render():
                        file_name="transfer-check.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     if st.button("Start over with a new manifest", key="ts_reset"):
-        for k in ("ts_sig", "ts_rows", "ts_err", "ts_scanned", "ts_extras", "ts_last", "ts_n",
+        for k in ("ts_sig", "ts_all", "ts_pick", "ts_manifest", "ts_rows", "ts_err", "ts_scanned", "ts_extras", "ts_last", "ts_n",
                   "ts_name", "ts_input", "ts_file", "ts_paste"):
             ss.pop(k, None)
         st.rerun()
