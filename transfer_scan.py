@@ -136,8 +136,11 @@ def _pdf_rows(data):
         item = qty = ""
         if it:
             item = " ".join(it.group(1).split())
-            item = re.sub(r"(\d) (g|mg|oz|ml)\b", r"\1\2", item)        # "1 g" -> "1g"
+            # The PDF splits text where the font changes: ". 7 G" -> ".7G", "Pre- Roll" -> "Pre-Roll".
+            item = re.sub(r"(?<![\w])\.\s+(\d)", r".\1", item)
+            item = re.sub(r"(\d)\s+(g|mg|oz|ml)\b", r"\1\2", item, flags=re.I)
             item = re.sub(r"(\d) x (\d)", r"\1x\2", item)
+            item = re.sub(r"(?<=\w)- (?=\w)", "-", item)
             qty = f"{it.group(3)} {it.group(4)}"
         rows.append({"tag": t.group(1), "item": item, "qty": qty,
                      "manifest": manifest, "sender": sender})

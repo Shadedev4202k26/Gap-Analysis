@@ -348,10 +348,13 @@ brand's other products are written (`naming.py`).
 Every name has a status: **Exact** (already in Dutchie, or approved before) is
 pre-ticked; **Check it** (built from the brand's pattern) and **Type it**
 (brand not recognised) are left for a person to approve or change. The tool
-never marks a name it built itself as exact. On the three manifests from
-2026-11-23 (99 products), hiding one product at a time and asking for it back, it
-rebuilt 71 exactly and wrongly called none of them exact; the rest are things a
-manifest doesn't say (Hyman puts "Eclair" last, its stylus names add a flavour).
+never marks a name it built itself as exact. Checked on the seven manifests from
+2026-11-23 (135 products already in Dutchie): with the product in Dutchie, 114
+came back exact and none was wrong; hiding each product in turn and asking for it
+back (what a new strain from a known brand looks like), 112 were rebuilt exactly.
+The rest are things a manifest doesn't say (Hyman puts "Eclair" last, its stylus
+names add a flavour). Loose flower shipped by weight (grams, not "ea") is named
+`BULK | Brand | Strain`.
 
 **Remember the names I approved** saves them, so the same wording is an exact
 match next time. That needs this table; without it the tab still works and says
