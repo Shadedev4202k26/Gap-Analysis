@@ -2,7 +2,7 @@
 
 Anyone using the app can report a problem or suggest something without
 leaving it. The window offers two ways and both reach Chad: a short form saved
-to Supabase and reviewed under Settings → Support requests, or an email
+to Supabase and reviewed under Settings → Feedback, or an email
 pre-filled with whatever was typed.
 
 Requests are kept like the break tracker's history: the app's key can add them
@@ -42,6 +42,19 @@ def submit(db, kind, message, name="", contact="", store="", page=""):
             "store": (store or "")[:60], "page": (page or "")[:80]}).execute()
     except Exception as e:                                   # noqa: BLE001
         raise StoreError(str(e)) from e
+    open_count.clear()
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def open_count(_db):
+    """How many requests are still open, or None if that can't be read. Cached for two
+    minutes so the sidebar can show it on every page; adding or finishing a request clears it."""
+    if _db is None:
+        return None
+    try:
+        return len(_db.table(TABLE).select("id").eq("status", "open").limit(1000).execute().data or [])
+    except Exception:                                        # noqa: BLE001
+        return None
 
 
 def requests(db, status=None, limit=500):
@@ -59,6 +72,7 @@ def set_status(db, request_id, status):
         db.table(TABLE).update({"status": status}).eq("id", request_id).execute()
     except Exception as e:                                   # noqa: BLE001
         raise StoreError(str(e)) from e
+    open_count.clear()
 
 
 def _mailto(kind, message, name, store, page):
@@ -136,11 +150,11 @@ def _window():
 
 
 def settings_inbox(tz_name):
-    """Settings → Support requests: newest first, open ones on top."""
+    """Settings → Feedback: support requests, newest first, open ones on top."""
     from zoneinfo import ZoneInfo
     import pandas as pd
 
-    st.markdown('<div class="cat-hdr">📬 Support requests</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cat-hdr">📬 Feedback &amp; support requests</div>', unsafe_allow_html=True)
     db = _deps["init_db"]()
     if db is None:
         st.warning("No Supabase connection — support requests live there.")

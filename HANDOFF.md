@@ -68,6 +68,13 @@ handoff (#17, 2026-10-22):
   jobs for that week; those counts are lost. Old classic-page jobs now count
   under Shelf tags. Two Corunna "Downloaded Missing_Stock" lines on 11-09 are
   test clicks.
+- **Settings is sections, not one long page (2026-11-24).** A row at the top —
+  **Feedback · Weekly deals · Usage & demand · Strain types · Break & lunch ·
+  Store links** — and only the chosen section is drawn (quicker to open too).
+  The choice rides in the address (`/settings?section=usage`), so each section
+  can be bookmarked; Feedback is first and is what Settings opens on, with the
+  open count on its tab and on the Settings link in the left menu. Sections live
+  in `app._settings_sections()`; to add one, add a line there.
 - **What's new pop-up (#20, #29):** opens once per visit on every page except
   Settings; entries retire themselves on their `until` date (`whats_new.py`).
 - **Small ones since 11-19:** Aging stock can pick several categories or leave
@@ -223,9 +230,10 @@ wrong:
   browser. The break tracker's sign-in and history are already in Supabase
   (README → Break & lunch tracker); the roster itself is still per tablet, and
   its Break tab's Start / Back are not recorded.
-- **Being told about new support requests.** Today they wait in Settings until
-  someone looks. An email per request needs an email-sending service (none is
-  set up); a count on the Settings link would be the cheap version.
+- **Being told about new support requests.** The cheap version is built: the
+  open count shows on the Settings link and on Settings → Feedback (cached two
+  minutes; adding or finishing a request clears it). An email or push per
+  request still needs a sending service (none is set up).
 - **Scanner trial.** A browser can't see a connected scanner; most act as a
   keyboard. No Enter, Tab instead of Enter, and fast bursts of stored scans
   are handled and were tested with real key presses, but not with a real
