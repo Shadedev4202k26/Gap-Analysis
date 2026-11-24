@@ -288,8 +288,10 @@ that invites anyone using the app to report a problem, suggest something or ask
 a question. It offers two ways, and both reach Chad:
 
 * **Send in ZiggyBot** — saved to Supabase with the store and page it came
-  from, and read under **Settings → Support requests**, where each can be
-  marked done (or reopened). Nothing there can be edited or deleted.
+  from, and read under **Settings → Feedback** (the first tab, which Settings
+  opens on; the open count shows on the tab and on the Settings link in the left
+  menu), where each can be marked done (or reopened). Nothing there can be
+  edited or deleted.
 * **Email Chad instead** — opens the person's email app addressed to
   chad@shopsmilez.com, with what they typed already in it.
 

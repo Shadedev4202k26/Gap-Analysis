@@ -99,17 +99,21 @@ def brand():
                 '<div class="zb-brand-sub">SMILEZ · V3</div></div>', unsafe_allow_html=True)
 
 
-def nav_link(page, current):
-    """One sidebar link. The container's key carries the active state to CSS."""
+def nav_link(page, current, badge=None):
+    """One sidebar link. The container's key carries the active state to CSS.
+    `badge` is a short count or word shown after the title."""
     state = "navactive" if page.url_path == current else "navidle"
+    label = f"{page.title}  ·  {badge}" if badge else page.title
     with st.container(key=f"{state}_{page.url_path or 'home'}"):
-        st.page_link(page, label=page.title, icon=page.icon, use_container_width=True)
+        st.page_link(page, label=label, icon=page.icon, use_container_width=True)
 
 
-def sidebar(sections, trailing, current, top=None, bottom=None):
+def sidebar(sections, trailing, current, top=None, bottom=None, badges=None):
     """sections: {label: [Page]}. trailing: [Page] pinned at the bottom.
     top: drawn under the brand, above the links (the store picker).
-    bottom: drawn under the trailing links (Request support)."""
+    bottom: drawn under the trailing links (Request support).
+    badges: {url_path: text} shown after a link's title (open feedback on Settings)."""
+    badges = badges or {}
     with st.sidebar:
         brand()
         if top:
@@ -119,10 +123,10 @@ def sidebar(sections, trailing, current, top=None, bottom=None):
             if label:
                 st.markdown(f'<div class="zb-navsec">{label}</div>', unsafe_allow_html=True)
             for page in pages:
-                nav_link(page, current)
+                nav_link(page, current, badges.get(page.url_path))
         st.markdown('<div style="flex-grow:1;min-height:20px"></div>', unsafe_allow_html=True)
         for page in trailing:
-            nav_link(page, current)
+            nav_link(page, current, badges.get(page.url_path))
         if bottom:
             bottom()
 

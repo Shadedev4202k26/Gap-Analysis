@@ -3004,17 +3004,59 @@ def _connect_break_tracker(html):
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 7 — SETTINGS
 # ════════════════════════════════════════════════════════════════════════════════
-def render_settings():
-    st.markdown('<div class="sec-head"><div class="sec-head-text">⚙️ Settings</div>'
-                '<div class="sec-head-line"></div></div>', unsafe_allow_html=True)
-    _settings_deals()
-    _settings_break()
-    support.settings_inbox(STORE_TZ)
+def _settings_usage():
     usage.settings_view(STORE_TZ, studio.KNOWN_STORES,
                         [pg.title for pages in _SECTIONS.values() for pg in pages])
     terp_match.demand_view(studio.KNOWN_STORES, STORE_TZ)
-    terp_match.type_check_view(studio.KNOWN_STORES, _brand_check)
-    usage.store_links(studio.KNOWN_STORES, "https://ziggyz.streamlit.app")
+
+
+# Settings used to be seven tools stacked on one long page. Now it is a row of sections
+# and only the chosen one is drawn (so the page is short, and quicker to open). The
+# choice rides in the address (?section=usage), so each section can be bookmarked.
+# Feedback is first and is what Settings opens on.
+def _settings_sections():
+    """{key: (label, draw)}, in the order they show. Built when Settings opens, because the
+    sections are defined further down this file."""
+    return {
+        "feedback": ("📬 Feedback", lambda: support.settings_inbox(STORE_TZ)),
+        "deals":    ("🏷️ Weekly deals", _settings_deals),
+        "usage":    ("📊 Usage & demand", _settings_usage),
+        "types":    ("🧬 Strain types",
+                     lambda: terp_match.type_check_view(studio.KNOWN_STORES, _brand_check)),
+        "breaks":   ("☕ Break & lunch", _settings_break),
+        "links":    ("🔗 Store links",
+                     lambda: usage.store_links(studio.KNOWN_STORES, "https://ziggyz.streamlit.app")),
+    }
+
+
+def _feedback_open():
+    """Open feedback and support requests, for the Settings link and the Feedback tab."""
+    try:
+        return support.open_count(init_supabase())
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
+def render_settings():
+    st.markdown('<div class="sec-head"><div class="sec-head-text">⚙️ Settings</div>'
+                '<div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+    sections = _settings_sections()
+    keys = list(sections)
+    want = st.query_params.get("section", "feedback")
+    if want not in keys:
+        want = "feedback"
+    waiting = _feedback_open()
+
+    def label(k):
+        name = sections[k][0]
+        return f"{name} ({waiting})" if k == "feedback" and waiting else name
+
+    pick = st.segmented_control("Settings section", keys, default=want, format_func=label,
+                                key="set_section", label_visibility="collapsed") or want
+    if st.query_params.get("section") != pick:
+        st.query_params["section"] = pick
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    sections[pick][1]()
 
 
 STORE_TZ = "America/Detroit"   # every store is in Michigan; history shows their local time
@@ -3344,7 +3386,8 @@ if _nav.url_path in _RETIRED:
     st.session_state.update(zb_fmt=_RETIRED[_nav.url_path], zb_step=1)
     st.switch_page(_STUDIO)
 shell.sidebar(_SECTIONS, _TRAILING, _nav.url_path, top=studio.store_picker,
-              bottom=support.button)
+              bottom=support.button,
+              badges={"settings": _feedback_open() or None})
 studio.context_bar(_smilez_mark(), _nav.url_path)
 if _nav.url_path != "settings":
     studio.choose_store_banner()
