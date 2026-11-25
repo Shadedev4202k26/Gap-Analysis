@@ -385,26 +385,38 @@ wrong:
   "Package" column, never "Source Package". Check a new template against the
   heading count (`N. Package | Accepted` or `| Shipped`). Fixes for font splits
   (". 7 G", "Pre- Roll") are in the same function.
-- **The scan box is run by a script in the page, not by Streamlit's text box.**
-  A scanner is a very fast keyboard, and Streamlit's box empties itself a
-  moment after each send, so a tag typed in that moment was lost or sent twice
-  (a quick burst of ten tags with Enter gave mangled and doubled entries).
-  `GUARD_JS` in `transfer_scan.py` therefore catches the keys itself: they go
-  into a buffer kept in the script (the box only mirrors it), Enter or a 250 ms
-  pause once the buffer holds whole 24-character tags (so no Enter needed)
-  sends everything in one piece: the box is set to those tags and Check is
-  pressed, and `split_scans` cuts several tags apart. Hand typing (last digits,
-  Backspace, Escape, paste) still works; other text boxes and other tabs are
-  left alone. Two Streamlit details: the form's first button is the "?" help
-  icon, so the submit button is found by `data-testid` ending `FormSubmit`; and
-  the script is put into the parent document as `<script id="ts-guard">`,
-  because Streamlit replaces `components.html`'s frame on every rerun and code
-  from a dead frame can't be called (Firefox: "dead object"). To test it, send
-  real key presses (`computer key "1 A 4 …"`, at most 100 keys per call; use
-  `browser_batch` for more): the browser tool's `type` inserts text without key
-  events and can't trigger it. Tested: no Enter, Enter, three tags with no
-  separator, ten tags with Enter in a row, half a tag then the rest, click away
-  then scan, Backspace, and typing in the paste box.
+- **The scan box: let the browser type, and only help it.** A scanner is a very
+  fast keyboard, and Streamlit's box empties itself a moment after each send,
+  so a tag typed in that moment was lost or sent twice (a quick burst of ten
+  tags with Enter gave mangled and doubled entries). `GUARD_JS` in
+  `transfer_scan.py` fixes that without touching the characters: Enter, or a
+  250 ms pause once the box holds whole 24-character tags (so no Enter
+  needed), presses Check and empties the box in the same breath, so the next
+  scan types into an empty box; the server never writes the box and the form
+  doesn't clear it (`clear_on_submit=False`). `split_scans` cuts several tags
+  apart. A key pressed away from the box first moves the cursor in; other text
+  boxes and other tabs are left alone. Two Streamlit details: the form's first
+  button is the "?" help icon, so the submit button is found by `data-testid`
+  ending `FormSubmit`; and the script is put into the parent document as
+  `<script id="ts-guard">`, because Streamlit replaces `components.html`'s frame
+  on every rerun and code from a dead frame can't be called (Firefox: "dead
+  object"). To test it, send real key presses (`computer key "1 A 4 …"`, at most
+  100 keys per call; use `browser_batch` for more): the browser tool's `type`
+  inserts text without key events and can't trigger it. Tested: no Enter, Enter,
+  three tags with no separator, ten tags with Enter in a row, half a tag then
+  the rest, click away then scan, Backspace, and typing in the paste box.
+  **Don't intercept the characters.** The first version kept its own copy of the
+  tag from the key events and sent that. On a manager's touch-screen ThinkPad
+  (Chrome, Scan Avenger SA 8895 plugged in) it sent only about half of each tag
+  (`1A405030004` of 24) while a desktop was fine and the scanner, and the paste
+  box on the same page, were fine: keystrokes the page leaves to the browser (a
+  modifier held, a text-input system composing, a paste) went into the box but
+  never into the copy. Reproduced by pressing 11 keys, then
+  `document.execCommand('insertText', false, '…the rest…')`, then Enter. A patch
+  that re-synced the copy worked in tests, but the design that cannot lose a
+  character is not to keep a copy at all. What that laptop actually does was not
+  seen. A scan that still arrives short now says "Only N of 24 characters
+  arrived … Scan the tag again" (`check`), instead of "not on the manifest".
 - **Don't use the server's clock for times people read.** Streamlit Cloud
   servers are expected to keep UTC (not checked online), so `time.strftime`
   would show scan times hours off there while looking right on the laptop. It
