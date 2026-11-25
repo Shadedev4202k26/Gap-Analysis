@@ -226,6 +226,11 @@ def check(raw, manifest_tags, scanned):
             return ("dupe" if hits[0] in scanned else "ok"), hits[0], ""
         if len(hits) > 1:
             return "unclear", s, f"{len(hits)} tags end in {s}. Type more of it."
+        if re.match(r"[0-9][A-Za-z]", s):
+            # A whole tag starts like this (1A4...); the last digits typed by hand never do.
+            # So this is a scan that lost characters on the way, not a tag from another truck.
+            return "unclear", s, (f"Only {len(s)} of 24 characters arrived, so that scan was cut "
+                                  "short. Scan the tag again.")
         return "extra", s, "Nothing on the manifest ends that way."
     return "unclear", s, f"Type at least {MIN_PARTIAL} characters from the end, or scan the whole tag."
 
@@ -316,21 +321,20 @@ _CSS = """
 </style>
 """
 
-# Runs in the page, and owns what a scanner types.
+# Runs in the page, and helps a scanner type into the scan box.
 #
 # A scanner is a keyboard that types a tag, usually followed by Enter, sometimes with no
 # Enter at all, and a fast one (or one sending stored scans) types the next tag within
-# milliseconds. Streamlit's text box can't be trusted with that: it empties itself a moment
-# after each send, and anything typed in that moment was lost or sent twice. So while the
-# scan box is on screen, the page catches the keys itself:
-#   - a key pressed anywhere that isn't another text box goes into a buffer kept here,
-#     not into the box (so a click on the list or a button can't swallow a scan), and the
-#     box just mirrors the buffer so the person sees what is arriving;
-#   - Enter, or a short pause once the buffer holds whole 24-character tags (a Metrc tag
-#     is always 24 letters and digits), sends everything in the buffer to the form in one
-#     piece: the box is set to those tags and Check is pressed. The page splits several
-#     tags apart (`split_scans`);
-#   - half a tag, a paste, Backspace and Escape still work for typing by hand;
+# milliseconds. The browser types the characters into the box itself: this script never
+# intercepts or rewrites them, so a modifier key, a text-input system (a touch laptop's)
+# or a paste can't make it miss one. (An earlier version kept its own copy of the tag, and
+# on a touch-screen ThinkPad it sent only half of each one.) What the script does:
+#   - Enter, or a short pause once the box holds whole 24-character tags (a Metrc tag is
+#     always 24 letters and digits; no Enter needed), presses Check;
+#   - the box is emptied in the same breath, so the next scan types into an empty box, even
+#     a quick one. The page splits several tags apart (`split_scans`);
+#   - a key pressed anywhere that isn't another text box moves the cursor into the box
+#     first, so a click on the list or a button can't swallow a scan;
 #   - nothing happens while another tab is showing, because the scan box is hidden then.
 # Every half second the cursor is also put back in the box if it has drifted.
 GUARD_JS = """
@@ -342,7 +346,7 @@ GUARD_JS = """
   const mine = el => el && el.matches && el.matches(SEL);
   const grab = () => { const i = box(); if (i && !editing(document.activeElement)) i.focus(); };
   const WHOLE = /^(?:[0-9][A-Za-z][0-9A-Za-z]{22})+$/;
-  let buf = '', pause = null;
+  let pause = null;
 
   const setVal = (i, v) => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, v);
@@ -354,19 +358,17 @@ GUARD_JS = """
     return f && (f.querySelector('[data-testid$="FormSubmit"]') ||
       [...f.querySelectorAll('button')].find(b => b.innerText.trim() === 'Check'));
   };
-  const flush = () => {
+  const send = () => {
     clearTimeout(pause);
     const i = box();
-    if (!i) { buf = ''; return; }
-    const v = (buf || i.value).trim();
-    buf = '';
+    if (!i) return;
+    const v = i.value.trim();
     const btn = checkButton(i);
     if (!v || !btn) return;
-    if (i.value !== v) setVal(i, v);
-    i.blur();
-    btn.click();
-    // The form empties the box when it sends; this only covers the case where it didn't.
-    setTimeout(() => { if (i.value === v) setVal(i, ''); grab(); }, 60);
+    i.blur();             // lets the form take the box's value, as clicking away would
+    btn.click();          // sends it
+    setVal(i, '');        // empty at once: the next scan can already be on its way
+    i.focus();
   };
 
   const onKey = e => {
@@ -376,28 +378,29 @@ GUARD_JS = """
     const t = e.target;
     if (editing(t) && !mine(t)) return;                    // another text box: leave it alone
     if (e.key === 'Enter') {
-      if (buf || (mine(t) && i.value.trim())) { e.preventDefault(); e.stopPropagation(); flush(); }
+      if (mine(t) && i.value.trim()) { e.preventDefault(); e.stopPropagation(); send(); }
       return;
     }
-    if (e.key === 'Escape') { buf = ''; clearTimeout(pause); if (i.value) setVal(i, ''); return; }
-    if (e.key === 'Backspace') {
-      if (buf) { e.preventDefault(); buf = buf.slice(0, -1); setVal(i, buf); }
-      return;
-    }
-    if (e.key.length !== 1) return;                        // Shift, Tab, arrows...: leave as is
-    e.preventDefault();
-    buf = (buf || (mine(t) ? i.value : '')) + e.key;
-    setVal(i, buf);
-    if (document.activeElement !== i) i.focus();
+    if (e.key === 'Escape') { clearTimeout(pause); if (i.value) setVal(i, ''); return; }
+    // Any other key pressed away from the box: move the cursor in, and the browser then
+    // types the character into the box as usual.
+    if (!editing(t) && e.key.length === 1) i.focus();
+  };
+  // Whole tags in the box and then quiet: no Enter needed.
+  const onInput = e => {
+    const i = e.target;
+    if (!mine(i)) return;
     clearTimeout(pause);
-    if (WHOLE.test(buf)) pause = setTimeout(flush, 250);   // whole tags and then quiet: no Enter needed
+    if (WHOLE.test(i.value.trim())) pause = setTimeout(send, 250);
   };
 
   document.addEventListener('keydown', onKey, true);
+  document.addEventListener('input', onInput, true);
   const timer = setInterval(grab, 400);
   grab();
   window.__tsGuard = () => {
     document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('input', onInput, true);
     clearInterval(timer); clearTimeout(pause);
   };
 })();
@@ -533,12 +536,12 @@ def _scan_tab(ss, rows):
             ss.setdefault("ts_log", []).append(
                 {"n": ss["ts_n"], "time": now, "status": status, "tag": tag, "note": note,
                  "item": next((r["item"] for r in rows if r["tag"] == tag), "")})
-        # The box is NOT cleared here. The page's script (GUARD_JS) keeps what a scanner types
-        # and empties the box itself when it sends, and the form clears it too
-        # (clear_on_submit). Clearing it here, after the server round trip, wiped or re-sent
-        # whatever a fast scanner had typed in the meantime.
+        # The box is NOT cleared here, and the form does not clear it either: the page's
+        # script (GUARD_JS) empties it the moment it sends. Anything that empties the box
+        # later, after a server round trip, wiped or re-sent what a fast scanner had typed
+        # in the meantime.
 
-    with st.form("ts_form", clear_on_submit=True, border=False):
+    with st.form("ts_form", clear_on_submit=False, border=False):
         c1, c2 = st.columns([5, 1], vertical_alignment="bottom")
         c1.text_input("Scan blue tag", key="ts_input", placeholder="Click here, then scan",
                       help="A scanner types the tag and presses Enter. You can also type the "
